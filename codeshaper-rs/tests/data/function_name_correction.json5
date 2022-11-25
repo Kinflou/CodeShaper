@@ -1,0 +1,8 @@
+{
+    name: "Function Name Correction",
+    project: 'tests/data/function_name_correction/shaping_project/',
+    target: 'tests/data/function_name_correction/target/origin/',
+    output: 'tests/data/function_name_correction/target/expected_result/',
+    backup: 'tests/data/function_name_correction/target/backup/',
+    result: 'BackupAndReplace'
+}
