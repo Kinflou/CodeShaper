@@ -1,0 +1,38 @@
+[package]
+name = "codeshaper"
+version = "0.1.0"
+authors = ["NewWars"]
+description = """ANtlr4 and Regex AST Shaper"""
+categories = ["regex", "antlr", "automation"]
+keywords = ["text", "code", "manipulation", "regex", "antlr", "automation"]
+license = "MIT"
+documentation = "https://docs.rs/codeshaper"
+repository = "https://github.com/OriDevTeam/CodeShaper"
+readme = "README-CRATE.md"
+edition = "2021"
+
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+
+[dependencies]
+derive_builder = "0.11.2"
+antlr-rust = "0.3.0-beta"
+stopwatch = "0.0.7"
+dyn-clone = "1.0.9"
+glob = "0.3.0"
+serde = { version = "1.0.147", features = ["derive"] }
+serde_json = "1.0.89"
+erased-serde = "0.3.23"
+json5 = "0.4.1"
+knuffel = "2.0.0"
+once_cell = "1.16.0"
+anyhow = "1.0.66"
+regex = "1.7.0"
+
+
+[build-dependencies]
+anyhow = "1.0.66"
+
