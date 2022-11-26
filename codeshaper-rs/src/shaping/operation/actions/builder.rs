@@ -11,12 +11,12 @@ use crate::ast::listener::Controller;
 
 
 pub struct Builder {
-    name: String,
-    builder: PatchBuilder,
-    controller: PatchController,
-    built: bool,
-    location: Option<String>,
-    result: String
+    pub name: String,
+    pub builder: PatchBuilder,
+    pub controller: PatchController,
+    pub built: bool,
+    pub location: Option<String>,
+    pub result: String
 }
 
 #[allow(unused)]
@@ -38,10 +38,9 @@ impl Action for Builder {
             return
         }
 
-        let locations = controller.locations();
-
-        let location = locations.last().unwrap();
-        let content = controller.contents().last().unwrap();
+        let (Some(location), Some(context)) = (
+            (controller.locations.last(), controller.contents.last())
+        ) else { return };
 
         if !self.builder.reference_location.is_empty() {
             if self.builder.reference_location.to_lowercase() == location.to_lowercase() {
@@ -67,13 +66,13 @@ impl Action for Builder {
 
 #[allow(unused)]
 impl Builder {
-    fn matches(self, _content: &str) -> &str {
+    fn matches(self, content: &str) -> &str {
         todo!()
     }
 }
 
-
-fn build_groups(r#_match: &str, _build: &str, _content: &str) -> bool {
+#[allow(unused)]
+fn build_groups(r#match: &str, build: &str, content: &str) -> bool {
     todo!()
 }
 

@@ -34,11 +34,13 @@ fn load_project_settings() {
 }
 
 
+#[allow(unused)]
 #[test]
 fn load_project() {
     let settings_path = Path::new(PROJECT_SETTINGS_PATH);
+    let project_settings = ProjectSettings::from_path(settings_path).unwrap();
 
-    let project = Project::from_path(settings_path).unwrap();
+    let project = Project::from_directory(settings_path).unwrap();
 
     assert_eq!(project.settings.name, "Function Name Correction")
 }

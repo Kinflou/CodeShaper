@@ -53,8 +53,9 @@ pub trait Group: Debug {
 
 #[doc(hidden)]
 pub fn from_type(r#type: &str, path: &Path) -> Result<Rc<RefCell<dyn Target>>> {
+
     let target: Rc<RefCell<dyn Target>> = match r#type {
-        "text" => Rc::new(RefCell::new(TextSolution::from_target(path))),
+        "text" => TextSolution::from_target(path)?,
         "vsx" => Rc::new(RefCell::new(VCXSolution::from_target(path))),
         _ => bail!("The target type '{}' is not supported", r#type)
     };

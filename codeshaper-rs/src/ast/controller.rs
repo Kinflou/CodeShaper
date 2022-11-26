@@ -23,7 +23,7 @@ pub struct VisitorController<'a, T, Ctx> {
     pub contents: Vec<String>,
 
     // #[builder(default)]
-    index: u64,
+    index: usize,
 
     // #[builder(default)]
     processing: bool

@@ -46,7 +46,7 @@ pub struct Builder {
     pub location: String,
     pub build: String,
     pub reference_location: String,
-    pub match_: String,
+    pub r#match: String,
     pub actions: Actions
 }
 
