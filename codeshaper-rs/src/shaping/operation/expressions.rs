@@ -1,5 +1,6 @@
 // Relative Modules
-pub(crate) mod composition;
+pub mod composition;
+mod common;
 
 // Standard Uses
 use std::collections::HashMap;
