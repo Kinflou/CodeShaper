@@ -8,9 +8,9 @@ use crate::shaping::operation::actions::Action;
 
 pub struct PatchController {}
 
-
+#[allow(unused)]
 impl PatchController {
-    pub(crate) fn find_action(&self, _name: &String) -> Box<dyn Action> {
+    pub fn find_action(&self, name: &String) -> Box<dyn Action> {
         todo!()
     }
 }

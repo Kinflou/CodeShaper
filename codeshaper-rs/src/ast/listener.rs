@@ -21,16 +21,13 @@ pub struct Controller {
 
 
 impl Controller {
-    pub fn new() -> Self {
-        Self::default()
+
+    pub fn locations(&self) -> &Vec<String> {
+        &self.locations
     }
 
-    pub fn locations(&self) -> Vec<String> {
-        todo!()
-    }
-
-    pub fn contents(&self) -> Vec<String> {
-        todo!()
+    pub fn contents(&self) -> &Vec<String> {
+        &self.contents
     }
 
     pub fn queue(&mut self, location: String, content: String) {
