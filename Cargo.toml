@@ -3,6 +3,9 @@ resolver = "2"
 members = [
     "codeshaper-rs",
     "codeshaper-rs-gui",
+    "general",
+    "nav-ast-antlr",
+    "nav-ast-pest"
 ]
 
 [profile.dev]
