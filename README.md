@@ -27,5 +27,6 @@ to get introduced briefly and discover more
 ## Supporters
 Thanks JetBrains for providing free licenses for their products
 
-[<img src="https://github.com/OriDevTeam/CodeShaper/raw/main/KivyGUI/Assets/jetbrains.png" alt="JetBrains" width=150>](https://www.jetbrains.com/?from=CodeShaper)
+[<img src="https://resources.jetbrains.com/storage/products/company/brand/logos/jb_beam.png" alt="JetBrains" width=150>](https://www.jetbrains.com/?from=CodeShaper)
+[<img src="https://resources.jetbrains.com/storage/products/company/brand/logos/CLion.png" alt="JetBrains" width=150>](https://www.jetbrains.com/?from=CodeShaper)
 
