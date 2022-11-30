@@ -1,0 +1,22 @@
+// Action Grammar
+
+action = {
+	SOI ~ (text | expression)* ~ EOI
+}
+
+expression_name = { char+ }
+expression = {
+	"#" ~ "[" ~ expression_name ~ "]" ~ arguments?
+}
+
+arguments = {
+	"(" ~ (expression | text | "," )* ~ ")"
+}
+
+
+text = { "\"" ~ value ~ "\"" }
+value = _{ char+ }
+char = _{ ASCII_ALPHANUMERIC | "_" | "-" | "!" }
+
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+

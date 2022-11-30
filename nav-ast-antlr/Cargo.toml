@@ -1,0 +1,13 @@
+[package]
+name = "codeshaper-nav-ast-antlr"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+anyhow = "1.0.66"
+antlr-rust = "0.3.0-beta"
+
+
+[build-dependencies]
+anyhow = "1.0.66"
