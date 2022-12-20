@@ -1,91 +1,55 @@
 // Relative Modules
 pub mod controller;
+pub mod builder;
+pub mod replacer;
+pub mod maker;
+pub mod resolver;
 
 // Standard Uses
 use std::fs;
 use std::path::Path;
-use std::collections::HashMap;
-
 
 // Crate Uses
+use crate::shaping::patch::builder::Builder;
+use crate::shaping::patch::replacer::Replacer;
+use crate::shaping::patch::maker::Maker;
+use crate::shaping::patch::resolver::Resolver;
 
 // External Uses
-use serde::Serialize;
-use serde::Deserialize;
-use knuffel::Decode;
 use anyhow::{anyhow, bail, Result};
-use knuffel::parse;
+use serde::{Serialize, Deserialize};
 
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone, Debug, PartialEq)]
 #[derive(Serialize, Deserialize)]
-#[derive(Decode)]
+#[derive(knuffel::Decode)]
 pub struct Patch {
-    pub enable: bool,
-    pub name: String,
+    #[knuffel(child, unwrap(argument))]
+    pub enabled: bool,
+    #[knuffel(child, unwrap(argument))]
     pub alias: String,
+    #[knuffel(child, unwrap(argument))]
     pub file: String,
+    #[knuffel(child)]
     pub actions: Actions,
 }
 
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone, Debug, PartialEq)]
 #[derive(Serialize, Deserialize)]
-#[derive(Decode)]
+#[derive(knuffel::Decode)]
 pub struct Actions {
-    pub builders: Vec<Builder>,
-    pub replacers: Vec<Replacer>,
-    pub makers: Vec<Maker>,
-    pub resolvers: Vec<Resolver>,
+    #[knuffel(child, unwrap(children(name="builder")))]
+    pub builders: Option<Vec<Builder>>,
+    #[knuffel(child, unwrap(children(name="replacer")))]
+    pub replacers: Option<Vec<Replacer>>,
+    #[knuffel(child, unwrap(children(name="maker")))]
+    pub makers: Option<Vec<Maker>>,
+    #[knuffel(child, unwrap(children(name="resolver")))]
+    pub resolvers: Option<Vec<Resolver>>,
 }
 
-#[derive(Default, Clone, Debug)]
-#[derive(Serialize, Deserialize)]
-#[derive(Decode)]
-pub struct Builder {
-    pub location: String,
-    pub build: String,
-    pub reference_location: String,
-    pub r#match: String,
-    pub actions: Actions
-}
-
-
-#[derive(Default, Clone, Debug)]
-#[derive(Serialize, Deserialize)]
-#[derive(Decode)]
-pub struct Replacer {
-    pub location: String,
-    pub from: String,
-    pub to: String,
-    pub flags: String,
-    pub reference_location: String,
-    pub reference: String,
-    pub actions: Actions
-}
-
-
-#[derive(Default, Clone, Debug)]
-#[derive(Serialize, Deserialize)]
-#[derive(Decode)]
-pub struct Maker {
-    pub prepare: String,
-    pub make: String,
-
-}
-
-#[derive(Default, Clone, Debug)]
-#[derive(Serialize, Deserialize)]
-#[derive(Decode)]
-pub struct Resolver {
-    pub mode: String,
-    pub cases: HashMap<String, String>,
-    pub list: Vec<String>,
-    pub index: String,
-    pub default: String
-}
-
-
+#[allow(unused)]
 impl Patch {
     pub fn from_path(path: &Path) -> Result<Self> {
         let extension = path.extension().unwrap().to_str().unwrap();
@@ -93,6 +57,18 @@ impl Patch {
 
         from_extension(content.as_str(), extension)
     }
+
+    /*
+    pub fn with_actions(actions: Actions) -> Self {
+        Self {
+            enable: true,
+            name: "".to_string(),
+            alias: "".to_string(),
+            file: "".to_string(),
+            actions,
+        }
+    }
+    */
 }
 
 
@@ -109,6 +85,8 @@ fn from_json5(content: &str) -> Result<Patch> {
 }
 
 fn from_kdl(content: &str) -> Result<Patch> {
-    parse::<Patch>("settings.kdl", content)
-        .map_err(|err| anyhow!("{:#?}", err))
+    match knuffel::parse::<Patch>("patch.kdl", content) {
+        Ok(patch) => Ok(patch),
+        Err(err) => Err(anyhow!("{:?}", miette::Report::new(err)))
+    }
 }

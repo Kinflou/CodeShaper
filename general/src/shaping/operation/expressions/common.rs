@@ -14,49 +14,58 @@ use pest_derive::Parser;
 #[grammar = "src/shaping/operation/expressions/expression.pest"]
 pub struct ActionParser;
 
-#[allow(unused)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Expression<'a> {
+    Action(Vec<Expression<'a>>),
     ExpressionName(&'a str),
-    Expr((&'a str, Vec<(Expression<'a>)>)),
+    Expr((&'a str, Box<Expression<'a>>)),
     Arguments(Vec<Expression<'a>>),
-    Text(&'a str)
+    Text(&'a str),
+    None
 }
 
-#[allow(unused)]
-fn parse_expression(input: &str) -> Result<Expression> {
-    let expression = ActionParser::parse(Rule::action, &input)?.next().unwrap();
+pub fn parse_expression(input: &str) -> Result<Expression> {
+    let expression = ActionParser::parse(Rule::action, input)?.next().unwrap();
 
     fn parse_expression(pair: Pair<Rule>) -> Expression {
         match pair.as_rule() {
-            Rule::expression_name => {
-                let name = pair.into_inner().next().unwrap().as_str();
+            Rule::action => Expression::Action(
+                pair.into_inner().map(|pair| {
+                    let item = parse_expression(pair);
 
-                Expression::ExpressionName(name)
-            },
+                    item
+                }).collect::<Vec<Expression>>(),
+            ),
             Rule::expression => {
                 let mut inner = pair.into_inner();
                 let name = inner.next().unwrap().as_str();
 
-                let arguments = inner.map(|p| {
-                    parse_expression(p.into_inner().next().unwrap())
-                }).collect();
+                let arguments = inner.next();
+                if arguments.is_none() {
+                    return Expression::Expr((name, Box::new(Expression::Arguments(vec![]))))
+                }
 
-                Expression::Expr((name, arguments))
+                let arguments = parse_expression(arguments.unwrap());
+
+                Expression::Expr((name, Box::new(arguments)))
+            },
+            Rule::expression_name => {
+                Expression::ExpressionName(pair.as_str())
             },
             Rule::arguments => {
                 Expression::Arguments (
                     pair.into_inner().map(parse_expression).collect()
                 )
             }
-            Rule::text | Rule::expression_name => {
-                Expression::Text(pair.into_inner().next().unwrap().as_str())
-            }
+            Rule::text => {
+                let mut inner = pair.into_inner();
 
-            Rule::action
-            | Rule::EOI
-            | Rule::value
-            | Rule::char
-            | Rule::WHITESPACE => unreachable!(),
+                Expression::Text(inner.next().unwrap().as_str())
+            }
+            _ => {
+                // unreachable!("{:?}", other)
+                Expression::None
+            }
         }
     }
 
