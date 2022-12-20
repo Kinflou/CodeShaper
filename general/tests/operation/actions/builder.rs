@@ -1,39 +1,50 @@
 // Standard Uses
+use std::rc::Rc;
+use std::cell::RefCell;
 
 // Crate Uses
-use codeshaper_general::ast::listener::Controller;
-use codeshaper_general::shaping::operation::actions::Action;
-use codeshaper_general::shaping::operation::actions::builder::Builder as BuilderExpr;
-use codeshaper_general::shaping::patch::controller::PatchController;
-use codeshaper_general::shaping::patch::Builder as PatchBuilder;
+use codeshaper_general::ast;
+use codeshaper_general::shaping::patch;
+use codeshaper_general::shaping::patch::{Actions, Patch};
 
 // External Uses
 
-
+#[allow(unused)]
 #[test]
 fn builder_expression() {
-    let controller = Controller::default();
-    let patch_controller = PatchController {};
 
-    let patch_builder = PatchBuilder {
+    let hello_builder = patch::builder::Builder {
+        name: "hello_builder".to_string(),
         location: "function".to_string(),
         build: "Hello (.*)!".to_string(),
-        reference_location: String::default(),
+        reference_location: None,
         r#match: "".to_string(),
         actions: Default::default(),
     };
-    
-    let mut builder_expr = BuilderExpr {
-        name: "hello_builder".to_string(),
-        builder: patch_builder,
-        controller: patch_controller,
-        built: false,
-        location: None,
-        result: String::default(),
+
+    let mut patch = Patch {
+        enabled: false,
+        alias: "".to_string(),
+        file: "".to_string(),
+        actions: Actions {
+            builders: Some(vec![hello_builder]),
+            replacers: Default::default(),
+            makers: Default::default(),
+            resolvers: Default::default(),
+        },
     };
 
-    builder_expr.process(&controller);
+    let mut listener_controller = Rc::new(RefCell::new(
+        ast::listener::Controller::default()
+    ));
 
-    assert_eq!(builder_expr.built, true);
-    assert_eq!(builder_expr.result, "Hello Rust!");
+    let patch_controller = patch::controller::Controller {
+        listener_controller: listener_controller.clone(),
+        patch: Rc::new(patch),
+        actions: vec![],
+    };
+
+    listener_controller.borrow_mut().process();
+
+    // assert_eq!(builder_expr.result(), &Some("Hello Rust!".to_string()));
 }

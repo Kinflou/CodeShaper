@@ -65,25 +65,18 @@ impl OperationConfiguration {
 
 fn from_extension(content: &str, extension: &str) -> Result<OperationConfiguration> {
     match extension {
-        "json" => from_json(content),
         "json5" => from_json5(content),
         "kdl" => from_kdl(content),
         &_ => { bail!("") }
     }
 }
 
-
-pub fn from_json(content: &str) -> Result<OperationConfiguration> {
-    serde_json::from_str(content).context("Could not load JSON operation settings")
-}
-
-
 pub fn from_json5(content: &str) -> Result<OperationConfiguration> {
     json5::from_str(content).context("Could not load JSON5 operation settings")
 }
 
-
+#[allow(unused)]
 pub fn from_kdl(content: &str) -> Result<OperationConfiguration> {
-    serde_json::from_str(content).context("Could not load KDL operation settings")
+    todo!()
 }
 
