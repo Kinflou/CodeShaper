@@ -1,7 +1,7 @@
-// Action Grammar
+// Action Expressions Syntax Grammar - v1
 
 action = {
-	SOI ~ (text | expression)* ~ EOI
+	SOI ~ (text | expression | local)* ~ EOI
 }
 
 expression_name = { char+ }
@@ -9,14 +9,20 @@ expression = {
 	"#" ~ "[" ~ expression_name ~ "]" ~ arguments?
 }
 
+local = {
+	"$" ~ "[" ~ local_name ~ "]"
+}
+local_name = { char+ }
+
 arguments = {
 	"(" ~ (expression | text | "," )* ~ ")"
 }
 
-
 text = { "\"" ~ value ~ "\"" }
-value = _{ char+ }
+
+value = { (!"\"" ~ ANY)* }
 char = _{ ASCII_ALPHANUMERIC | "_" | "-" | "!" }
 
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+EI = _{ EOI }
 

@@ -1,78 +1,188 @@
 // Standard Uses
+use std::cell::RefCell;
+use std::rc::{Rc, Weak};
 
 // Crate Uses
-use crate::shaping::operation::actions::Action;
-use crate::shaping::operation::expressions::Expression;
-use crate::shaping::patch::controller::PatchController;
-use crate::shaping::patch::Builder as PatchBuilder;
-use crate::ast::listener::Controller;
+use crate::ast;
+use crate::shaping::patch;
+use crate::shaping::operation::expressions::visitor;
+use crate::shaping::operation::actions::analyzer::Error;
+use crate::shaping::operation::actions::{Action, composer};
+use crate::shaping::operation::actions::composer::Composer;
+use crate::shaping::operation::expressions::visitor::ExpressionVisitor;
 
 // External Uses
+use anyhow::Result;
+use regex::Regex;
 
 
 pub struct Builder {
-    pub name: String,
-    pub builder: PatchBuilder,
-    pub controller: PatchController,
-    pub built: bool,
-    pub location: Option<String>,
-    pub result: String
+    pub builder: patch::builder::Builder,
+    pub patch_controller: Option<Rc<patch::controller::Controller>>,
+    pub listener_controller: Option<Rc<ast::listener::Controller>>,
+    pub composer: Option<Rc<RefCell<Composer>>>,
+
+    pub parent: Option<Rc<dyn Action>>,
+    pub children: Vec<Rc<RefCell<dyn Action>>>,
+
+    pub input: Option<String>,
+    pub locals: Vec<(String, String)>,
+    pub built: Option<String>
+}
+
+#[allow(unused)]
+impl Builder {
+    pub fn with_shared(patch_builder: patch::builder::Builder) -> Self {
+        Self {
+            builder: patch_builder,
+            patch_controller: None,
+            listener_controller: None,
+            composer: None,
+
+            parent: None,
+            children: vec![],
+
+            input: None,
+            locals: vec![],
+            built: None
+        }
+    }
+
+    pub fn mut_shared_with_shared(patch_builder: patch::builder::Builder) -> Rc<RefCell<Builder>> {
+        /*
+        let mut this = Rc::new(RefCell::new(Self {
+            builder: patch_builder,
+            patch_controller: Some(Rc::new(Default::default())),
+            listener_controller: Some(Rc::new(Default::default())),
+            composer: None,
+            actions: vec![],
+
+            input: None,
+            locals: vec![],
+            built: None,
+        }));
+
+        let b = RefCell::borrow_mut(&this);
+
+        b.composer = Some(
+            Rc::new(RefCell::new(Composer::with_action_shared(this)))
+        );
+
+        this
+        */
+
+        todo!()
+    }
+
 }
 
 #[allow(unused)]
 impl Action for Builder {
-    fn name(&self) -> &str { &*self.name }
-    fn actions(&self) -> Vec<Box<dyn Action>> { todo!() }
-    fn controller(&self) -> &PatchController { &self.controller }
-    fn expression(&self) -> &str { &*self.builder.build }
-    fn result(&self) -> &str { &*self.result }
-    fn expressions(&self) -> Vec<Box<dyn Expression>> { todo!() }
+    fn name(&self) -> &str { &self.builder.name }
+    fn parent(&self) -> Option<Weak<dyn Action>> {
+        Some(Rc::downgrade(&self.parent.clone().unwrap()))
+    }
+    fn children(&self) -> &Vec<Rc<RefCell<dyn Action>>> { &self.children }
+    fn patch_controller(&self) -> Option<Weak<patch::controller::Controller>> {
+        Some(Rc::downgrade(&self.patch_controller.as_ref().unwrap()))
+    }
+    fn listener_controller(&self) -> Option<Weak<ast::listener::Controller>> {
+        Some(Rc::downgrade(&self.listener_controller.as_ref().unwrap()))
+    }
+    fn expression(&self) -> &str { &self.builder.build }
 
-    fn process(&mut self, controller: &Controller) {
-        if self.built {
-            return
+    fn process(&mut self) -> Option<String> {
+        if self.built.is_some() {
+            return self.built.clone()
         }
 
-        if self.location.is_some() {
-            self.process_expression();
-            return
-        }
+        let Some(listener) = &self.listener_controller else {
+            return None
+        };
 
         let (Some(location), Some(context)) = (
-            (controller.locations.last(), controller.contents.last())
-        ) else { return };
+            listener.locations.last(), listener.contents.last()
+        ) else {
+            return None
+        };
 
-        if !self.builder.reference_location.is_empty() {
-            if self.builder.reference_location.to_lowercase() == location.to_lowercase() {
-                return
+        if self.builder.reference_location.is_some() {
+            if self.builder.reference_location.as_ref().unwrap().to_lowercase() == location.to_lowercase() {
+                return None
             }
         }
         else if self.builder.location.to_lowercase() != location.to_lowercase() {
-            return
+            return None
         }
 
-        self.process_expression();
-    }
-
-    fn process_expression(&mut self) {
-        if !self.expression().is_empty() {
-            // self.expressions =
-        }
-
-        self.built = build_groups("", "", "");
+        self.process_expression()
     }
 }
 
 
 #[allow(unused)]
 impl Builder {
-    fn matches(self, content: &str) -> &str {
-        todo!()
+    pub fn process_input(&mut self, input: String) -> Result<Option<String>> {
+        self.locals = composer::capture_locals(
+            &self.builder.r#match, input.clone()
+        );
+
+        self.input = Some(input);
+
+        let result = visitor::navigate_expression(
+            self.composer.unwrap(), &*self.builder.r#match.clone()
+        );
+
+        composer::compose_regex(
+            self.builder.r#match.clone(), self.input.clone().unwrap(),
+            &self.locals, &self.builder.build
+        );
+
+        // TODO: Piece the expression nodes together and set self.built
+        //       in case if matching occurs
+
+        Ok(self.built.clone())
+    }
+
+    pub fn process_expression(&mut self) -> Option<String> {
+        let content = &self.input;
+
+        let locals = composer::capture_locals(
+            &self.builder.r#match,content.clone().unwrap()
+        );
+
+        self.built = Some("".to_string());
+
+        self.built.clone()
+    }
+
+    pub fn process_expr(&self, visitor: Rc<dyn ExpressionVisitor>) -> Vec<Error> {
+        let mut errors = vec![];
+
+        let possible_rules = self.patch_controller.as_ref().unwrap().possible_rules();
+
+        if !self.builder.location.is_empty() {
+            if !possible_rules.contains(&&*self.builder.location) {
+                errors.push(Error::LocationNotFound);
+            }
+        } else if self.builder.reference_location.is_some() {
+            if !possible_rules.contains(&&*self.builder.reference_location.clone().unwrap()) {
+                errors.push(Error::LocationNotFound);
+            }
+        } else {
+            return errors
+        }
+
+        errors
+    }
+
+    fn matches(&self, content: &str) {
+        let re = Regex::new(&self.builder.r#match).unwrap();
+        let captures = Regex::captures(&re, content).unwrap();
+
+        let mut locals = vec![];
+        for name in re.capture_names().flatten() {
+            locals.push((name, captures.name(name).unwrap().as_str().clone()))
+        };
     }
 }
-
-#[allow(unused)]
-fn build_groups(r#match: &str, build: &str, content: &str) -> bool {
-    todo!()
-}
-

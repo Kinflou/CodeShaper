@@ -1,13 +1,14 @@
 // Standard Uses
+use std::rc::Rc;
+use std::cell::RefCell;
 
 // Crate Uses
-use crate::shaping::operation::actions::Action;
+use crate::shaping::patch;
 
 // External Uses
 
 
-#[derive(Default)]
-// #[derive(Debug, Clone)]
+#[derive(Default, Clone)]
 pub struct Controller {
     pub locations: Vec<String>,
     pub contents: Vec<String>,
@@ -16,12 +17,12 @@ pub struct Controller {
     pub index: usize,
     pub processing: bool,
 
-    pub handlers: Vec<Box<dyn Action>>,
+    pub handlers: Vec<Rc<RefCell<patch::controller::Controller>>>,
 }
 
 
+#[allow(unused)]
 impl Controller {
-
     pub fn locations(&self) -> &Vec<String> {
         &self.locations
     }
@@ -39,13 +40,16 @@ impl Controller {
         self.contents.push(content);
     }
 
+    pub fn visit(&mut self) {
+        self.state = State::Visit;
+    }
+
     pub fn stop(&mut self) {
         self.processing = false;
         self.state = State::Stopped;
     }
 
-    #[allow(unused)]
-    fn process(&mut self) {
+    pub fn process(&mut self) {
         if self.state != State::Visit {
             self.processing = false;
             return
@@ -53,16 +57,13 @@ impl Controller {
 
         self.index += 1;
 
-        /*
-        for handler in &mut self.handlers {
-            handler.process(self);
+        for handler in self.handlers.iter_mut() {
+            handler.borrow_mut().visit();
         }
-        */
 
         self.post_process()
     }
 
-    #[allow(unused)]
     fn post_process(&mut self) {
         todo!()
     }
