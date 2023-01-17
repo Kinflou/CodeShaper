@@ -16,11 +16,11 @@ use anyhow::Result;
 use regex::Regex;
 
 
-pub struct Builder {
+pub struct Builder<'a> {
     pub builder: patch::builder::Builder,
     pub patch_controller: Option<Rc<patch::controller::Controller>>,
     pub listener_controller: Option<Rc<ast::listener::Controller>>,
-    pub composer: Option<Rc<RefCell<Composer>>>,
+    pub composer: Option<Composer<'a>>,
 
     pub parent: Option<Rc<dyn Action>>,
     pub children: Vec<Rc<RefCell<dyn Action>>>,
@@ -31,7 +31,7 @@ pub struct Builder {
 }
 
 #[allow(unused)]
-impl Builder {
+impl<'a> Builder<'a> {
     pub fn with_shared(patch_builder: patch::builder::Builder) -> Self {
         Self {
             builder: patch_builder,
@@ -48,8 +48,8 @@ impl Builder {
         }
     }
 
+    /*
     pub fn mut_shared_with_shared(patch_builder: patch::builder::Builder) -> Rc<RefCell<Builder>> {
-        /*
         let mut this = Rc::new(RefCell::new(Self {
             builder: patch_builder,
             patch_controller: Some(Rc::new(Default::default())),
@@ -69,15 +69,15 @@ impl Builder {
         );
 
         this
-        */
 
         todo!()
     }
+    */
 
 }
 
 #[allow(unused)]
-impl Action for Builder {
+impl<'a> Action for Builder<'a> {
     fn name(&self) -> &str { &self.builder.name }
     fn parent(&self) -> Option<Weak<dyn Action>> {
         Some(Rc::downgrade(&self.parent.clone().unwrap()))
@@ -89,7 +89,7 @@ impl Action for Builder {
     fn listener_controller(&self) -> Option<Weak<ast::listener::Controller>> {
         Some(Rc::downgrade(&self.listener_controller.as_ref().unwrap()))
     }
-    fn expression(&self) -> &str { &self.builder.build }
+    fn expression(&self) -> String { self.builder.build.clone() }
 
     fn process(&mut self) -> Option<String> {
         if self.built.is_some() {
@@ -121,7 +121,7 @@ impl Action for Builder {
 
 
 #[allow(unused)]
-impl Builder {
+impl<'a> Builder<'a> {
     pub fn process_input(&mut self, input: String) -> Result<Option<String>> {
         self.locals = composer::capture_locals(
             &self.builder.r#match, input.clone()
@@ -130,7 +130,7 @@ impl Builder {
         self.input = Some(input);
 
         let result = visitor::navigate_expression(
-            self.composer.unwrap(), &*self.builder.r#match.clone()
+            self.composer.as_mut().unwrap(), &*self.builder.r#match.clone()
         );
 
         composer::compose_regex(
