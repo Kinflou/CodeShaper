@@ -1,10 +1,17 @@
 <!-- LINKS -->
 [codeshaper-docs]: https://oridevteam.github.io/CodeShaperDocs/
 
-
+<!-- TODO: Move assets from the c# repository to docs and link image this image URL to there>
 <p align="center">
 <img src="https://github.com/OriDevTeam/CodeShaperSharp/blob/main/Assets/logo/CodeShaper-logos_transparent_cut.png" width="300"/>
 </p>
+-->
+
+<p align="center">
+<img src="https://raw.githubusercontent.com/OriDevTeam/CodeShaperDocs/main/_static/img/logos/codeshaper/logo-slogan.png
+" width="300"/>
+</p>
+
 
 ____
 
