@@ -8,8 +8,7 @@
 -->
 
 <p align="center">
-<img src="https://raw.githubusercontent.com/OriDevTeam/CodeShaperDocs/main/_static/img/logos/codeshaper/logo-slogan.png
-" width="300"/>
+<img src="https://raw.githubusercontent.com/OriDevTeam/CodeShaperDocs/main/_static/img/logos/codeshaper/logo-slogan.png" width="350"/>
 </p>
 
 
