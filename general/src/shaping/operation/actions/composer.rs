@@ -1,5 +1,4 @@
 // Standard Uses
-use std::rc::Rc;
 use std::option::Option;
 use std::cell::RefCell;
 
@@ -13,15 +12,15 @@ use regex::Regex;
 
 
 #[allow(unused)]
-pub struct Composer {
-    pub action: Rc<dyn Action>,
+pub struct Composer<'a> {
+    pub action: &'a mut Box<dyn Action>,
     pub input: Option<String>,
     pub locals: Vec<(String, String)>
 }
 
 #[allow(unused)]
-impl Composer {
-    pub fn with_action_shared(action: Rc<dyn Action>) -> Self{
+impl<'a> Composer<'a> {
+    pub fn with_action_shared(action: &'a mut Box<dyn Action>) -> Self{
         Self {
             action,
             input: None,
@@ -31,7 +30,7 @@ impl Composer {
 }
 
 #[allow(unused)]
-impl ExpressionVisitor for Composer {
+impl ExpressionVisitor for Composer<'_> {
     fn visit_expression(&mut self, expr: &Expression) {
         let Expression::Expr((name, args)) = expr else {
             unreachable!()
