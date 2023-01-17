@@ -57,7 +57,7 @@ impl Action for Maker {
 
     fn listener_controller(&self) -> Option<Weak<ast::listener::Controller>> { todo!() }
 
-    fn expression(&self) -> &str {
+    fn expression(&self) -> String {
         todo!()
     }
 

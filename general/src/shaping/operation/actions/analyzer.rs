@@ -1,5 +1,4 @@
 // Standard Uses
-use std::rc::Rc;
 use std::cell::RefCell;
 
 // Crate Uses
@@ -11,8 +10,8 @@ use crate::shaping::operation::expressions::visitor::ExpressionVisitor;
 // External Uses
 
 
-pub struct Analyzer {
-    pub action: Rc<RefCell<dyn Action>>,
+pub struct Analyzer<'a> {
+    pub action: &'a Box<dyn Action>,
     pub current_location: Option<String>,
 
     pub found_actions: Vec<String>,
@@ -20,8 +19,8 @@ pub struct Analyzer {
 }
 
 #[allow(unused)]
-impl Analyzer {
-    pub fn with_action_shared_mut(action: Rc<RefCell<dyn Action>>) -> Self {
+impl<'a> Analyzer<'a> {
+    pub fn with_action_shared_mut(action: &'a mut Box<dyn Action>) -> Self {
         Self {
             action,
             current_location: None,
@@ -30,26 +29,20 @@ impl Analyzer {
         }
     }
 
-    pub fn analyze(own: &Rc<RefCell<Analyzer>>) {
-        let bor = RefCell::borrow(own);
-        let expr = &*bor.action.borrow().expression().to_string();
-
-        drop(bor);
-
-        visitor::navigate_expression(
-            Rc::clone(own) as _, expr
-        );
+    pub fn analyze(&mut self) {
+        let expr = self.action.expression();
+        visitor::navigate_expression(self, &expr);
     }
 }
 
 #[allow(unused)]
-impl ExpressionVisitor for Analyzer {
+impl<'a> ExpressionVisitor for Analyzer<'a> {
     fn visit_expression(&mut self, expr: &Expression) {
         let Expression::Expr(exp) = expr else {
             unreachable!()
         };
 
-        let Some(action) = self.action.borrow().find_inner(exp.0) else {
+        let Some(action) = self.action.find_inner(exp.0) else {
             self.errors.push(Error::ActionNotFound);
             return;
         };

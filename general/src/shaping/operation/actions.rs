@@ -6,7 +6,6 @@ pub mod maker;
 pub mod analyzer;
 pub mod linter;
 pub mod composer;
-pub mod composer_new;
 
 // Standard Uses
 use std::rc::{Rc, Weak};
@@ -49,7 +48,7 @@ pub trait Action {
     fn children(&self) -> &Vec<Rc<RefCell<dyn Action>>>;
     fn patch_controller(&self) -> Option<Weak<patch::controller::Controller>>;
     fn listener_controller(&self) -> Option<Weak<ast::listener::Controller>>;
-    fn expression(&self) -> &str;
+    fn expression(&self) -> String;
     fn args_count(&self) -> usize { 0 }
 
     fn process(&mut self) -> Option<String>;

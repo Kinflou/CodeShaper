@@ -1,6 +1,4 @@
 // Standard Uses
-use std::rc::Rc;
-use std::cell::RefCell;
 
 // Crate Uses
 use crate::shaping::operation::actions::Action;
@@ -26,12 +24,10 @@ impl Linter {
         }
     }
 
-    pub fn lint(own: &Rc<RefCell<Linter>>) {
-        let expr = RefCell::borrow(own).action.expression();
+    pub fn lint(&mut self) {
+        let expr = self.action.expression().to_string();
 
-        visitor::navigate_expression(
-            Rc::clone(own) as _, RefCell::borrow(own).action.expression()
-        );
+        visitor::navigate_expression(self, &expr);
     }
 }
 
