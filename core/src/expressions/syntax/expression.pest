@@ -1,0 +1,38 @@
+// Action Expressions Syntax Grammar - v1
+action = {
+	 (text | expression)*
+}
+
+text = @{ wild_char+ }
+wild_char = { !expression ~ ANY }
+
+expression = _{
+    (action_call | local_call
+    | argument_call)
+}
+
+action_call = {
+    "#" ~ "[" ~ id ~ "]" ~ arguments?
+}
+
+arguments = _{
+	"(" ~ (argument ~ ","?)* ~ ")"
+}
+argument = { expression | string }
+
+local_call = {
+	"$" ~ "[" ~ id ~ "]"
+}
+
+argument_call = {
+	"@" ~ "[" ~ id ~ "]"
+}
+
+
+id = { char+ }
+string = { "\"" ~ value ~ "\"" }
+value = { (!"\"" ~ ANY)* }
+char = _{ ASCII_ALPHANUMERIC | "_" | "-" | "!" }
+
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+

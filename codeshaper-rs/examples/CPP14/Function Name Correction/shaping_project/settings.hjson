@@ -1,0 +1,15 @@
+{
+  "name": "Function Name Correction"
+
+  "target": text
+  "ast_set": cpp14
+
+  "description":
+  '''
+  Function Name Correction
+  ========================
+  
+  This example shows how it can change any found void functions in a specific file called Module.cpp
+  that starts with '__' (two underscores) that we want to change to _ only instead as an example
+  '''
+}
