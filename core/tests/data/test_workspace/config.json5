@@ -1,0 +1,8 @@
+{
+  name: "Test Workspace",
+  project: 'tests/data/test_workspace/shaping_project/',
+  target: 'tests/data/test_workspace/target/origin/',
+  output: 'tests/data/test_workspace/target/expected_result/',
+  backup: 'tests/data/test_workspace/target/backup/',
+  result: 'BackupAndReplace'
+}

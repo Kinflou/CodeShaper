@@ -1,0 +1,14 @@
+{
+    "alias": cpp14
+    "file": Module.cpp
+    "actions": {
+        "replacements": {
+			"method_definition_replacement": {
+                "location": FunctionDefinition
+                "reference_location": FunctionDefinition
+                "from": void\s+?__(.*?)\(
+                "to": void _\g<1>(
+            }
+        }
+    }
+}

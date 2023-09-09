@@ -1,0 +1,8 @@
+{
+    "name": "Function Name Correction",
+    "project": "shaping_project/"
+    "source": "target/",
+    "target": "target_result/",
+    "backup": "target_backup/",
+    "result": "BackupAndReplaceMoveOriginal"
+}
