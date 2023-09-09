@@ -1,0 +1,51 @@
+{
+    "alias": cpp14
+    "file": ReturnModule.cpp
+    "actions": {
+		"builders": {
+			"function_header_builder": {
+			    "location": FunctionBody
+                "reference_location": FunctionDefinition
+                "match": void Method(?P<name>.*?)\(
+                "build":
+                 '''
+                 #{function_type_builder} Method${name}
+                 '''
+				 "actions": {
+					"builders": {
+						"function_type_builder": {
+							"location": FunctionBody
+							"reference_location": FunctionBody
+							"match": std::string type = "(?P<type>.*?)";
+							"build":
+							 '''
+							 #{function_type_resolver}(\g<1>)
+							 '''
+						},
+					},
+					"resolvers": {
+						"function_type_resolver": {
+							"mode": switch
+							"cases": {
+								"integer": int
+								"boolean": bool
+							}
+						}
+					}
+				 }
+			}
+		},
+        "replacements": {
+			"function_caller_replacement": {
+                "location": FunctionBody
+                "reference_location": FunctionDefinition
+                "from": void Method(.*?)
+                "to": 
+				'''
+				#{function_header_builder}
+				'''
+			}
+        }
+    }
+}
+
