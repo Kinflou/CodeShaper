@@ -6,7 +6,8 @@ members = [
     "tool-ui",
     "core",
     "nav-ast-antlr",
-    "nav-ast-pest"
+    "nav-ast-pest",
+    "nav-ast-treesitter"
 ]
 
 [profile.release]

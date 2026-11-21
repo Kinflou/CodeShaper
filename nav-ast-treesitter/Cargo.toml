@@ -1,0 +1,11 @@
+[package]
+name = "codeshaper-nav-ast-treesitter"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+codeshaper-core = { path = "../core" }
+miette = "5.9.0"
+tree-sitter = "0.27.2"
+tree-sitter-cpp = "0.23.4"
