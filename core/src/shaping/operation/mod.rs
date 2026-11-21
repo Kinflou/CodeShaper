@@ -7,7 +7,7 @@ use std::path::Path;
 
 // Crate Uses
 use crate::shaping::operation::configuration::OperationConfiguration;
-use crate::target::text::project::Project;
+use crate::shaping::project::Project;
 
 // External Uses
 use eyre::{Result};
@@ -25,7 +25,7 @@ impl Operation {
     pub fn from_configuration(configuration: OperationConfiguration) -> Result<Self> {
         let path = Path::new(configuration.project.as_str());
 
-        let project = Project::from_path(path)?;
+        let project = Project::from_directory(path)?;
 
         Ok(Self {
             configuration,

@@ -5,8 +5,8 @@ use std::path::Path;
 use crate::projects::function_name_correction::OPERATION_CONFIGURATION_PATH;
 
 // External Uses
-use codeshaper_general::shaping::operation::configuration::{OperationConfiguration, ResultOptions};
-use codeshaper_general::shaping::operation::Operation;
+use codeshaper_core::shaping::operation::configuration::{OperationConfiguration, ResultOptions};
+use codeshaper_core::shaping::operation::Operation;
 
 
 #[test]

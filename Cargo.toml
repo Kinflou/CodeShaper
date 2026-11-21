@@ -1,10 +1,10 @@
 [workspace]
 resolver = "2"
+exclude = ["analysis"]
 members = [
     "codeshaper-rs",
     "tool-ui",
     "core",
-    "analysis",
     "nav-ast-antlr",
     "nav-ast-pest"
 ]

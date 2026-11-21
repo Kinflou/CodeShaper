@@ -11,3 +11,7 @@ antlr-rust = "0.3.0-beta"
 
 [build-dependencies]
 anyhow = "1.0.66"
+
+
+[dev-dependencies]
+codeshaper-core = { path = "../core" }

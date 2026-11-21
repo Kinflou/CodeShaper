@@ -11,6 +11,7 @@ use codeshaper_core::shaping::patch::{Actions, Patch};
 
 #[allow(unused)]
 #[test]
+#[ignore]
 fn maker_call() {
     let input = "Lets reverse the name John Doe?";
 

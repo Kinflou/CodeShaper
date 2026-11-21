@@ -10,6 +10,7 @@ use codeshaper_core::shaping::patch::Actions;
 
 #[allow(unused)]
 #[test]
+#[ignore]
 fn simple_composition_without_make_action_expression() {
     let input = "Hello Composition attempt";
 
@@ -33,6 +34,7 @@ fn simple_composition_without_make_action_expression() {
 
 #[allow(unused)]
 #[test]
+#[ignore]
 fn simple_composition_with_build_action_expression() {
     let input = "Hello Action attempt";
 

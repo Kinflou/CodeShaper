@@ -5,8 +5,8 @@ use std::path::Path;
 use crate::projects::function_name_correction::PROJECT_SETTINGS_PATH;
 
 // External Uses
-use codeshaper::shaping::project::settings::ProjectSettings;
-use codeshaper::shaping::project::Project;
+use codeshaper_core::shaping::project::settings::ProjectSettings;
+use codeshaper_core::shaping::project::Project;
 
 
 #[test]
