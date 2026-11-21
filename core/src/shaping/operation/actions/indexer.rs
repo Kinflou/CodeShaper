@@ -142,6 +142,12 @@ impl SwitchAction {
         None
     }
 
+    pub fn resolve_with_args(&self, controller: &PatchController, args: &[String]) -> Option<String> {
+        let key = self.resolve_index_expr(controller, &self.switch.index.clone(), args)?;
+
+        self.resolve(controller, &key)
+    }
+
     pub fn resolve_isolated(&self, argument: &str) -> Option<String> {
         if self.switch.cases.is_empty() { return None }
         if self.switch.index.is_empty() { return None }

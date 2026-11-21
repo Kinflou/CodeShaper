@@ -16,7 +16,7 @@ pub struct Switch {
     #[knuffel(argument)]
     pub name: String,
 
-    //#[knuffel(child, unwrap(argument))]
+    #[knuffel(child, unwrap(properties))]
     pub cases: HashMap<String, String>,
 
     #[knuffel(child, unwrap(argument))]
@@ -33,6 +33,7 @@ pub struct List {
     #[knuffel(argument)]
     pub name: String,
 
+    #[knuffel(child, unwrap(arguments))]
     pub values: Vec<String>,
 
     #[knuffel(child, unwrap(argument))]

@@ -62,9 +62,11 @@ impl ExpressionVisitor for Composer {
                 return maker.make_with_args(&args, controller)
             }
             ActionOf::SwitchAction(switch) => {
-
+                return switch.resolve_with_args(controller, &args)
             }
-            ActionOf::ListAction(list) => {}
+            ActionOf::ListAction(list) => {
+                return list.index_with_args(controller, &args)
+            }
         }
 
         None

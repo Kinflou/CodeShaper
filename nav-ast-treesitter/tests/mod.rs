@@ -1,19 +1,34 @@
 // Standard Uses
 use std::fs;
 use std::path::Path;
+use std::rc::Rc;
 
 // Crate Uses
 
 // External Uses
 use codeshaper_core::ast::backend::LanguageBackend;
-use codeshaper_core::shaping::patch::replacer::Replacer;
+use codeshaper_core::shaping::patch::Patch;
+use codeshaper_core::shaping::patch::controller::PatchController;
 use codeshaper_nav_ast_treesitter::TreeSitterBackend;
 
 
-const EXAMPLE_TARGET: &str = "../codeshaper-rs/examples/CPP14/Function Name Correction/target";
+const EXAMPLE: &str = "../codeshaper-rs/examples/CPP14/Function Name Correction";
+
+fn example_file(path: &str) -> String {
+    fs::read_to_string(Path::new(EXAMPLE).join(path)).unwrap().replace("\r\n", "\n")
+}
 
 fn example_source(name: &str) -> String {
-    fs::read_to_string(Path::new(EXAMPLE_TARGET).join(name)).unwrap()
+    example_file(&format!("target/{name}"))
+}
+
+fn apply_example_patch(patch: &str, source: &str) -> String {
+    let path = Path::new(EXAMPLE).join("shaping_project/patches").join(patch);
+    let patch = Patch::from_path(&path).unwrap();
+
+    PatchController::with(Rc::new(patch))
+        .apply(&TreeSitterBackend::cpp(), source)
+        .unwrap()
 }
 
 fn located<'a>(source: &'a str, location: &str) -> Vec<&'a str> {
@@ -73,14 +88,26 @@ fn locate_query_without_target() {
 #[test]
 fn function_name_correction() {
     let source = example_source("Module.cpp");
-    let replacer = Replacer {
-        location: "FunctionDefinition".to_string(),
-        from: r"void\s+?__(.*?)\(".to_string(),
-        to: r"void _\g<1>(".to_string(),
-        ..Default::default()
-    };
-
-    let result = replacer.apply(&TreeSitterBackend::cpp(), &source).unwrap();
+    let result = apply_example_patch("function_name_correction_cpp.kdl", &source);
 
     assert_eq!(result, source.replace("void __", "void _"));
+}
+
+#[test]
+fn function_return_creation() {
+    let source = example_source("ReturnModule.cpp");
+    let result = apply_example_patch("function_return_creation.kdl", &source);
+
+    assert_eq!(result, example_file("expected_result/ReturnModule.cpp"));
+}
+
+#[test]
+fn example_patches_load() {
+    let patches = Path::new(EXAMPLE).join("shaping_project/patches");
+
+    for entry in fs::read_dir(patches).unwrap() {
+        let path = entry.unwrap().path();
+
+        assert!(Patch::from_path(&path).is_ok(), "{} does not load", path.display());
+    }
 }

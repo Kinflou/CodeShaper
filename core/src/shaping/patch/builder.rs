@@ -23,7 +23,7 @@ pub struct Builder {
     pub r#match: String,
     #[knuffel(child, unwrap(argument))]
     pub build: String,
-    // #[knuffel(child, unwrap(argument))]
+    #[knuffel(child, default)]
     pub actions: Actions,
 }
 

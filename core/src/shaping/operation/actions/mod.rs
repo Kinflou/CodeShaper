@@ -162,6 +162,20 @@ impl ActionOf {
         }
     }
 
+    pub fn replacer(&self) -> Result<&ReplacerAction> {
+        match self {
+            Self::ReplacerAction(r) => Ok(r),
+            _ => bail!("Not a replacer")
+        }
+    }
+
+    pub fn replacer_mut(&mut self) -> Result<&mut ReplacerAction> {
+        match self {
+            Self::ReplacerAction(r) => Ok(r),
+            _ => bail!("Not a replacer")
+        }
+    }
+
     pub fn list(&self) -> Result<&ListAction> {
         match self {
             Self::ListAction(l) => Ok(l),

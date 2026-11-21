@@ -48,10 +48,10 @@ pub struct Actions {
     #[knuffel(child, unwrap(children(name="maker")))]
     pub makers: Option<Vec<Maker>>,
 
-    #[knuffel(child, unwrap(children(name="switchers")))]
+    #[knuffel(child, unwrap(children(name="switch")))]
     pub switchers: Option<Vec<Switch>>,
 
-    #[knuffel(child, unwrap(children(name="lists")))]
+    #[knuffel(child, unwrap(children(name="list")))]
     pub lists: Option<Vec<List>>,
 }
 

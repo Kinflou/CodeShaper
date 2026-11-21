@@ -1,30 +1,79 @@
 // Standard Uses
 
 // Crate Uses
-use crate::shaping::operation::actions::Action;
+use crate::shaping::patch::replacer::Replacer;
+use crate::shaping::patch::controller::PatchController;
+use crate::shaping::operation::actions::{Action, LocalsMap};
+use crate::shaping::operation::actions::composer::Composer;
+use crate::expressions::visitor;
 
 // External Uses
 use indextree::NodeId;
-use crate::shaping::patch::controller::PatchController;
+use regex::Regex;
 
 
-pub struct ReplacerAction {}
+pub struct ReplacerAction {
+    replacer: Replacer,
+    self_id: Option<NodeId>,
+    parent_id: Option<NodeId>,
+    composer: Option<Composer>,
+}
+
+impl ReplacerAction {
+    pub fn with_ref(replacer: Replacer, parent_id: Option<NodeId>) -> Self {
+        Self { replacer, self_id: None, parent_id, composer: None }
+    }
+
+    pub fn post_new(&mut self, self_id: NodeId) {
+        self.self_id = Some(self_id);
+        self.composer = Some(Composer::with(self_id));
+    }
+
+    pub fn replacer(&self) -> &Replacer { &self.replacer }
+
+    pub fn replace_input(&self, controller: &PatchController, input: &str) -> Option<String> {
+        let from = Regex::new(&self.replacer.from).ok()?;
+        let composer = self.composer.as_ref()?;
+
+        let mut result = String::with_capacity(input.len());
+        let mut last = 0;
+
+        for captures in from.captures_iter(input) {
+            let found = captures.get(0)?;
+
+            let mut locals = LocalsMap::default();
+            for (index, group) in captures.iter().skip(1).enumerate() {
+                if let Some(group) = group {
+                    locals.push_with_left(index, group.as_str().to_owned());
+                }
+            }
+            *composer.locals.borrow_mut() = locals;
+
+            let replacement = visitor::navigate_expression(
+                composer, controller, &self.replacer.to, &[]
+            ).ok()?;
+
+            result.push_str(&input[last..found.start()]);
+            result.push_str(&replacement);
+            last = found.end();
+        }
+
+        result.push_str(&input[last..]);
+        Some(result)
+    }
+}
 
 impl Action for ReplacerAction {
-    fn name(&self) -> &str {
-        todo!()
-    }
+    fn name(&self) -> &str { "" }
 
-    fn self_id(&self) -> &NodeId { todo!() }
+    fn self_id(&self) -> &NodeId { self.self_id.as_ref().unwrap() }
 
-    fn parent_id(&self) -> &Option<NodeId> {
-        todo!()
-    }
+    fn parent_id(&self) -> &Option<NodeId> { &self.parent_id }
 
-    // fn locals(&self) -> &LocalsMap { todo!() }
-
-    #[allow(unused)]
     fn process(&self, patch_controller: &PatchController) -> Option<String> {
-        todo!()
+        let input = patch_controller.listener_controller.location_content
+            .get(self.replacer.target_location())?;
+
+        self.replace_input(patch_controller, input)
     }
 }
