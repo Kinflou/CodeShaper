@@ -81,6 +81,23 @@ impl Action for BuilderAction {
         ) else { return set_current(&self) };
         */
 
+        if self.builder.collect {
+            let location = self.builder.reference_location.as_deref()
+                .unwrap_or(&self.builder.location);
+
+            let Some(contents) = patch_controller.listener_controller.location_contents
+                .get(location) else
+            {
+                return set_current(self)
+            };
+
+            let built: Vec<String> = contents.iter()
+                .filter_map(|content| self.process_input(patch_controller, content.clone()))
+                .collect();
+
+            return Some(built.join(&self.builder.separator))
+        }
+
         if let Some(ref_location) = &self.builder.reference_location {
             let Some(context) = patch_controller.listener_controller.location_content
                 .get(ref_location) else

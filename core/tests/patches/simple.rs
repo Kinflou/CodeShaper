@@ -44,6 +44,8 @@ pub static EXPECTED_PATCH: LazyLock<Patch> = LazyLock::new(|| {
                     reference_location: None,
                     r#match: "Lets greet (.+)!".to_owned(),
                     build: "Hello #[code_maker]($[0]) World!".to_owned(),
+                    collect: false,
+                    separator: String::new(),
                     actions: Default::default(),
                 }
             ]),

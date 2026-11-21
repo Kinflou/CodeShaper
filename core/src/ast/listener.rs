@@ -9,6 +9,7 @@ use std::collections::HashMap;
 #[derive(Default, Clone)]
 pub struct ListenerController {
     pub location_content: HashMap<String, String>,
+    pub location_contents: HashMap<String, Vec<String>>,
     // pub locations: Vec<String>,
     // pub contents: Vec<String>,
 
@@ -23,6 +24,7 @@ impl ListenerController {
     pub fn new() -> Self {
         Self {
             location_content: Default::default(),
+            location_contents: Default::default(),
             state: Default::default(),
             index: 0,
             processing: false,

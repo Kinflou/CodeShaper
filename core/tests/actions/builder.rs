@@ -23,6 +23,8 @@ fn builder_build() {
         reference_location: None,
         r#match: "".to_string(),
         build: "Hello #[code_builder] to the World!".to_string(),
+        collect: false,
+        separator: String::new(),
 
         actions: Actions {
             builders: Some(vec![
@@ -32,6 +34,8 @@ fn builder_build() {
                     reference_location: None,
                     r#match: "Lets greet (.*?)!".to_string(),
                     build: "\\g<1>".to_string(),
+                    collect: false,
+                    separator: String::new(),
                     actions: Default::default(),
                 }
             ]),

@@ -26,6 +26,8 @@ fn composition_with_single_builder_in_root_builder() {
                     reference_location: None,
                     r#match: "empty".to_owned(),
                     build: "A pool of #[pool_mud_builder]".to_owned(),
+                    collect: false,
+                    separator: String::new(),
                     actions: Actions {
                         builders: Some(vec![
                             Builder {
@@ -34,6 +36,8 @@ fn composition_with_single_builder_in_root_builder() {
                                 reference_location: None,
                                 r#match: "made of (.+)".to_owned(),
                                 build: "$[0]".to_owned(),
+                                collect: false,
+                                separator: String::new(),
                                 actions: Default::default(),
                             }
                         ]),
@@ -86,6 +90,8 @@ fn composition_with_single_builder_in_root_builder_missing_location() {
                     reference_location: None,
                     r#match: "empty".to_owned(),
                     build: "A pool of #[pool_mud_builder]".to_owned(),
+                    collect: false,
+                    separator: String::new(),
                     actions: Actions {
                         builders: Some(vec![
                             Builder {
@@ -94,6 +100,8 @@ fn composition_with_single_builder_in_root_builder_missing_location() {
                                 reference_location: None,
                                 r#match: "made of (.+)".to_owned(),
                                 build: "$[0]".to_owned(),
+                                collect: false,
+                                separator: String::new(),
                                 actions: Default::default(),
                             }
                         ]),

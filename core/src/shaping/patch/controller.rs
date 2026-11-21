@@ -133,6 +133,13 @@ impl PatchController {
                 located.insert(location.as_str(), backend.locate(&source, location)?);
             }
 
+            self.listener_controller.location_contents = located.iter()
+                .map(|(location, ranges)| (
+                    location.to_string(),
+                    ranges.iter().map(|range| source[range.clone()].to_string()).collect()
+                ))
+                .collect();
+
             let mut edits: Vec<(Range<usize>, String)> = vec![];
             for trigger in triggers {
                 let mut content = HashMap::new();

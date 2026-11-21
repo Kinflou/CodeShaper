@@ -1,28 +1,21 @@
-enabled false
+enabled true
 alias "cpp"
 file "CallerModule.cpp"
 
 actions {
     builders {
-        builder "method_name_builder" {
-            location "FunctionDefinition.body"
-            reference-location "FunctionDefinition"
-            match r"void (.*?)\(\)"
-            build "$[0]();"
-        }
-        builder "method_name_builder_none" {
-            location "FunctionDefinition.body"
-            reference-location "FunctionDefinition"
-            match r"void (.*?)\(\)"
-            build "Nothing"
+        builder "method_call_builder" {
+            location r#"(function_definition declarator: (function_declarator declarator: (identifier) @target (#not-match? @target "Caller$")))"#
+            match r"(\w+)"
+            build "\t$[0]();\n"
+            collect true
         }
     }
     replacers {
         replacer {
             location "FunctionDefinition.body"
-            reference-location "FunctionDefinition"
-            from "void MethodCaller"
-            to "#[method_name_builder] Or #[method_name_builder_none]!"
+            from r"(// Lets call some methods!)\n\}"
+            to "$[0]\n#[method_call_builder]}"
         }
     }
 }

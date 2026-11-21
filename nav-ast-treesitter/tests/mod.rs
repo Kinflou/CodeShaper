@@ -102,6 +102,14 @@ fn function_return_creation() {
 }
 
 #[test]
+fn function_creation() {
+    let source = example_source("CallerModule.cpp");
+    let result = apply_example_patch("function_creation.kdl", &source);
+
+    assert_eq!(result, example_file("expected_result/CallerModule.cpp"));
+}
+
+#[test]
 fn example_patches_load() {
     let patches = Path::new(EXAMPLE).join("shaping_project/patches");
 

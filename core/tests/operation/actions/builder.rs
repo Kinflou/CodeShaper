@@ -15,6 +15,8 @@ fn builder_expression() {
         name: "hello_builder".to_string(),
         location: "function".to_string(),
         build: "Hello (.*)!".to_string(),
+        collect: false,
+        separator: String::new(),
         reference_location: None,
         r#match: "".to_string(),
         actions: Default::default(),

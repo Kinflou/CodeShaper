@@ -23,6 +23,12 @@ pub struct Builder {
     pub r#match: String,
     #[knuffel(child, unwrap(argument))]
     pub build: String,
+    #[serde(default)]
+    #[knuffel(child, unwrap(argument), default)]
+    pub collect: bool,
+    #[serde(default)]
+    #[knuffel(child, unwrap(argument), default)]
+    pub separator: String,
     #[knuffel(child, default)]
     pub actions: Actions,
 }

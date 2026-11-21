@@ -32,6 +32,8 @@ fn composition_builder_with_undefined_action() {
                     reference_location: None,
                     r#match: "Hello (.*) attempt".to_string(),
                     build: "Goodbye $[0] #[undefined_action] World".to_string(),
+                    collect: false,
+                    separator: String::new(),
                     actions: Default::default(),
                 }
             ]),
@@ -74,6 +76,8 @@ fn simple_composition_with_build_action_expression() {
                     reference_location: None,
                     r#match: "Hello (.+) attempt".to_owned(),
                     build: "Goodbye #[greet_maker]($[0]) World".to_owned(),
+                    collect: false,
+                    separator: String::new(),
                     actions: Actions {
                         builders: None,
                         replacers: None,
