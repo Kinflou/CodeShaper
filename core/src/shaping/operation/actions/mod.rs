@@ -19,7 +19,7 @@ use crate::utils::dual_key_map::DualKeyMap;
 // External Uses
 use indextree::{Node, NodeId};
 use enum_dispatch::enum_dispatch;
-use eyre::{bail, Result};
+use miette::{bail, Result};
 
 
 #[allow(unused)]

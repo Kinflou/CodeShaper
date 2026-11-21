@@ -4,7 +4,7 @@ use std::collections::HashMap;
 // Crate Uses
 
 // External Uses
-use eyre::Result;
+use miette::Result;
 use serde::{Serialize, Deserialize};
 use knuffel::Decode;
 

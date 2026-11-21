@@ -5,7 +5,7 @@ use std::path::Path;
 // Crate Uses
 
 // External Uses
-use eyre::{anyhow, bail, Context, Result};
+use miette::{miette, bail, Context, IntoDiagnostic, Result};
 use glob::glob;
 use serde::Serialize;
 use serde::Deserialize;
@@ -26,15 +26,18 @@ impl ProjectSettings {
 
     pub fn from_path(path: &Path) -> Result<Self> {
         let mut search = glob(format!("{}settings.*", path.to_str().unwrap()).as_str())
+            .into_diagnostic()
             .context("Failed to search for glob pattern")
             .unwrap();
 
         let settings = search.next()
-            .ok_or_else(|| anyhow!("Could not find any file named 'settings.*' as '*' being a supported extension\
-            \nat {}", path.to_str().unwrap()))??;
+            .ok_or_else(|| miette!("Could not find any file named 'settings.*' as '*' being a supported extension\
+            \nat {}", path.to_str().unwrap()))?
+            .into_diagnostic()?;
 
         let extension = settings.extension().unwrap().to_str().unwrap();
         let content = fs::read_to_string(&settings)
+            .into_diagnostic()
             .context("Could not read file")
             .unwrap();
 
@@ -53,12 +56,12 @@ fn from_extension(content: &str, extension: &str) -> Result<ProjectSettings> {
 
 
 fn from_json5(content: &str) -> Result<ProjectSettings> {
-    json5::from_str(content).map_err(|err| anyhow!("{}", err))
+    json5::from_str(content).map_err(|err| miette!("{}", err))
 }
 
 
 fn from_kdl(content: &str) -> Result<ProjectSettings> {
     parse::<ProjectSettings>("settings.kdl", content)
-        .map_err(|err| anyhow!("{:#?}", err))
+        .map_err(miette::Report::new)
 }
 

@@ -9,8 +9,8 @@ use crate::shaping::patch::Patch;
 use crate::shaping::project::settings::ProjectSettings;
 
 // External Uses
-use eyre::Result;
-use eyre::bail;
+use miette::Result;
+use miette::bail;
 use glob::glob;
 
 

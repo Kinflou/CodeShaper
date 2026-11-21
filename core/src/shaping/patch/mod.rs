@@ -16,7 +16,7 @@ use crate::shaping::patch::maker::Maker;
 use crate::shaping::patch::resolver::Resolver;
 
 // External Uses
-use eyre::{anyhow, bail, Result};
+use miette::{miette, bail, IntoDiagnostic, Result};
 use serde::{Serialize, Deserialize};
 
 
@@ -53,7 +53,7 @@ pub struct Actions {
 impl Patch {
     pub fn from_path(path: &Path) -> Result<Self> {
         let extension = path.extension().unwrap().to_str().unwrap();
-        let content = fs::read_to_string(path)?;
+        let content = fs::read_to_string(path).into_diagnostic()?;
         let content = content.as_str();
 
         match extension {
@@ -65,12 +65,12 @@ impl Patch {
 }
 
 fn from_json5(content: &str) -> Result<Patch> {
-    json5::from_str(content).map_err(|err| anyhow!("{}", err))
+    json5::from_str(content).map_err(|err| miette!("{}", err))
 }
 
 fn from_kdl(filename: &str, content: &str) -> Result<Patch> {
     match knuffel::parse::<Patch>(filename, content) {
         Ok(patch) => Ok(patch),
-        Err(err) => Err(anyhow!("{:?}", miette::Report::new(err)))
+        Err(err) => Err(miette::Report::new(err))
     }
 }

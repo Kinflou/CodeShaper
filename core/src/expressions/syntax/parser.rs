@@ -4,7 +4,7 @@
 use crate::expressions::syntax::ExpressionAST;
 
 // External Uses
-use eyre::Result;
+use miette::{IntoDiagnostic, Result};
 use pest::iterators::Pair;
 use pest::Parser;
 use pest_derive::Parser;
@@ -16,7 +16,7 @@ use pest_derive::Parser;
 pub struct ActionParser;
 
 pub fn parse_expression(input: &str) -> Result<ExpressionAST> {
-    let expression = ActionParser::parse(Rule::action, input)?.next().unwrap();
+    let expression = ActionParser::parse(Rule::action, input).into_diagnostic()?.next().unwrap();
 
     Ok(parse_pair(expression))
 }

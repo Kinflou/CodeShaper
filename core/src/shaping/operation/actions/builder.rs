@@ -12,7 +12,7 @@ use crate::expressions::visitor::ExpressionVisitor;
 use crate::utils::dual_key_map::DualKeyMap;
 
 // External Uses
-use eyre::Result;
+use miette::Result;
 use indextree::NodeId;
 use regex::Regex;
 

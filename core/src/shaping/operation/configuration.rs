@@ -6,7 +6,7 @@ use std::path::Path;
 // Crate Uses
 
 // External Uses
-use eyre::{bail, Context, Result};
+use miette::{bail, Context, IntoDiagnostic, Result};
 use serde::{Serialize, Deserialize};
 
 
@@ -37,6 +37,7 @@ impl OperationConfiguration {
     pub fn from_file(path: &Path) -> Result<OperationConfiguration> {
         let extension = path.extension().unwrap().to_str().unwrap();
         let content = fs::read_to_string(path)
+            .into_diagnostic()
             .context("Could not load operation configuration")
             .unwrap();
 
@@ -71,7 +72,7 @@ fn from_extension(content: &str, extension: &str) -> Result<OperationConfigurati
 }
 
 pub fn from_json5(content: &str) -> Result<OperationConfiguration> {
-    json5::from_str(content).context("Could not load JSON5 operation settings")
+    json5::from_str(content).into_diagnostic().context("Could not load JSON5 operation settings")
 }
 
 #[allow(unused)]
