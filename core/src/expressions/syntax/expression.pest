@@ -4,7 +4,7 @@ action = {
 }
 
 text = @{ wild_char+ }
-wild_char = { !expression ~ ANY }
+wild_char = { !expression ~ ANY}
 
 expression = _{
     (action_call | local_call
@@ -16,7 +16,9 @@ action_call = {
 }
 
 arguments = _{
-	"(" ~ (argument ~ ","?)* ~ ")"
+	"("
+    ~ (WS* ~ argument ~ WS* ~ ","?)*
+    ~ ")"
 }
 argument = { expression | string }
 
@@ -34,5 +36,6 @@ string = { "\"" ~ value ~ "\"" }
 value = { (!"\"" ~ ANY)* }
 char = _{ ASCII_ALPHANUMERIC | "_" | "-" | "!" }
 
-WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+WS = _{ " " | "\t" | "\r" | "\n" }
+// WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 

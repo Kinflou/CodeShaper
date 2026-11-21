@@ -10,7 +10,12 @@ use bimap::BiMap;
 
 /// TODO: This is a very explosive implementation of this that is only intended
 ///       to be used immutably, it would be sort-of UB if not well handled mutably
-pub struct DualKeyMap<K1, K2, V> {
+#[derive(Default)]
+pub struct DualKeyMap<K1, K2, V>
+    where K1: Default + Eq + Hash + Clone + SliceIndex<[V]>,
+          K2: Default + Eq + Hash,
+          V: Default
+{
     pub key_map: BiMap<K1, Option<K2>>,
     pub values: Vec<V>
 }
@@ -20,12 +25,14 @@ impl<K1, K2, V> DualKeyMap<K1, K2, V>
           K2: Default + Eq + Hash,
           V: Default
 {
+    /*
     pub fn new() -> Self {
         Self { key_map: BiMap::<K1, Option<K2>>::new(), values: vec![] }
     }
+    */
 
     pub fn get_by_left(&self, left: K1) -> Option<&<K1 as SliceIndex<[V]>>::Output> {
-        return Some(&self.values[left])
+        Some(&self.values[left])
     }
 
     pub fn get_by_right(&self, right: K2) -> Option<&<K1 as SliceIndex<[V]>>::Output> {
@@ -51,11 +58,13 @@ impl<K1, K2, V> DualKeyMap<K1, K2, V>
 
 mod tests {
     #[allow(unused)]
+    use crate::shaping::operation::actions::LocalsMap;
+    #[allow(unused)]
     use super::DualKeyMap;
 
     #[test]
     fn make_map() {
-        let mut map = DualKeyMap::<usize, String, String>::new();
+        let mut map = LocalsMap::default();
         map.push_with_keys(0, "zero".to_owned(), "Hello".to_string());
         map.push_with_left(1,"World".to_string());
 

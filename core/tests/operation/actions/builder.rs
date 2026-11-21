@@ -2,6 +2,7 @@
 
 // Crate Uses
 
+use std::rc::Rc;
 // External Uses
 use codeshaper_core::shaping::patch;
 use codeshaper_core::shaping::patch::controller::PatchController;
@@ -27,9 +28,11 @@ fn builder_expression() {
             builders: Some(vec![hello_builder]),
             replacers: Default::default(),
             makers: Default::default(),
-            resolvers: Default::default(),
+            switchers: Default::default(),
+            lists: Default::default(),
         },
     };
+    let patch = Rc::new(patch);
 
     let mut patch_controller = PatchController::with(patch);
     patch_controller.listener_controller.process();

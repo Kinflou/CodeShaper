@@ -1,47 +1,43 @@
 // Standard Uses
-use std::rc::Rc;
+use std::cell::RefCell;
 
 // Crate Uses
-use crate::shaping::patch;
+use crate::shaping::patch::builder::Builder;
 use crate::shaping::patch::controller::PatchController;
-use crate::shaping::operation::actions::{Action, ActionOf, composer};
+use crate::shaping::operation::actions::{Action, composer};
 use crate::shaping::operation::actions::composer::Composer;
-use crate::shaping::operation::actions::error::Error;
 use crate::expressions::visitor;
-use crate::expressions::visitor::ExpressionVisitor;
-use crate::utils::dual_key_map::DualKeyMap;
 
 // External Uses
-use miette::Result;
 use indextree::NodeId;
-use regex::Regex;
 
 
+#[allow(unused)]
 pub struct BuilderAction {
-    pub builder: patch::builder::Builder,
+    builder: Builder,
+    self_id: Option<NodeId>,
     parent_id : Option<NodeId>,
     composer: Option<Composer>,
-    input: Option<String>,
-    locals: DualKeyMap<usize, String, String>,
-    // built: Option<String>
+    pub current_inner_builder: RefCell<Option<String>>,
+    // input: RefCell<Option<String>>,
+    // locals: RefCell<LocalsMap>,
 }
 
 #[allow(unused)]
 impl BuilderAction {
-    pub fn with(builder: patch::builder::Builder) -> Self {
+    pub fn with_ref(
+        builder: Builder, parent_id: Option<NodeId>
+    ) -> Self {
         Self {
-            builder,
-            parent_id: None,
+            builder, self_id: None, parent_id,
             composer: None,
-            locals: DualKeyMap::new(),
-            input: None
+            current_inner_builder: Default::default(),
         }
-
-        // Some(Composer::new())
     }
 
-    pub fn with_ref(builder: &patch::builder::Builder) -> Self {
-        todo!()
+    pub fn post_new(&mut self, self_id: NodeId) {
+        self.self_id = Some(self_id);
+        self.composer = Some(Composer::with(self_id));
     }
 }
 
@@ -49,82 +45,83 @@ impl BuilderAction {
 impl Action for BuilderAction {
     fn name(&self) -> &str { &self.builder.name }
 
-    fn patch_controller(&self) -> &PatchController { todo!() }
+    fn self_id(&self) -> &NodeId { self.self_id.as_ref().unwrap() }
 
     fn parent_id(&self) -> &Option<NodeId> { &self.parent_id }
 
-    fn children(&self) -> &Vec<&ActionOf> {
-        todo!() // &self.children
-    }
-    fn children_mut(&self) -> &Vec<&mut ActionOf> {
-        todo!() // &self.children
-    }
+    fn process(&self, patch_controller: &PatchController) -> Option<String> {
+        let set_current = |b: &Self| {
+            if let Some(root_id) = b.root_id(patch_controller) {
+                let Some(root) = patch_controller.actions.get(root_id) else {
+                    return None
+                };
 
-    // fn expression(&self) -> String { self.builder.build.clone() }
+                let root = root.get().builder().unwrap();
 
-    fn locals(&self) -> &DualKeyMap<usize, String, String> { &self.locals }
+                *root.current_inner_builder.borrow_mut() = Some(root.builder.name.clone());
+                return None
+            };
 
-    fn process(&mut self) -> Option<String> {
+            *b.current_inner_builder.borrow_mut() = None;
+            None
+        };
+
         /*
+        let Some(last) = patch_controller.listener_controller.locations.last() else {
+            return set_current(self)
+        };
+
         if self.built.is_some() {
             return self.built.clone()
         }
 
-        let Some(listener) = &self.listener_controller else {
-            return None
-        };
-
         let (Some(location), Some(context)) = (
-            listener.locations.last(), listener.contents.last()
-        ) else {
-            return None
+            patch_controller.listener_controller.locations.last(),
+            patch_controller.listener_controller.contents.last()
+        ) else { return set_current(&self) };
+        */
+
+        if let Some(ref_location) = &self.builder.reference_location {
+            let Some(context) = patch_controller.listener_controller.location_content
+                .get(ref_location) else
+            {
+                return set_current(&self)
+            };
+
+            return self.process_input(patch_controller, context.clone())
+        }
+
+        let Some(context) = patch_controller.listener_controller.location_content
+            .get(&*self.builder.location) else
+        {
+            return set_current(&self)
         };
 
-        if self.builder.reference_location.is_some() {
-            if self.builder.reference_location.as_ref().unwrap().to_lowercase() == location.to_lowercase() {
-                return None
-            }
-        }
-        else if self.builder.location.to_lowercase() != location.to_lowercase() {
-            return None
-        }
-
-        self.process_expression()
-        */
-        todo!()
+        self.process_input(patch_controller, context.clone())
     }
 }
 
 
 #[allow(unused)]
 impl BuilderAction {
-    pub fn process_input(&mut self, input: String) -> Result<Option<String>> {
-        self.locals = composer::capture_locals(&self.builder.r#match, &input);
-        self.input = Some(input);
-
-        let result = composer::compose_regex(&self.builder.build, &self.locals);
-
-        let res = visitor::navigate_expression(
-            self.composer.as_mut().unwrap(), &*self.builder.build
-        )?;
-
-        Ok(result)
-    }
-
-    pub fn process_expression(&mut self) -> Option<String> {
-        let Some(content) = &self.input else {
-            panic!("TODO: Umh maybe do something here")
-        };
-
+    pub fn process_input(
+        &self, controller: &PatchController, input: String
+    ) -> Option<String> {
         let locals = composer::capture_locals(
-            &self.builder.r#match, &content
+            Some(&self.builder.r#match), &input
         );
 
-        // self.built = Some("".to_string());
-        // self.built.clone()
-        Some("".to_owned())
+        *self.composer.as_ref().unwrap().locals.borrow_mut() = locals;
+
+        let result = visitor::navigate_expression(
+            self.composer.as_ref().unwrap(), controller,
+            &self.builder.build, &[]
+        ).ok();
+
+        result
     }
 
+    /*
     pub fn process_expr(&self, visitor: Rc<dyn ExpressionVisitor>) -> Vec<Error> {
         let mut errors = vec![];
 
@@ -156,4 +153,5 @@ impl BuilderAction {
             locals.push((name, captures.name(name).unwrap().as_str().clone()))
         };
     }
+    */
 }

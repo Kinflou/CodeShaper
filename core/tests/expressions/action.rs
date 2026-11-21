@@ -21,7 +21,7 @@ fn parse_simple_expression() {
         ])),
     ]);
 
-    assert_eq!(expression, expected_result);
+    pretty_assertions::assert_eq!(expected_result, expression);
 }
 
 
@@ -39,8 +39,8 @@ fn parse_nested_expression() {
             ExpressionAST::Text("value_3")
         ])),
     ]);
-    
-    assert_eq!(expression, expected_result);
+
+    pretty_assertions::assert_eq!(expression, expected_result);
 }
 
 
@@ -64,6 +64,6 @@ fn parse_multiple_nested_expression() {
         ),
     ]);
 
-    assert_eq!(expected_result, expression);
+    pretty_assertions::assert_eq!(expected_result, expression);
 }
 

@@ -2,51 +2,68 @@
 
 // Crate Uses
 use crate::expressions::syntax::{ExpressionAST, parser};
+use crate::shaping::patch::controller::PatchController;
 
 // External Uses
-use miette::Result;
+use miette::{miette, Result};
 
 
 #[allow(unused)]
 pub trait ExpressionVisitor {
-    fn visit_expression(&mut self, name: &str, arguments: &Vec<ExpressionAST>);
-    fn visit_arguments(&mut self, arguments: &Vec<ExpressionAST>);
-    fn visit_text(&mut self, text: &str);
-    fn visit_local_call(&mut self, variable: &str);
-    fn visit_argument_call(&mut self, variable: &str);
+    // fn visit_expression(&self, controller: &PatchController, name: &str, arguments: &[ExpressionAST]);
 
-    fn built(&self) -> String;
+    fn visit_action_call(
+        &self, controller: &PatchController, name: &str, arguments: &[ExpressionAST]
+    ) -> Option<String>;
+
+    fn visit_text(
+        &self, controller: &PatchController, text: &str
+    ) -> Option<String>;
+
+    fn visit_local_call(
+        &self, controller: &PatchController, variable: &str
+    ) -> Option<String>;
+
+    fn visit_argument_call(
+        &self, controller: &PatchController, variable: &str, arguments: &[String]
+    ) -> Option<String>;
 }
 
 pub fn navigate_expression<'a>(
-    visitor: &'a mut dyn ExpressionVisitor, input: &'a str
+    visitor: &'a dyn ExpressionVisitor, patch_controller: &PatchController,
+    input: &'a str, arguments: &[String]
 ) -> Result<String> {
     let expr = parser::parse_expression(input)?;
 
-    visit_expression(visitor, &expr);
-
-    Ok(visitor.built())
+    visit_expression(visitor, patch_controller, &expr, arguments).ok_or(miette!("None"))
 }
 
-fn visit_expression<'a>(
-    visitor: &'a mut dyn ExpressionVisitor, expr: &ExpressionAST
-) {
+pub(crate) fn visit_expression(
+    visitor: &dyn ExpressionVisitor, controller: &PatchController,
+    expr: &ExpressionAST, arguments: &[String]
+) -> Option<String> {
+    let mut result = String::new();
+
     match expr {
         ExpressionAST::Action(actions) => {
-            actions.iter().for_each(|a| visit_expression(visitor, a))
+            for act in actions {
+                result += &*visit_expression(visitor, controller, act, arguments)?;
+            }
         }
         ExpressionAST::ActionCall((name, args)) => {
-            visitor.visit_expression(name, args)
+            result += &*visitor.visit_action_call(controller, name, args)?;
         }
         ExpressionAST::LocalCall(var) => {
-            visitor.visit_local_call(var);
+            result += &*visitor.visit_local_call(controller, var)?;
         }
         ExpressionAST::ArgumentCall(var) => {
-            visitor.visit_argument_call(var)
+            result += &*visitor.visit_argument_call(controller, var, arguments)?;
         }
         ExpressionAST::Text(text) => {
-            visitor.visit_text(text);
+            result += &*visitor.visit_text(controller, text)?;
         }
     }
+
+    Some(result)
 }
 

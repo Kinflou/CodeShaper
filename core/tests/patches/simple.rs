@@ -42,8 +42,8 @@ pub static EXPECTED_PATCH: LazyLock<Patch> = LazyLock::new(|| {
                     name: "hello_builder".to_owned(),
                     location: "*".to_string(),
                     reference_location: None,
-                    r#match: "Lets greet (.*?)!".to_owned(),
-                    build: "Hello #[code_maker]($[1]) World!".to_owned(),
+                    r#match: "Lets greet (.+)!".to_owned(),
+                    build: "Hello #[code_maker]($[0]) World!".to_owned(),
                     actions: Default::default(),
                 }
             ]),
@@ -55,7 +55,8 @@ pub static EXPECTED_PATCH: LazyLock<Patch> = LazyLock::new(|| {
                     make: "@[0] Library".to_owned(),
                 }
             ]),
-            resolvers: Default::default(),
+            switchers: Default::default(),
+            lists: Default::default(),
         },
     }
 });

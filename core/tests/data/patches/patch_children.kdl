@@ -6,8 +6,8 @@ actions {
     builders {
         builder "hello_builder" {
             location "*"
-            match "Lets greet (.*?)!"
-            build "Hello #[code_maker]($[1]) World!"
+            match "Lets greet (.+)!"
+            build "Hello #[code_maker]($[0]) World!"
         }
     }
     makers {

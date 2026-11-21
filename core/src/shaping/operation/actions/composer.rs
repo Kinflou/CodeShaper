@@ -1,11 +1,10 @@
 // Standard Uses
-use std::rc::Rc;
 use std::cell::RefCell;
-use std::option::Option;
 
 // Crate Uses
-use crate::shaping::operation::actions::{Action, ActionOf};
+use crate::shaping::operation::actions::{Action, ActionOf, LocalsMap};
 use crate::shaping::patch::controller::PatchController;
+use crate::expressions::visitor;
 use crate::expressions::visitor::ExpressionVisitor;
 use crate::expressions::syntax::ExpressionAST;
 use crate::utils::dual_key_map::DualKeyMap;
@@ -18,76 +17,107 @@ use indextree::NodeId;
 #[allow(unused)]
 pub struct Composer {
     action_id: NodeId,
-    patch_controller: Rc<RefCell<PatchController>>,
-    built: String
+    // patch_controller: Rc<RefCell<PatchController>>,
+    pub(crate) locals: RefCell<LocalsMap>,
+    built: RefCell<String>,
 }
 
 #[allow(unused)]
 impl Composer {
-    pub fn with(action_id: NodeId, patch_controller: Rc<RefCell<PatchController>>) -> Self {
+    pub fn with(action_id: NodeId) -> Self {
         Self {
             action_id,
-            patch_controller,
-            built: String::new()
+            locals: Default::default(),
+            built: RefCell::new(String::new())
         }
     }
 }
 
 #[allow(unused)]
 impl ExpressionVisitor for Composer {
-    fn visit_expression(&mut self, name: &str, args: &Vec<ExpressionAST>) {
-        let controller_mut = self.patch_controller.borrow_mut();
-
-        let Some(action) = controller_mut.find_action(name) else {
-            return;
-        };
-    }
-
-    fn visit_arguments(&mut self, arguments: &Vec<ExpressionAST>) {}
-
-    fn visit_text(&mut self, text: &str) {
-        self.built += text;
-    }
-
-    fn visit_local_call(&mut self, variable: &str) {
-        let mut controller_mut = self.patch_controller.borrow_mut();
-        let action: &ActionOf = controller_mut.actions.get(self.action_id).unwrap().get();
-
-        if let Ok(number) = variable.parse::<usize>() {
-            if let Some(local) = action.locals().get_by_left(number) {
-                todo!()
-            }
-        } else {
-            if let Some(local) = action.locals().get_by_right(variable.to_owned()) {
-                todo!()
-
-            }
+    fn visit_action_call(
+        &self, controller: &PatchController, name: &str, arguments: &[ExpressionAST]
+    ) -> Option<String> {
+        let mut args = vec![];
+        for arg in arguments {
+            args.push(
+                visitor::visit_expression(self, controller,
+                arg, &[]
+                )?
+            );
         }
 
-        panic!("Umh should return a error")
+        let Some(action) = controller.find_action(name, controller) else {
+            return None
+        };
+
+        match action {
+            ActionOf::BuilderAction(builder) => {
+                return builder.process(controller);
+            }
+            ActionOf::ReplacerAction(replacer) => {
+
+            }
+            ActionOf::MakerAction(maker) => {
+                return maker.make_with_args(&args, controller)
+            }
+            ActionOf::SwitchAction(switch) => {
+
+            }
+            ActionOf::ListAction(list) => {}
+        }
+
+        None
     }
 
-    fn visit_argument_call(&mut self, variable: &str) {
-        todo!()
+    fn visit_text(&self, controller: &PatchController, text: &str) -> Option<String> {
+        Some(text.to_owned())
     }
 
-    fn built(&self) -> String {
-        self.built.clone()
+    fn visit_local_call(
+        &self, controller: &PatchController, variable: &str
+    ) -> Option<String> {
+        let locals = self.locals.borrow();
+
+        let action: &ActionOf = controller.actions.get(self.action_id).unwrap().get();
+
+        if let Ok(number) = variable.parse::<usize>() {
+            let Some(local) = locals.get_by_left(number) else {
+                panic!("Local not found")
+            };
+
+            return Some(local.clone())
+        }
+
+        if let Some(local) = self.locals.borrow().get_by_right(variable.to_owned()) {
+            return None
+        }
+
+        panic!("Local '{}' not found", variable);
+    }
+
+    fn visit_argument_call(
+        &self, controller: &PatchController, variable: &str, arguments: &[String]
+    ) -> Option<String> {
+        let index = variable.parse::<usize>().ok()?;
+
+        arguments.get(index).map(|a| a.to_string())
     }
 }
 
-pub fn capture_locals(reg_expr: &str, content: &str) -> DualKeyMap<usize, String, String> {
+pub fn capture_locals(reg_expr: Option<&str>, content: &str) -> LocalsMap {
+    let Some(reg_expr) = reg_expr else { return LocalsMap::default() };
+
     let re = Regex::new(reg_expr).unwrap();
     let Some(captures) = re.captures(content) else {
-        return DualKeyMap::new()
+        return DualKeyMap::default()
     };
 
-    let mut locals: DualKeyMap<usize, String, String> = DualKeyMap::new();
+    let mut locals = LocalsMap::default();
     for (idx, mat) in captures.iter().skip(1).enumerate() {
         if let Some(mat) = mat {
             locals.push_with_left(idx, mat.as_str().to_owned())
         }
-
     };
 
     // TODO: Add named captures
@@ -96,13 +126,12 @@ pub fn capture_locals(reg_expr: &str, content: &str) -> DualKeyMap<usize, String
     locals
 }
 
+/*
 // TODO: Better naming for expression argument, since it can be either a simple Regex
 //       or also contain Action expressions, being a mix (not that it probably matters)
 //       also perhaps the expr type can be &str instead, check that
 #[allow(unused)]
-pub fn compose_regex(
-    build: &str, locals: &DualKeyMap<usize, String, String>
-) -> Option<String> {
+pub fn compose_regex(build: &str, locals: &LocalsMap) -> Option<String> {
     let mut built = String::new();
 
     regex_automata::util::interpolate::string(
@@ -124,4 +153,5 @@ pub fn compose_regex(
 
     Some(built)
 }
+*/
 

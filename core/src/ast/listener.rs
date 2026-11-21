@@ -1,4 +1,5 @@
 // Standard Uses
+use std::collections::HashMap;
 
 // Crate Uses
 
@@ -7,8 +8,9 @@
 
 #[derive(Default, Clone)]
 pub struct ListenerController {
-    pub locations: Vec<String>,
-    pub contents: Vec<String>,
+    pub location_content: HashMap<String, String>,
+    // pub locations: Vec<String>,
+    // pub contents: Vec<String>,
 
     pub state: State,
     pub index: usize,
@@ -18,12 +20,23 @@ pub struct ListenerController {
 
 #[allow(unused)]
 impl ListenerController {
+    pub fn new() -> Self {
+        Self {
+            location_content: Default::default(),
+            state: Default::default(),
+            index: 0,
+            processing: false,
+        }
+    }
+
     pub fn locations(&self) -> &Vec<String> {
-        &self.locations
+        todo!()
+        // &self.locations
     }
 
     pub fn contents(&self) -> &Vec<String> {
-        &self.contents
+        todo!()
+        // &self.contents
     }
 
     pub fn queue(&mut self, location: String, content: String) {
@@ -31,8 +44,10 @@ impl ListenerController {
 
         self.processing = true;
 
-        self.locations.push(location);
-        self.contents.push(content);
+        self.location_content.entry(location).or_insert(content);
+
+        // self.locations.push(location);
+        // self.contents.push(content);
     }
 
     pub fn visit(&mut self) {
@@ -59,6 +74,10 @@ impl ListenerController {
         */
 
         self.post_process()
+    }
+
+    pub fn process_with(&mut self, location: &str, content: &str) {
+        println!("'{location}': {content}");
     }
 
     fn post_process(&mut self) {

@@ -13,11 +13,11 @@ use std::path::Path;
 use crate::shaping::patch::builder::Builder;
 use crate::shaping::patch::replacer::Replacer;
 use crate::shaping::patch::maker::Maker;
-use crate::shaping::patch::resolver::Resolver;
 
 // External Uses
 use miette::{miette, bail, IntoDiagnostic, Result};
 use serde::{Serialize, Deserialize};
+use crate::shaping::patch::resolver::{List, Switch};
 
 
 #[derive(Default, Clone, Debug, PartialEq)]
@@ -41,12 +41,18 @@ pub struct Patch {
 pub struct Actions {
     #[knuffel(child, unwrap(children(name="builder")))]
     pub builders: Option<Vec<Builder>>,
+
     #[knuffel(child, unwrap(children(name="replacer")))]
     pub replacers: Option<Vec<Replacer>>,
+
     #[knuffel(child, unwrap(children(name="maker")))]
     pub makers: Option<Vec<Maker>>,
-    #[knuffel(child, unwrap(children(name="resolver")))]
-    pub resolvers: Option<Vec<Resolver>>,
+
+    #[knuffel(child, unwrap(children(name="switchers")))]
+    pub switchers: Option<Vec<Switch>>,
+
+    #[knuffel(child, unwrap(children(name="lists")))]
+    pub lists: Option<Vec<List>>,
 }
 
 #[allow(unused)]

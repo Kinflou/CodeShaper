@@ -2,11 +2,10 @@
 
 // Crate Uses
 use crate::shaping::operation::actions::Action;
-use crate::shaping::patch::controller::PatchController;
-use crate::utils::dual_key_map::DualKeyMap;
 
 // External Uses
 use indextree::NodeId;
+use crate::shaping::patch::controller::PatchController;
 
 
 pub struct ReplacerAction {}
@@ -16,19 +15,16 @@ impl Action for ReplacerAction {
         todo!()
     }
 
-    fn patch_controller(&self) -> &PatchController {
-        todo!()
-    }
+    fn self_id(&self) -> &NodeId { todo!() }
 
     fn parent_id(&self) -> &Option<NodeId> {
         todo!()
     }
 
-    fn locals(&self) -> &DualKeyMap<usize, String, String> {
-        todo!()
-    }
+    // fn locals(&self) -> &LocalsMap { todo!() }
 
-    fn process(&mut self) -> Option<String> {
+    #[allow(unused)]
+    fn process(&self, patch_controller: &PatchController) -> Option<String> {
         todo!()
     }
 }

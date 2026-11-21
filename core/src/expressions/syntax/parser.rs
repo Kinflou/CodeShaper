@@ -39,7 +39,7 @@ fn parse_pair(pair: Pair<Rule>) -> ExpressionAST {
             let name = inner.next().unwrap().as_str();
 
             let mut arguments = vec![];
-            for arg in inner.into_iter() {
+            for arg in inner {
                 arguments.push(parse_pair(arg));
             }
 
@@ -54,7 +54,10 @@ fn parse_pair(pair: Pair<Rule>) -> ExpressionAST {
             ExpressionAST::Text(text)
         }
         Rule::local_call => {
-            ExpressionAST::LocalCall(pair.as_str())
+            ExpressionAST::LocalCall(pair.into_inner().next().unwrap().as_str())
+        }
+        Rule::argument_call => {
+            ExpressionAST::ArgumentCall(pair.into_inner().next().unwrap().as_str())
         }
         missing => unreachable!("Rule not implemented {:?}", missing)
     }
