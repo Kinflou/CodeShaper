@@ -1,0 +1,28 @@
+enabled false
+alias "cpp"
+file "CallerModule.cpp"
+
+actions {
+    builders {
+        builder "method_name_builder" {
+            location "FunctionDefinition.body"
+            reference-location "FunctionDefinition"
+            match r"void (.*?)\(\)"
+            build "$[0]();"
+        }
+        builder "method_name_builder_none" {
+            location "FunctionDefinition.body"
+            reference-location "FunctionDefinition"
+            match r"void (.*?)\(\)"
+            build "Nothing"
+        }
+    }
+    replacers {
+        replacer {
+            location "FunctionDefinition.body"
+            reference-location "FunctionDefinition"
+            from "void MethodCaller"
+            to "#[method_name_builder] Or #[method_name_builder_none]!"
+        }
+    }
+}
