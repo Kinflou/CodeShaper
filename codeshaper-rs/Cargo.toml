@@ -8,7 +8,7 @@ keywords = ["text", "code", "manipulation", "regex", "antlr", "automation"]
 license = "MIT"
 documentation = "https://docs.rs/codeshaper"
 repository = "https://github.com/kinflou/CodeShaper"
-readme = "README-CRATE.md"
+readme = "README.md"
 edition = "2021"
 
 

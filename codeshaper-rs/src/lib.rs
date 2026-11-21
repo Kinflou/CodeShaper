@@ -1,9 +1,9 @@
 #![doc(
 html_logo_url =
-"https://github.com/kinflou/CodeShaper/raw/main/KivyGUI/Assets/logo/CodeShaper-logos_white.png",
+"https://raw.githubusercontent.com/kinflou/CodeShaperDocs/main/_static/img/logos/codeshaper/logo-slogan.png",
 
 html_favicon_url =
-"https://github.com/kinflou/CodeShaper/raw/main/KivyGUI/Assets/logo/logo_only.png"
+"https://raw.githubusercontent.com/kinflou/CodeShaperDocs/main/_static/img/logos/codeshaper/logo-only.png"
 )]
 #![forbid(unsafe_code)]
 #![doc = include_str!("../README-DOCS.md")]
