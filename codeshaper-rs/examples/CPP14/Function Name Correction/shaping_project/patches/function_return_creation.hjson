@@ -4,7 +4,7 @@
     "actions": {
 		"builders": {
 			"function_header_builder": {
-			    "location": FunctionBody
+			    "location": FunctionDefinition.body
                 "reference_location": FunctionDefinition
                 "match": void Method(?P<name>.*?)\(
                 "build":
@@ -14,8 +14,8 @@
 				 "actions": {
 					"builders": {
 						"function_type_builder": {
-							"location": FunctionBody
-							"reference_location": FunctionBody
+							"location": FunctionDefinition.body
+							"reference_location": FunctionDefinition.body
 							"match": std::string type = "(?P<type>.*?)";
 							"build":
 							 '''
@@ -37,7 +37,7 @@
 		},
         "replacements": {
 			"function_caller_replacement": {
-                "location": FunctionBody
+                "location": FunctionDefinition.body
                 "reference_location": FunctionDefinition
                 "from": void Method(.*?)
                 "to": 

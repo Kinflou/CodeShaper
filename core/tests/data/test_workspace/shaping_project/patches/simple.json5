@@ -5,13 +5,13 @@
   actions: {
     builders: {
       method_name_builder: {
-        location: 'FunctionBody',
+        location: 'FunctionDefinition.body',
         reference_location: 'FunctionDefinition',
         match: 'void (.*?)\(\)',
         build: '\g<1>();'
       },
       method_name_builder_none: {
-        location: 'FunctionBody',
+        location: 'FunctionDefinition.body',
         reference_location: 'FunctionDefinition',
         match: 'void (.*?)\(\)',
         build: 'Nothing'
@@ -19,7 +19,7 @@
     },
     replacements: {
       method_caller_replacement: {
-        location: 'FunctionBody',
+        location: 'FunctionDefinition.body',
         reference_location: 'FunctionDefinition',
         from: 'void MethodCaller',
         to: '#[method_name_builder] Or #[method_name_builder_none]!'
