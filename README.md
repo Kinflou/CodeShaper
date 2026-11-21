@@ -21,9 +21,8 @@ A tool to automate code changes simplified using Regex and AST navigation, with 
 ____
 
 - Regex compliant (unspecified standard yet, to decide)
-- Antlr4 Grammars:
-  - [CPP14 Grammars](https://github.com/antlr/grammars-v4/tree/master/cpp)
-  - [CSharp6 Grammars](https://github.com/antlr/grammars-v4/tree/master/csharp) (implementation in progress)
+- tree-sitter Grammars:
+  - [C++](https://github.com/tree-sitter/tree-sitter-cpp)
 
 ## Documentation
 Check the [Documentation][codeshaper-docs]

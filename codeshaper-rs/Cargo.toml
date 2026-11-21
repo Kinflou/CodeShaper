@@ -2,9 +2,9 @@
 name = "codeshaper"
 version = "0.1.0"
 authors = ["Kinflou"]
-description = """ANtlr4 and Regex AST Shaper"""
-categories = ["regex", "antlr", "automation"]
-keywords = ["text", "code", "manipulation", "regex", "antlr", "automation"]
+description = """tree-sitter and Regex AST Shaper"""
+categories = ["regex", "tree-sitter", "automation"]
+keywords = ["text", "code", "manipulation", "regex", "tree-sitter", "automation"]
 license = "MIT"
 documentation = "https://docs.rs/codeshaper"
 repository = "https://github.com/kinflou/CodeShaper"

@@ -5,9 +5,9 @@ use std::path::Path;
 use crate::projects::function_name_correction::OPERATION_CONFIGURATION_PATH;
 
 // External Uses
-use codeshaper::shaping::operation::configuration::OperationConfiguration;
-use codeshaper::shaping::project::settings::ProjectSettings;
-use codeshaper::target;
+use codeshaper_core::shaping::operation::configuration::OperationConfiguration;
+use codeshaper_core::shaping::project::settings::ProjectSettings;
+use codeshaper_core::target;
 
 
 #[allow(unused)]
