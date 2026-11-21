@@ -20,18 +20,18 @@ use miette::{bail, Result};
 
 pub trait File {
     fn name(&self) -> &String;
-    fn parent(&self) -> &Option<Box<dyn Group>>;
+    fn parent(&self) -> &Option<Weak<RefCell<dyn Group>>>;
     // fn controller(&self) -> &Option<ListenerController<A>>;
     fn state(&self) -> &FileState;
 }
 
 pub trait Target {
     fn name(&self) -> &String;
-    fn groups(&self) -> &Vec<Weak<RefCell<dyn Group>>>;
+    fn groups(&self) -> &Vec<Rc<RefCell<dyn Group>>>;
     fn operation(&self) -> &Option<Operation>;
     fn ast_set(&self);
 
-    fn add_group(&mut self, group: Weak<RefCell<dyn Group>>);
+    fn add_group(&mut self, group: Rc<RefCell<dyn Group>>);
 }
 
 pub trait TargetAlias: Target {
@@ -40,13 +40,13 @@ pub trait TargetAlias: Target {
 
 pub trait Group: Debug {
     fn name(&self) -> &String;
-    fn root(&self) -> &Option<Rc<RefCell<dyn Target>>>;
-    fn parent(&self) -> &Option<Box<dyn Group>>;
-    fn groups(&self) -> &Vec<Weak<RefCell<dyn Group>>>;
-    fn files(&self) -> &Vec<Weak<RefCell<dyn File>>>;
+    fn root(&self) -> &Option<Weak<RefCell<dyn Target>>>;
+    fn parent(&self) -> &Option<Weak<RefCell<dyn Group>>>;
+    fn groups(&self) -> &Vec<Rc<RefCell<dyn Group>>>;
+    fn files(&self) -> &Vec<Rc<RefCell<dyn File>>>;
 
-    fn add_root(&mut self, root: Rc<RefCell<dyn Target>>);
-    fn add_file(&mut self, file: Weak<RefCell<dyn File>>);
+    fn add_root(&mut self, root: Weak<RefCell<dyn Target>>);
+    fn add_file(&mut self, file: Rc<RefCell<dyn File>>);
 }
 
 

@@ -28,14 +28,14 @@ fn make_some() {
     let text_group: Rc<RefCell<dyn Group>> = TextGroup::new_shared("Root".to_string());
     let mut text_group_mut = RefCell::borrow_mut(&text_group);
 
-    text_group_mut.add_root(Rc::clone(&text_solution));
-    RefCell::borrow_mut(&text_solution).add_group(Rc::downgrade(&text_group));
+    text_group_mut.add_root(Rc::downgrade(&text_solution));
+    RefCell::borrow_mut(&text_solution).add_group(Rc::clone(&text_group));
 
     let text_file: Rc<RefCell<dyn File>> = TextFile::new_shared(
         "test.cpp".to_string(), code
     );
 
-    text_group_mut.add_file(Rc::downgrade(&text_file));
+    text_group_mut.add_file(Rc::clone(&text_file));
 
     println!("{:#?}", text_group_mut);
 

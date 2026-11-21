@@ -1,6 +1,6 @@
 // Standard Uses
 use std::path::Path;
-use std::rc::Weak;
+use std::rc::Rc;
 use std::cell::RefCell;
 
 // Crate Uses
@@ -16,13 +16,13 @@ pub struct VCXSolution {}
 impl Target for VCXSolution {
     fn name(&self) -> &String { todo!() }
 
-    fn groups(&self) -> &Vec<Weak<RefCell<dyn Group>>> { todo!() }
+    fn groups(&self) -> &Vec<Rc<RefCell<dyn Group>>> { todo!() }
 
     fn operation(&self) -> &Option<Operation> { todo!() }
 
     fn ast_set(&self) { todo!() }
 
-    fn add_group(&mut self, group: Weak<RefCell<dyn Group>>) {
+    fn add_group(&mut self, group: Rc<RefCell<dyn Group>>) {
         todo!()
     }
 }
