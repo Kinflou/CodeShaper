@@ -11,6 +11,6 @@ mod patches;
 // External Uses
 
 
-const OPERATION_CONFIGURATION_PATH: &str = "tests/data/function_name_correction.json5";
+const OPERATION_CONFIGURATION_PATH: &str = "tests/data/function_name_correction.kdl";
 const PROJECT_SETTINGS_PATH: &str = "tests/data/function_name_correction/shaping_project/";
 

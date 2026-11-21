@@ -20,14 +20,13 @@ fn load_project_settings() {
     let expected_settings = ProjectSettings {
         name: "Function Name Correction".to_string(),
         target: "text".to_string(),
-        ast_set: "cpp14".to_string(),
-        description: "  \
-    Function Name Correction  \
-    ========================    \
-        \
-    This example shows how it can change any found void functions in a specific file called Module.cpp  \
-    that starts with '__' (two underscores) that we want to change to _ only instead as an example  \
-    ".to_string()
+        ast_set: "cpp".to_string(),
+        description: "Function Name Correction\n\
+            ========================\n\
+            \n\
+            This example shows how it can change any found void functions in a specific file called Module.cpp\n\
+            that starts with '__' (two underscores) that we want to change to _ only instead as an example"
+            .to_string()
     };
 
     assert_eq!(settings, expected_settings);

@@ -12,20 +12,28 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, PartialEq)]
 #[derive(Serialize, Deserialize)]
+#[derive(knuffel::Decode)]
 pub struct OperationConfiguration {
+    #[knuffel(child, unwrap(argument))]
     pub name: String,
+    #[knuffel(child, unwrap(argument))]
     pub project: String,
+    #[knuffel(child, unwrap(argument))]
     pub target: String,
+    #[knuffel(child, unwrap(argument))]
     pub output: String,
 
     #[serde(default)]
+    #[knuffel(child, unwrap(argument), default)]
     pub backup: String,
 
+    #[knuffel(child, unwrap(argument))]
     pub result: ResultOptions
 }
 
 #[derive(Debug, Clone, PartialEq)]
 #[derive(Serialize, Deserialize)]
+#[derive(knuffel::DecodeScalar)]
 pub enum ResultOptions {
     Replace,
     BackupAndReplace,
@@ -75,8 +83,8 @@ pub fn from_json5(content: &str) -> Result<OperationConfiguration> {
     json5::from_str(content).into_diagnostic().context("Could not load JSON5 operation settings")
 }
 
-#[allow(unused)]
 pub fn from_kdl(content: &str) -> Result<OperationConfiguration> {
-    todo!()
+    knuffel::parse::<OperationConfiguration>("configuration.kdl", content)
+        .map_err(miette::Report::new)
 }
 

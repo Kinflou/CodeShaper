@@ -16,9 +16,13 @@ use knuffel::parse;
 #[derive(Serialize, Deserialize)]
 #[derive(knuffel::Decode)]
 pub struct ProjectSettings {
+    #[knuffel(child, unwrap(argument))]
     pub name: String,
+    #[knuffel(child, unwrap(argument))]
     pub target: String,
+    #[knuffel(child, unwrap(argument))]
     pub ast_set: String,
+    #[knuffel(child, unwrap(argument))]
     pub description: String
 }
 
