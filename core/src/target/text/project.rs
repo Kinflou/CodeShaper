@@ -1,5 +1,4 @@
 // Standard Uses
-use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
@@ -12,17 +11,25 @@ use serde::{Deserialize, Serialize};
 
 
 #[derive(Serialize, Deserialize)]
+#[derive(knuffel::Decode)]
 pub struct Group {
+    #[knuffel(argument)]
+    pub name: String,
     #[serde(default)]
+    #[knuffel(child, unwrap(arguments), default)]
     pub files: Vec<String>,
     #[serde(default)]
-    pub groups: HashMap<String, Group>
+    #[knuffel(children(name="group"))]
+    pub groups: Vec<Group>
 }
 
 #[derive(Serialize, Deserialize)]
+#[derive(knuffel::Decode)]
 pub struct Project {
+    #[knuffel(child, unwrap(argument))]
     pub name: String,
-    pub groups: HashMap<String, Group>,
+    #[knuffel(children(name="group"))]
+    pub groups: Vec<Group>,
 }
 
 impl Project {
@@ -49,10 +56,15 @@ impl Project {
 fn from_extension(content: &str, extension: &str) -> Result<Project> {
     match extension {
         "json5" => from_json5(content),
+        "kdl" => from_kdl(content),
         &_ => { bail!("Cannot parse given format extension {}", extension) }
     }
 }
 
 pub fn from_json5(content: &str) -> Result<Project> {
     json5::from_str(content).map_err(|err| miette!("{err}"))
+}
+
+pub fn from_kdl(content: &str) -> Result<Project> {
+    knuffel::parse::<Project>("project.kdl", content).map_err(miette::Report::new)
 }

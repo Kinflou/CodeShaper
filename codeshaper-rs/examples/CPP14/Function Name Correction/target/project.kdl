@@ -1,0 +1,5 @@
+name "Function Name Correction"
+
+group "root" {
+    files "CallerModule.cpp" "ReturnModule.cpp" "Module.cpp" "Module.h"
+}

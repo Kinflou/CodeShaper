@@ -15,7 +15,7 @@ use crate::target::text::project::Project;
 use crate::target::file_map::FileMap;
 
 // External Uses
-use miette::Result;
+use miette::{miette, Result};
 
 
 #[derive(Default)]
@@ -108,9 +108,9 @@ impl TextSolution {
                            -> Rc<RefCell<TextGroup>> {
             let mut solution_group = TextGroup::new_shared(name.to_string());
 
-            for (name, project_group) in &group.groups {
+            for project_group in &group.groups {
                 let children = group_recursive(
-                    name, project_group, Rc::clone(&solution_group)
+                    &project_group.name, project_group, Rc::clone(&solution_group)
                 );
 
                 RefCell::borrow_mut(&solution_group).groups.push(
@@ -121,9 +121,13 @@ impl TextSolution {
             solution_group
         }
 
+        let root = project.groups.iter()
+            .find(|group| group.name == "root")
+            .ok_or_else(|| miette!("Target project '{}' has no 'root' group", project.name))?;
+
         let root_group = TextGroup::new_shared("root".to_string());
         let root_group = group_recursive(
-            &"root".to_string(), &project.groups["root"], root_group
+            &"root".to_string(), root, root_group
         );
 
         let mut solution = Rc::new(RefCell::new(Self {
