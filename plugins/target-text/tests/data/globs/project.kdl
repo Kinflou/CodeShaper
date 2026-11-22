@@ -1,0 +1,11 @@
+name "Globs"
+
+group "root" {
+    files "src/main.cpp"
+    include "**/*.cpp" "src/**/*.h"
+    exclude "src/generated/**" "tests/**"
+
+    group "tests" {
+        include "tests/*.cpp"
+    }
+}

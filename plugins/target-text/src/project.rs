@@ -14,6 +14,10 @@ pub struct Group {
     pub name: String,
     #[knuffel(child, unwrap(arguments), default)]
     pub files: Vec<String>,
+    #[knuffel(child, unwrap(arguments), default)]
+    pub include: Vec<String>,
+    #[knuffel(child, unwrap(arguments), default)]
+    pub exclude: Vec<String>,
     #[knuffel(children(name="group"))]
     pub groups: Vec<Group>
 }

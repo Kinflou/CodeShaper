@@ -185,6 +185,7 @@ name = "codeshaper-target-text"
 version = "0.1.0"
 dependencies = [
  "codeshaper-core",
+ "glob",
  "knuffel",
  "miette",
 ]
