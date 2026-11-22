@@ -1,0 +1,41 @@
+{
+  "name": "codeshaper",
+  "displayName": "CodeShaper",
+  "description": "Diagnostics, completion and navigation for CodeShaper patches",
+  "version": "0.1.0",
+  "publisher": "kinflou",
+  "license": "MIT",
+  "repository": "https://github.com/Kinflou/CodeShaper",
+  "engines": {
+    "vscode": "^1.91.0"
+  },
+  "categories": ["Programming Languages", "Linters"],
+  "activationEvents": [
+    "workspaceContains:**/settings.kdl"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "CodeShaper",
+      "properties": {
+        "codeshaper.server.path": {
+          "type": "string",
+          "default": "codeshaper",
+          "description": "Path to the codeshaper executable, started as `codeshaper lsp`."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^11.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/vscode": "^1.91.0",
+    "typescript": "^5.9.3"
+  }
+}
