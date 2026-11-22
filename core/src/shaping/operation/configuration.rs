@@ -7,11 +7,9 @@ use std::path::Path;
 
 // External Uses
 use miette::{bail, Context, IntoDiagnostic, Result};
-use serde::{Serialize, Deserialize};
 
 
 #[derive(Debug, Clone, PartialEq)]
-#[derive(Serialize, Deserialize)]
 #[derive(knuffel::Decode)]
 pub struct OperationConfiguration {
     #[knuffel(child, unwrap(argument))]
@@ -23,7 +21,6 @@ pub struct OperationConfiguration {
     #[knuffel(child, unwrap(argument))]
     pub output: String,
 
-    #[serde(default)]
     #[knuffel(child, unwrap(argument), default)]
     pub backup: String,
 
@@ -32,7 +29,6 @@ pub struct OperationConfiguration {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-#[derive(Serialize, Deserialize)]
 #[derive(knuffel::DecodeScalar)]
 pub enum ResultOptions {
     Replace,
@@ -72,14 +68,9 @@ impl OperationConfiguration {
 
 fn from_extension(content: &str, extension: &str) -> Result<OperationConfiguration> {
     match extension {
-        "json5" => from_json5(content),
         "kdl" => from_kdl(content),
         &_ => { bail!("Operation configuration extension '{}' is not supported", extension) }
     }
-}
-
-pub fn from_json5(content: &str) -> Result<OperationConfiguration> {
-    json5::from_str(content).into_diagnostic().context("Could not load JSON5 operation settings")
 }
 
 pub fn from_kdl(content: &str) -> Result<OperationConfiguration> {

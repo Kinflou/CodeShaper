@@ -250,7 +250,6 @@ dependencies = [
  "enum_dispatch",
  "glob",
  "indextree",
- "json5",
  "knuffel",
  "miette 7.6.0",
  "pest",
@@ -258,7 +257,6 @@ dependencies = [
  "pretty_assertions",
  "regex",
  "regex-automata",
- "serde",
  "tempfile",
 ]
 
@@ -564,17 +562,6 @@ name = "itoa"
 version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4"
-
-[[package]]
-name = "json5"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96b0db21af676c1ce64250b5f40f3ce2cf27e4e47cb91ed91eb6fe9350b430c1"
-dependencies = [
- "pest",
- "pest_derive",
- "serde",
-]
 
 [[package]]
 name = "knuffel"

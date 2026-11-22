@@ -4,12 +4,10 @@
 use crate::shaping::patch::Actions;
 
 // External Uses
-use serde::{Serialize, Deserialize};
 use knuffel::Decode;
 
 
 #[derive(Default, Clone, Debug, PartialEq)]
-#[derive(Serialize, Deserialize)]
 #[derive(Decode)]
 pub struct Replacer {
     #[knuffel(child, unwrap(argument))]
@@ -18,10 +16,8 @@ pub struct Replacer {
     pub from: String,
     #[knuffel(child, unwrap(argument))]
     pub to: String,
-    #[serde(default)]
     #[knuffel(child, unwrap(argument), default)]
     pub flags: String,
-    #[serde(default)]
     #[knuffel(child, unwrap(argument), default)]
     pub reference_location: String,
     #[knuffel(child, unwrap(argument), default)]

@@ -11,17 +11,6 @@ use codeshaper_core::shaping::patch::maker::Maker;
 
 
 #[allow(unused)]
-// #[test]
-fn load_patch_json5() {
-    let path = Path::new("tests/data/patches/patch.json5");
-
-    let patch = Patch::from_path(path).unwrap();
-
-    assert_eq!(*EXPECTED_PATCH, patch);
-}
-
-
-#[allow(unused)]
 #[test]
 fn load_patch_kdl() {
     let path = Path::new("tests/data/patches/patch.kdl");

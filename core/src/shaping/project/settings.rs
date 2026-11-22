@@ -7,13 +7,10 @@ use std::path::Path;
 // External Uses
 use miette::{miette, bail, Context, IntoDiagnostic, Result};
 use glob::glob;
-use serde::Serialize;
-use serde::Deserialize;
 use knuffel::parse;
 
 
 #[derive(Default, Debug, Clone, PartialEq)]
-#[derive(Serialize, Deserialize)]
 #[derive(knuffel::Decode)]
 pub struct ProjectSettings {
     #[knuffel(child, unwrap(argument))]
@@ -52,16 +49,11 @@ impl ProjectSettings {
 
 fn from_extension(content: &str, extension: &str) -> Result<ProjectSettings> {
     match extension {
-        "json5" => from_json5(content),
         "kdl" => from_kdl(content),
         &_ => { bail!("Project settings extension '{}' is not supported", extension) }
     }
 }
 
-
-fn from_json5(content: &str) -> Result<ProjectSettings> {
-    json5::from_str(content).map_err(|err| miette!("{}", err))
-}
 
 
 fn from_kdl(content: &str) -> Result<ProjectSettings> {

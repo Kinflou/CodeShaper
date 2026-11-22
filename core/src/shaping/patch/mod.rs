@@ -17,12 +17,10 @@ use crate::shaping::patch::maker::Maker;
 
 // External Uses
 use miette::{miette, bail, IntoDiagnostic, Result};
-use serde::{Serialize, Deserialize};
 use crate::shaping::patch::resolver::{List, Switch};
 
 
 #[derive(Default, Clone, Debug, PartialEq)]
-#[derive(Serialize, Deserialize)]
 #[derive(knuffel::Decode)]
 pub struct Patch {
     #[knuffel(child, unwrap(argument))]
@@ -37,7 +35,6 @@ pub struct Patch {
 
 
 #[derive(Default, Clone, Debug, PartialEq)]
-#[derive(Serialize, Deserialize)]
 #[derive(knuffel::Decode)]
 pub struct Actions {
     #[knuffel(child, unwrap(children(name="builder")))]
@@ -64,17 +61,12 @@ impl Patch {
         let content = content.as_str();
 
         match extension {
-            "json5" => from_json5(content),
             "kdl" => Self::from_kdl(path.file_name().unwrap().to_str().unwrap(), content),
             &_ => { bail!("Extension {} is not supported", extension) }
         }
     }
 
     pub fn from_kdl(filename: &str, content: &str) -> Result<Self> {
-        knuffel::parse::<Patch>(filename, content).map_err(|error| miette::miette!("{error}"))
+        knuffel::parse::<Patch>(filename, content).map_err(|error| miette!("{error}"))
     }
-}
-
-fn from_json5(content: &str) -> Result<Patch> {
-    json5::from_str(content).map_err(|err| miette!("{}", err))
 }

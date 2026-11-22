@@ -5,12 +5,10 @@ use std::collections::HashMap;
 
 // External Uses
 use miette::Result;
-use serde::{Serialize, Deserialize};
 use knuffel::Decode;
 
 
 #[derive(Default, Clone, Debug, PartialEq)]
-#[derive(Serialize, Deserialize)]
 #[derive(Decode)]
 pub struct Switch {
     #[knuffel(argument)]
@@ -27,7 +25,6 @@ pub struct Switch {
 }
 
 #[derive(Default, Clone, Debug, PartialEq)]
-#[derive(Serialize, Deserialize)]
 #[derive(Decode)]
 pub struct List {
     #[knuffel(argument)]
