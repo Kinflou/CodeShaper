@@ -63,3 +63,12 @@ fn registers_gdscript_extension() {
 
     assert_eq!(registry.backend_for(Path::new("player.gd")).unwrap().name(), "gdscript");
 }
+
+#[test]
+fn check_locations() {
+    let backend = TreeSitterBackend::gdscript();
+
+    assert!(backend.check_location("VariableStatement.name").is_ok());
+    assert!(backend.check_location("ExportVariableStatement").is_ok());
+    assert!(backend.check_location("ExportStatement").is_err());
+}

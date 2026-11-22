@@ -56,11 +56,29 @@ impl TreeSitterBackend {
             .ok_or_else(|| miette!("Could not parse source as {}", self.name))
     }
 
-    fn locate_query(&self, tree: &Tree, source: &str, query: &str) -> Result<Vec<Range<usize>>> {
+    fn query(&self, query: &str) -> Result<(Query, u32)> {
         let query = Query::new(&self.language, query).map_err(|err| miette!("{err}"))?;
         let Some(target) = query.capture_index_for_name("target") else {
             bail!("Query location has no @target capture")
         };
+
+        Ok((query, target))
+    }
+
+    fn segment(&self, index: usize, segment: &str) -> Result<Segment> {
+        let segment = to_snake_case(segment.trim());
+
+        if index > 0 && self.language.field_id_for_name(&segment).is_some() {
+            Ok(Segment::Field(segment))
+        } else if self.language.id_for_node_kind(&segment, true) != 0 {
+            Ok(Segment::Kind(segment))
+        } else {
+            bail!("'{}' is not a {} node kind or field", segment, self.name)
+        }
+    }
+
+    fn locate_query(&self, tree: &Tree, source: &str, query: &str) -> Result<Vec<Range<usize>>> {
+        let (query, target) = self.query(query)?;
 
         let mut ranges = vec![];
         let mut cursor = QueryCursor::new();
@@ -77,20 +95,16 @@ impl TreeSitterBackend {
         let mut nodes = vec![tree.root_node()];
 
         for (index, segment) in path.split('.').enumerate() {
-            let segment = to_snake_case(segment.trim());
             let mut next = vec![];
 
-            if index > 0 && self.language.field_id_for_name(&segment).is_some() {
-                for node in &nodes {
+            match self.segment(index, segment)? {
+                Segment::Field(field) => for node in &nodes {
                     let mut cursor = node.walk();
-                    next.extend(node.children_by_field_name(&segment, &mut cursor));
+                    next.extend(node.children_by_field_name(&field, &mut cursor));
+                },
+                Segment::Kind(kind) => for node in &nodes {
+                    collect_descendants(*node, &kind, &mut next);
                 }
-            } else if self.language.id_for_node_kind(&segment, true) != 0 {
-                for node in &nodes {
-                    collect_descendants(*node, &segment, &mut next);
-                }
-            } else {
-                bail!("'{}' is not a {} node kind or field", segment, self.name)
             }
 
             nodes = next;
@@ -120,6 +134,26 @@ impl LanguageBackend for TreeSitterBackend {
 
         Ok(ranges)
     }
+
+    fn check_location(&self, location: &str) -> Result<()> {
+        let location = location.trim();
+
+        if location.starts_with('(') {
+            return self.query(location).map(|_| ())
+        }
+
+        for (index, segment) in location.split('.').enumerate() {
+            self.segment(index, segment)?;
+        }
+
+        Ok(())
+    }
+}
+
+
+enum Segment {
+    Field(String),
+    Kind(String)
 }
 
 

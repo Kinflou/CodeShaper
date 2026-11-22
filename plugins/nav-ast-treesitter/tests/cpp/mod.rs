@@ -131,3 +131,15 @@ fn registers_cpp_extensions() {
     assert_eq!(registry.backend_for(Path::new("core/object/object.inc")).unwrap().name(), "cpp");
     assert!(registry.backend_for(Path::new("main.rs")).is_none());
 }
+
+#[test]
+fn check_locations() {
+    let backend = TreeSitterBackend::cpp();
+
+    assert!(backend.check_location("FunctionDefinition.body").is_ok());
+    assert!(backend.check_location("(function_definition declarator: (_) @target)").is_ok());
+    assert!(backend.check_location("FunctionBody").is_err());
+    assert!(backend.check_location("Body").is_err());
+    assert!(backend.check_location("(function_definition)").is_err());
+    assert!(backend.check_location("(function_definition").is_err());
+}
