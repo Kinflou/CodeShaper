@@ -7,7 +7,8 @@ use crate::projects::function_name_correction::OPERATION_CONFIGURATION_PATH;
 // External Uses
 use codeshaper_core::shaping::operation::configuration::OperationConfiguration;
 use codeshaper_core::shaping::project::settings::ProjectSettings;
-use codeshaper_core::target;
+use codeshaper_core::target::TargetLoader;
+use codeshaper_core::target::text::TextLoader;
 
 
 #[allow(unused)]
@@ -22,9 +23,7 @@ fn load_patches() {
     ).unwrap();
 
     let target_path = Path::new(&operation_configuration.target);
-    let target_solution = target::from_type(
-        project_settings.target.as_str(), target_path
-    ).unwrap();
+    let target_solution = TextLoader.load(target_path).unwrap();
 
     // println!("{target_solution:#?");
 

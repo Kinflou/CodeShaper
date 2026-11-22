@@ -6,7 +6,8 @@ use std::path::Path;
 // External Uses
 use codeshaper_core::shaping::operation::configuration::{OperationConfiguration, ResultOptions};
 use codeshaper_core::shaping::project::Project;
-use codeshaper_core::target;
+use codeshaper_core::target::TargetLoader;
+use codeshaper_core::target::text::TextLoader;
 
 
 const EXAMPLE: &str = "../codeshaper-rs/examples/CPP14/Function Name Correction/";
@@ -42,7 +43,7 @@ fn load_example_project() {
 #[test]
 fn load_example_target() {
     let path = format!("{EXAMPLE}target/");
-    let target = target::from_type("text", Path::new(&path)).unwrap();
+    let target = TextLoader.load(Path::new(&path)).unwrap();
 
-    assert_eq!(target.borrow().name(), "Function Name Correction");
+    assert_eq!(target.name, "Function Name Correction");
 }
