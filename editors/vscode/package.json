@@ -11,10 +11,38 @@
   },
   "categories": ["Programming Languages", "Linters"],
   "activationEvents": [
+    "onLanguage:kdl",
     "workspaceContains:**/settings.kdl"
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "languages": [
+      {
+        "id": "kdl",
+        "aliases": [
+          "KDL",
+          "kdl"
+        ],
+        "extensions": [
+          ".kdl"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "kdl",
+        "scopeName": "source.kdl.codeshaper",
+        "path": "./syntaxes/kdl.tmLanguage.json"
+      },
+      {
+        "scopeName": "codeshaper.expressions.injection",
+        "path": "./syntaxes/expressions.tmLanguage.json",
+        "injectTo": [
+          "source.kdl.codeshaper"
+        ]
+      }
+    ],
     "configuration": {
       "title": "CodeShaper",
       "properties": {

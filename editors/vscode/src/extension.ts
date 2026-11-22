@@ -8,7 +8,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
 
     const serverOptions: ServerOptions = { command, args: ["lsp"] };
     const clientOptions: LanguageClientOptions = {
-        documentSelector: [{ scheme: "file", pattern: "**/*.kdl" }]
+        documentSelector: [{ scheme: "file", language: "kdl" }]
     };
 
     client = new LanguageClient("codeshaper", "CodeShaper", serverOptions, clientOptions);

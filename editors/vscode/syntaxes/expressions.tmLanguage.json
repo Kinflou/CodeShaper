@@ -1,0 +1,59 @@
+{
+    "scopeName": "codeshaper.expressions.injection",
+    "injectionSelector": "L:string.quoted.double.kdl",
+    "patterns": [
+        {
+            "include": "#action"
+        },
+        {
+            "include": "#local"
+        },
+        {
+            "include": "#argument"
+        }
+    ],
+    "repository": {
+        "action": {
+            "match": "(#\\[)([A-Za-z0-9_!-]+)(\\])",
+            "captures": {
+                "1": {
+                    "name": "punctuation.definition.action.begin.codeshaper"
+                },
+                "2": {
+                    "name": "entity.name.function.action.codeshaper"
+                },
+                "3": {
+                    "name": "punctuation.definition.action.end.codeshaper"
+                }
+            }
+        },
+        "local": {
+            "match": "(\\$\\[)([A-Za-z0-9_!-]+)(\\])",
+            "captures": {
+                "1": {
+                    "name": "punctuation.definition.variable.begin.codeshaper"
+                },
+                "2": {
+                    "name": "variable.other.local.codeshaper"
+                },
+                "3": {
+                    "name": "punctuation.definition.variable.end.codeshaper"
+                }
+            }
+        },
+        "argument": {
+            "match": "(@\\[)([A-Za-z0-9_!-]+)(\\])",
+            "captures": {
+                "1": {
+                    "name": "punctuation.definition.parameter.begin.codeshaper"
+                },
+                "2": {
+                    "name": "variable.parameter.argument.codeshaper"
+                },
+                "3": {
+                    "name": "punctuation.definition.parameter.end.codeshaper"
+                }
+            }
+        }
+    }
+}
