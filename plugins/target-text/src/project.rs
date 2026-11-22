@@ -43,5 +43,5 @@ impl Project {
 
 
 pub fn from_kdl(content: &str) -> Result<Project> {
-    knuffel::parse::<Project>("project.kdl", content).map_err(miette::Report::new)
+    knuffel::parse::<Project>("project.kdl", content).map_err(|error| miette::miette!("{error}"))
 }

@@ -13,4 +13,4 @@ glob = "0.3.0"
 knuffel = "3.2.0"
 
 # display
-miette = "5.9.0"
+miette.workspace=true

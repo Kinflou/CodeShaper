@@ -9,4 +9,4 @@ edition = "2021"
 codeshaper-core.workspace=true
 
 # display
-miette = "5.9.0"
+miette.workspace=true

@@ -84,6 +84,6 @@ pub fn from_json5(content: &str) -> Result<OperationConfiguration> {
 
 pub fn from_kdl(content: &str) -> Result<OperationConfiguration> {
     knuffel::parse::<OperationConfiguration>("configuration.kdl", content)
-        .map_err(miette::Report::new)
+        .map_err(|error| miette::miette!("{error}"))
 }
 

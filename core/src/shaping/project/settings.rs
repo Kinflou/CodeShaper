@@ -66,6 +66,6 @@ fn from_json5(content: &str) -> Result<ProjectSettings> {
 
 fn from_kdl(content: &str) -> Result<ProjectSettings> {
     parse::<ProjectSettings>("settings.kdl", content)
-        .map_err(miette::Report::new)
+        .map_err(|error| miette::miette!("{error}"))
 }
 

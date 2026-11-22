@@ -71,7 +71,7 @@ impl Patch {
     }
 
     pub fn from_kdl(filename: &str, content: &str) -> Result<Self> {
-        knuffel::parse::<Patch>(filename, content).map_err(miette::Report::new)
+        knuffel::parse::<Patch>(filename, content).map_err(|error| miette::miette!("{error}"))
     }
 }
 
