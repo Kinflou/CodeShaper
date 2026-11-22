@@ -32,6 +32,22 @@ pub enum DiagnosticKind {
     FileNotMatched
 }
 
+impl DiagnosticKind {
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::IncorrectRegex => "incorrect-regex",
+            Self::LocationNotFound => "location-not-found",
+            Self::ActionNotFound => "action-not-found",
+            Self::IncorrectArgs => "incorrect-args",
+            Self::IncorrectExpression => "incorrect-expression",
+            Self::DuplicateAction => "duplicate-action",
+            Self::UnusedAction => "unused-action",
+            Self::IncorrectFilePattern => "incorrect-file-pattern",
+            Self::FileNotMatched => "file-not-matched"
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Diagnostic {
     pub kind: DiagnosticKind,

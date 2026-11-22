@@ -51,7 +51,9 @@ enum Command {
         file: PathBuf,
         #[arg(long, help = "Write the result into the file instead of showing a diff")]
         in_place: bool
-    }
+    },
+    #[command(about = "Start the language server over stdio")]
+    Lsp
 }
 
 
@@ -63,7 +65,8 @@ fn main() -> Result<ExitCode> {
         Command::Run { configuration, dry_run: true } => dry_run(&configuration),
         Command::Check { paths, patch: false } => check_operation(&paths),
         Command::Check { paths, patch: true } => check_patches(&paths),
-        Command::Apply { patch, file, in_place } => apply(&patch, &file, in_place)
+        Command::Apply { patch, file, in_place } => apply(&patch, &file, in_place),
+        Command::Lsp => codeshaper_lsp::run().map(|_| ExitCode::SUCCESS)
     }
 }
 
@@ -203,7 +206,7 @@ fn report_diagnostics(found: Vec<(String, Diagnostic)>, sources: &BTreeMap<Strin
 
         let title = format!(
             "{severity}[{}] {patch} › {} › {}: {}",
-            kebab_case(&format!("{:?}", diagnostic.kind)), diagnostic.action, diagnostic.field, diagnostic.message
+            diagnostic.kind.code(), diagnostic.action, diagnostic.field, diagnostic.message
         );
 
         match sources.get(patch).filter(|_| diagnostic.span.is_some()) {
@@ -215,17 +218,4 @@ fn report_diagnostics(found: Vec<(String, Diagnostic)>, sources: &BTreeMap<Strin
     println!("{errors} error(s), {warnings} warning(s)");
 
     if errors > 0 { ExitCode::FAILURE } else { ExitCode::SUCCESS }
-}
-
-fn kebab_case(name: &str) -> String {
-    let mut kebab = String::new();
-
-    for (index, character) in name.chars().enumerate() {
-        if character.is_uppercase() && index > 0 {
-            kebab.push('-');
-        }
-        kebab.extend(character.to_lowercase());
-    }
-
-    kebab
 }

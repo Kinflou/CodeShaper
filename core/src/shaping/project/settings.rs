@@ -56,7 +56,7 @@ fn from_extension(content: &str, extension: &str) -> Result<ProjectSettings> {
 
 
 
-fn from_kdl(content: &str) -> Result<ProjectSettings> {
+pub fn from_kdl(content: &str) -> Result<ProjectSettings> {
     parse::<ProjectSettings>("settings.kdl", content)
         .map_err(Report::new)
 }

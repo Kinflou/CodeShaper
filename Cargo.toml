@@ -5,6 +5,7 @@ members = [
     "codeshaper-rs",
     "tool-ui",
     "core",
+    "lsp",
     "plugins/nav-ast-pest",
     "plugins/nav-ast-treesitter",
     "plugins/target-godot",
@@ -14,6 +15,7 @@ members = [
 [workspace.dependencies]
 codeshaper = { path="codeshaper-rs/" }
 codeshaper-core = { path="core/" }
+codeshaper-lsp = { path="lsp/" }
 codeshaper-nav-ast-treesitter = { path="plugins/nav-ast-treesitter/", default-features=false }
 codeshaper-target-godot = { path="plugins/target-godot/" }
 codeshaper-target-text = { path="plugins/target-text/" }
