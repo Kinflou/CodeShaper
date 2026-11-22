@@ -1,6 +1,7 @@
 // Relative Modules
 mod completion;
 mod diagnostics;
+mod navigation;
 mod position;
 mod protocol;
 mod syntax;

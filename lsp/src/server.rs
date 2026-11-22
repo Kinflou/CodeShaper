@@ -6,7 +6,9 @@ use std::path::PathBuf;
 use crate::completion::completion;
 use crate::diagnostics::diagnostics;
 use crate::document::{kind, DocumentKind};
+use crate::navigation::{definition, references};
 use crate::position::LineIndex;
+use crate::syntax::Outline;
 use crate::tokens::tokens;
 
 // External Uses
@@ -16,11 +18,12 @@ use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
     Notification as _, PublishDiagnostics
 };
-use lsp_types::request::{Completion, Request as _, SemanticTokensFullRequest};
+use lsp_types::request::{Completion, GotoDefinition, References, Request as _, SemanticTokensFullRequest};
 use lsp_types::{
     CompletionParams, CompletionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DidSaveTextDocumentParams, Position, PublishDiagnosticsParams, SemanticTokens,
-    SemanticTokensParams, SemanticTokensResult, Uri
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, Location,
+    Position, PublishDiagnosticsParams, ReferenceParams, SemanticTokens, SemanticTokensParams, SemanticTokensResult,
+    Uri
 };
 use miette::{miette, IntoDiagnostic, Result};
 use url::Url;
@@ -64,6 +67,33 @@ impl<'c> Server<'c> {
                     .unwrap_or_default();
 
                 Response::new_ok(request.id, CompletionResponse::Array(items))
+            }
+            GotoDefinition::METHOD => {
+                let params: GotoDefinitionParams = serde_json::from_value(request.params).into_diagnostic()?;
+                let position = params.text_document_position_params;
+                let uri = position.text_document.uri;
+                let found = self.documents.get(&uri).and_then(|text| {
+                    let index = LineIndex::new(text);
+                    let range = definition(&Outline::parse(text), text, index.offset(position.position))?;
+                    Some(GotoDefinitionResponse::Scalar(Location::new(uri.clone(), index.range(range))))
+                });
+
+                Response::new_ok(request.id, found)
+            }
+            References::METHOD => {
+                let params: ReferenceParams = serde_json::from_value(request.params).into_diagnostic()?;
+                let position = params.text_document_position;
+                let uri = position.text_document.uri;
+                let found: Vec<Location> = self.documents.get(&uri).map(|text| {
+                    let index = LineIndex::new(text);
+                    let offset = index.offset(position.position);
+
+                    references(&Outline::parse(text), text, offset, params.context.include_declaration).into_iter()
+                        .map(|range| Location::new(uri.clone(), index.range(range)))
+                        .collect()
+                }).unwrap_or_default();
+
+                Response::new_ok(request.id, found)
             }
             SemanticTokensFullRequest::METHOD => {
                 let params: SemanticTokensParams = serde_json::from_value(request.params).into_diagnostic()?;

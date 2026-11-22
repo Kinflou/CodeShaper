@@ -9,9 +9,9 @@ use crate::{project, BROKEN};
 // External Uses
 use lsp_server::{Connection, Message, Notification, Request, RequestId, Response};
 use lsp_types::notification::{DidOpenTextDocument, Exit, Initialized, Notification as _, PublishDiagnostics};
-use lsp_types::request::{Completion, Initialize, Request as _, SemanticTokensFullRequest, Shutdown};
+use lsp_types::request::{Completion, GotoDefinition, Initialize, References, Request as _, SemanticTokensFullRequest, Shutdown};
 use lsp_types::{
-    CompletionParams, CompletionResponse, DidOpenTextDocumentParams, InitializeParams, InitializedParams, Position,
+    CompletionParams, GotoDefinitionParams, GotoDefinitionResponse, Location, ReferenceContext, ReferenceParams, CompletionResponse, DidOpenTextDocumentParams, InitializeParams, InitializedParams, Position,
     PublishDiagnosticsParams, SemanticTokensParams, SemanticTokensResult, TextDocumentIdentifier, TextDocumentItem,
     TextDocumentPositionParams, Uri
 };
@@ -137,6 +137,39 @@ fn semantic_tokens_for_expressions() {
 
     assert_eq!(tokens.data.iter().map(|token| (token.delta_start, token.length, token.token_type)).collect::<Vec<_>>(), vec![
         (4, 4, 1), (5, 8, 0)
+    ]);
+
+    client.stop();
+}
+
+#[test]
+fn definition_and_references_of_actions() {
+    let text = "actions {\n    makers {\n        maker \"pair\" {\n            make \"x\"\n        }\n    }\n    replacers {\n        replacer {\n            to \"#[pair] #[pair]\"\n        }\n    }\n}\n";
+    let (_directory, project) = project(&[("navigation.kdl", "")]);
+    let mut client = Client::start();
+    let uri = client.open(&project.join("patches/navigation.kdl"), text);
+
+    let params = GotoDefinitionParams {
+        text_document_position_params: at(&uri, Position::new(8, 19)),
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default()
+    };
+    let response = client.request(GotoDefinition::METHOD, to_json!(params));
+    let Some(GotoDefinitionResponse::Scalar(location)) = serde_json::from_value(response.response_result.unwrap()).unwrap() else {
+        panic!("expected a definition")
+    };
+    assert_eq!((location.range.start, location.range.end), (Position::new(2, 15), Position::new(2, 19)));
+
+    let params = ReferenceParams {
+        text_document_position: at(&uri, Position::new(2, 16)),
+        context: ReferenceContext { include_declaration: false },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default()
+    };
+    let response = client.request(References::METHOD, to_json!(params));
+    let locations: Vec<Location> = serde_json::from_value(response.response_result.unwrap()).unwrap();
+    assert_eq!(locations.iter().map(|location| location.range.start).collect::<Vec<_>>(), vec![
+        Position::new(8, 18), Position::new(8, 26)
     ]);
 
     client.stop();
