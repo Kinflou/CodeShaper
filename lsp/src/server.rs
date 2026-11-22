@@ -7,6 +7,7 @@ use crate::completion::completion;
 use crate::diagnostics::diagnostics;
 use crate::document::{kind, DocumentKind};
 use crate::position::LineIndex;
+use crate::tokens::tokens;
 
 // External Uses
 use codeshaper::core::registry::Registry;
@@ -15,10 +16,11 @@ use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
     Notification as _, PublishDiagnostics
 };
-use lsp_types::request::{Completion, Request as _};
+use lsp_types::request::{Completion, Request as _, SemanticTokensFullRequest};
 use lsp_types::{
     CompletionParams, CompletionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DidSaveTextDocumentParams, Position, PublishDiagnosticsParams, Uri
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, Position, PublishDiagnosticsParams, SemanticTokens,
+    SemanticTokensParams, SemanticTokensResult, Uri
 };
 use miette::{miette, IntoDiagnostic, Result};
 use url::Url;
@@ -62,6 +64,12 @@ impl<'c> Server<'c> {
                     .unwrap_or_default();
 
                 Response::new_ok(request.id, CompletionResponse::Array(items))
+            }
+            SemanticTokensFullRequest::METHOD => {
+                let params: SemanticTokensParams = serde_json::from_value(request.params).into_diagnostic()?;
+                let data = self.documents.get(&params.text_document.uri).map(|text| tokens(text)).unwrap_or_default();
+
+                Response::new_ok(request.id, SemanticTokensResult::Tokens(SemanticTokens { result_id: None, data }))
             }
             method => {
                 let message = format!("Unsupported request '{method}'");

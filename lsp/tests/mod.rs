@@ -4,6 +4,7 @@ mod diagnostics;
 mod position;
 mod protocol;
 mod syntax;
+mod tokens;
 
 // Standard Uses
 use std::fs;

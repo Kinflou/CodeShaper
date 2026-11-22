@@ -6,15 +6,20 @@ pub mod position;
 pub mod schema;
 pub mod server;
 pub mod syntax;
+pub mod tokens;
 
 // Standard Uses
 
 // Crate Uses
 use crate::server::Server;
+use crate::tokens::LEGEND;
 
 // External Uses
 use lsp_server::Connection;
-use lsp_types::{CompletionOptions, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind};
+use lsp_types::{
+    CompletionOptions, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
+    SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind
+};
 use miette::{miette, IntoDiagnostic, Result};
 
 
@@ -25,6 +30,11 @@ pub fn capabilities() -> ServerCapabilities {
             trigger_characters: Some(["[", ".", "\""].map(str::to_string).to_vec()),
             ..CompletionOptions::default()
         }),
+        semantic_tokens_provider: Some(SemanticTokensServerCapabilities::SemanticTokensOptions(SemanticTokensOptions {
+            legend: SemanticTokensLegend { token_types: LEGEND.to_vec(), token_modifiers: vec![] },
+            full: Some(SemanticTokensFullOptions::Bool(true)),
+            ..SemanticTokensOptions::default()
+        })),
         ..ServerCapabilities::default()
     }
 }

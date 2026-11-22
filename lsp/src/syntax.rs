@@ -94,6 +94,10 @@ impl Outline {
 }
 
 
+pub fn is_name(character: char) -> bool {
+    character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '!')
+}
+
 fn is_word(character: char) -> bool {
     character.is_alphanumeric() || character == '-' || character == '_'
 }

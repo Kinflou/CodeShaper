@@ -9,10 +9,11 @@ use crate::{project, BROKEN};
 // External Uses
 use lsp_server::{Connection, Message, Notification, Request, RequestId, Response};
 use lsp_types::notification::{DidOpenTextDocument, Exit, Initialized, Notification as _, PublishDiagnostics};
-use lsp_types::request::{Completion, Initialize, Request as _, Shutdown};
+use lsp_types::request::{Completion, Initialize, Request as _, SemanticTokensFullRequest, Shutdown};
 use lsp_types::{
     CompletionParams, CompletionResponse, DidOpenTextDocumentParams, InitializeParams, InitializedParams, Position,
-    PublishDiagnosticsParams, TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams, Uri
+    PublishDiagnosticsParams, SemanticTokensParams, SemanticTokensResult, TextDocumentIdentifier, TextDocumentItem,
+    TextDocumentPositionParams, Uri
 };
 use url::Url;
 
@@ -114,6 +115,29 @@ fn completion_offers_fields() {
     };
 
     assert_eq!(items.iter().map(|item| item.label.as_str()).collect::<Vec<_>>(), vec!["prepare", "make"]);
+
+    client.stop();
+}
+
+#[test]
+fn semantic_tokens_for_expressions() {
+    let (_directory, project) = project(&[("tokens.kdl", "")]);
+    let mut client = Client::start();
+    let uri = client.open(&project.join("patches/tokens.kdl"), "to \"$[0] #[names]\"\n");
+
+    let params = SemanticTokensParams {
+        text_document: TextDocumentIdentifier::new(uri),
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default()
+    };
+    let response = client.request(SemanticTokensFullRequest::METHOD, to_json!(params));
+    let Some(SemanticTokensResult::Tokens(tokens)) = serde_json::from_value(response.response_result.unwrap()).unwrap() else {
+        panic!("expected semantic tokens")
+    };
+
+    assert_eq!(tokens.data.iter().map(|token| (token.delta_start, token.length, token.token_type)).collect::<Vec<_>>(), vec![
+        (4, 4, 1), (5, 8, 0)
+    ]);
 
     client.stop();
 }
