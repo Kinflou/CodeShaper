@@ -16,10 +16,10 @@ fn load_configuration() {
 
     let expected_configuration = OperationConfiguration {
         name: "Function Name Correction".to_string(),
-        project: "tests/data/function_name_correction/shaping_project/".to_string(),
-        target: "tests/data/function_name_correction/target/origin/".to_string(),
-        output: "tests/data/function_name_correction/target/expected_result/".to_string(),
-        backup: "tests/data/function_name_correction/target/backup/".to_string(),
+        project: "function_name_correction/shaping_project/".to_string(),
+        target: "function_name_correction/target/origin/".to_string(),
+        output: "function_name_correction/target/expected_result/".to_string(),
+        backup: "function_name_correction/target/backup/".to_string(),
         result: ResultOptions::BackupAndReplace
     };
 
@@ -29,13 +29,11 @@ fn load_configuration() {
 
 #[test]
 fn load_operation() {
-    let path = Path::new(OPERATION_CONFIGURATION_PATH);
-    let configuration = OperationConfiguration::from_file(path).unwrap();
+    let operation = Operation::from_file(Path::new(OPERATION_CONFIGURATION_PATH)).unwrap();
 
-    let mut operation = Operation::from_configuration(configuration)
-        .unwrap();
-
-    operation.start()
+    assert_eq!(operation.directory, Path::new("tests/data"));
+    assert_eq!(operation.project.settings.name, "Function Name Correction");
+    assert_eq!(operation.project.patches.len(), 4);
 }
 
 

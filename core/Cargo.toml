@@ -21,3 +21,4 @@ enum_dispatch = "0.3.12"
 
 [dev-dependencies]
 pretty_assertions = "1.4.0"
+tempfile.workspace=true

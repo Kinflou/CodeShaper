@@ -19,10 +19,10 @@ fn load_test_workspace_configuration() {
 
     let expected_configuration = OperationConfiguration {
         name: "Test Workspace".to_string(),
-        project: "tests/data/test_workspace/shaping_project/".to_string(),
-        target: "tests/data/test_workspace/target/origin/".to_string(),
-        output: "tests/data/test_workspace/target/expected_result/".to_string(),
-        backup: "tests/data/test_workspace/target/backup/".to_string(),
+        project: "shaping_project/".to_string(),
+        target: "target/origin/".to_string(),
+        output: "target/expected_result/".to_string(),
+        backup: "target/backup/".to_string(),
         result: ResultOptions::BackupAndReplace
     };
 
