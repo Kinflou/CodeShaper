@@ -26,6 +26,10 @@ codeshaper-nav-ast-treesitter = { workspace=true, optional=true }
 codeshaper-target-text = { workspace=true, optional=true }
 
 
+[dev-dependencies]
+tempfile.workspace=true
+
+
 [features]
 default = ["cpp", "text"]
 cpp = ["dep:codeshaper-nav-ast-treesitter"]

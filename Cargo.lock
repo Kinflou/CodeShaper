@@ -127,6 +127,7 @@ dependencies = [
  "codeshaper-core",
  "codeshaper-nav-ast-treesitter",
  "codeshaper-target-text",
+ "tempfile",
 ]
 
 [[package]]
