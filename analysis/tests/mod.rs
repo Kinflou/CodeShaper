@@ -1,2 +1,0 @@
-mod analyzer;
-mod linter;

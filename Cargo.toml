@@ -1,6 +1,5 @@
 [workspace]
 resolver = "2"
-exclude = ["analysis"]
 members = [
     "codeshaper-rs",
     "tool-ui",
