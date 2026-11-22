@@ -5,5 +5,9 @@ edition = "2021"
 
 
 [dependencies]
+# local
+codeshaper-core.workspace=true
+
+# parsing
 pest = "2.5.0"
 pest_derive = "2.5.0"

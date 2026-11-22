@@ -9,5 +9,8 @@ members = [
     "plugins/nav-ast-treesitter"
 ]
 
+[workspace.dependencies]
+codeshaper-core = { path="core/" }
+
 [profile.release]
 opt-level = 2

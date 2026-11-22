@@ -141,6 +141,7 @@ dependencies = [
 name = "codeshaper-nav-ast-pest"
 version = "0.1.0"
 dependencies = [
+ "codeshaper-core",
  "pest",
  "pest_derive",
 ]
