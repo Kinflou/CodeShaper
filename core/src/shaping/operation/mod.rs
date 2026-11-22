@@ -18,7 +18,7 @@ use crate::shaping::operation::report::Report;
 use crate::shaping::operation::session::Session;
 use crate::shaping::patch::Patch;
 use crate::shaping::patch::controller::PatchController;
-use crate::shaping::patch::validation::{validate, Diagnostic as PatchDiagnostic, DiagnosticKind, Severity};
+use crate::shaping::patch::validation::{validate_source, Diagnostic as PatchDiagnostic, DiagnosticKind, Severity};
 use crate::shaping::project::Project;
 use crate::target::File;
 
@@ -77,7 +77,8 @@ impl Operation {
 
         for (name, patch) in &self.project.patches {
             let backend = patch_backend(registry, patch, ast_set);
-            found.extend(validate(patch, backend).into_iter().map(|diagnostic| (name.clone(), diagnostic)));
+            let diagnostics = validate_source(patch, &self.project.sources[name], backend);
+            found.extend(diagnostics.into_iter().map(|diagnostic| (name.clone(), diagnostic)));
         }
 
         let target = self.directory.join(&self.configuration.target);
@@ -97,8 +98,9 @@ impl Operation {
                 ),
                 Ok(_) => continue
             };
+            let span = self.project.sources[name].spans.fields.get("file").copied();
 
-            found.push((name.clone(), diagnostic));
+            found.push((name.clone(), PatchDiagnostic { span, ..diagnostic }));
         }
 
         Ok(found)
@@ -111,13 +113,15 @@ impl Operation {
             if !patch.enabled { continue }
 
             let backend = patch_backend(registry, patch, &self.project.settings.ast_set);
+            let source = &self.project.sources[name];
 
-            for diagnostic in validate(patch, backend) {
+            for diagnostic in validate_source(patch, source, backend) {
                 if diagnostic.severity != Severity::Error { continue }
 
-                errors.push(miette!(
+                let title = format!(
                     "Patch {}: {} '{}': {}", name, diagnostic.action, diagnostic.field, diagnostic.message
-                ));
+                );
+                errors.push(source.report(&diagnostic, title));
             }
         }
 

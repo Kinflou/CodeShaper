@@ -7,6 +7,7 @@ use std::path::Path;
 
 // Crate Uses
 use crate::shaping::patch::Patch;
+use crate::shaping::patch::source::PatchSource;
 use crate::shaping::project::settings::ProjectSettings;
 
 // External Uses
@@ -18,6 +19,7 @@ pub struct Project {
     pub directory: String,
     pub settings: ProjectSettings,
     pub patches: BTreeMap<String, Patch>,
+    pub sources: BTreeMap<String, PatchSource>,
 }
 
 impl Project {
@@ -27,19 +29,21 @@ impl Project {
         }
 
         let settings = ProjectSettings::from_path(path)?;
-        let patches = load_patches(&path.join("patches"))?;
+        let (patches, sources) = load_patches(&path.join("patches"))?;
 
         Ok(Self {
             directory: path.to_str().unwrap().to_string(),
             settings,
             patches,
+            sources,
         })
     }
 }
 
 
-pub fn load_patches(directory: &Path) -> Result<BTreeMap<String, Patch>> {
+pub fn load_patches(directory: &Path) -> Result<(BTreeMap<String, Patch>, BTreeMap<String, PatchSource>)> {
     let mut patches = BTreeMap::new();
+    let mut sources = BTreeMap::new();
     let search = directory.join("**").join("*.*");
 
     let entries = glob(&search.to_string_lossy())
@@ -50,11 +54,12 @@ pub fn load_patches(directory: &Path) -> Result<BTreeMap<String, Patch>> {
         let path = entry.into_diagnostic()?;
         let name = path.strip_prefix(directory).into_diagnostic()?.to_string_lossy().to_string();
 
-        let patch = Patch::from_path(&path)
+        let (patch, source) = Patch::load(&path)
             .wrap_err_with(|| format!("Could not load patch {}", path.display()))?;
 
-        patches.insert(name, patch);
+        patches.insert(name.clone(), patch);
+        sources.insert(name, source);
     }
 
-    Ok(patches)
+    Ok((patches, sources))
 }

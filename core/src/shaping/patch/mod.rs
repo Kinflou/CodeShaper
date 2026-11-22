@@ -5,6 +5,7 @@ pub mod replacer;
 pub mod maker;
 pub mod resolver;
 pub mod validation;
+pub mod source;
 
 // Standard Uses
 use std::fs;
@@ -14,6 +15,7 @@ use std::path::Path;
 use crate::shaping::patch::builder::Builder;
 use crate::shaping::patch::replacer::Replacer;
 use crate::shaping::patch::maker::Maker;
+use crate::shaping::patch::source::PatchSource;
 
 // External Uses
 use miette::{bail, IntoDiagnostic, Report, Result};
@@ -68,5 +70,21 @@ impl Patch {
 
     pub fn from_kdl(filename: &str, content: &str) -> Result<Self> {
         knus::parse::<Patch>(filename, content).map_err(Report::new)
+    }
+
+    pub fn load(path: &Path) -> Result<(Self, PatchSource)> {
+        let extension = path.extension().and_then(|extension| extension.to_str()).unwrap_or_default();
+        if extension != "kdl" {
+            bail!("Extension {} is not supported", extension)
+        }
+
+        let content = fs::read_to_string(path).into_diagnostic()?;
+        let name = path.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_default();
+
+        Self::parse(&name, &content)
+    }
+
+    pub fn parse(name: &str, content: &str) -> Result<(Self, PatchSource)> {
+        Ok((Self::from_kdl(name, content)?, PatchSource::parse(name, content)?))
     }
 }

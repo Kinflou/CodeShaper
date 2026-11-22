@@ -49,6 +49,18 @@ fn unmatched_file_pattern() {
 }
 
 #[test]
+fn unmatched_file_pattern_points_at_file() {
+    let rust = patch("lines", "Line", "old", "new").replace("**/*.txt", "**/*.rs");
+    let directory = workspace("replace", &[("rust.kdl", rust.clone())]);
+    let operation = Operation::from_file(&directory.path().join("configuration.kdl")).unwrap();
+
+    let found = operation.check(&registry()).unwrap();
+    let span = found[0].1.span.unwrap();
+
+    assert_eq!(&rust[span.offset()..span.offset() + span.len()], r#""**/*.rs""#);
+}
+
+#[test]
 fn missing_configuration_is_an_error() {
     let error = Operation::from_file(Path::new("tests/data/missing/configuration.kdl")).err().unwrap();
 

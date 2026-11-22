@@ -6,8 +6,10 @@ use crate::ast::backend::LanguageBackend;
 use crate::expressions::syntax::ExpressionAST;
 use crate::expressions::syntax::parser::parse_expression;
 use crate::shaping::patch::{Actions, Patch};
+use crate::shaping::patch::source::{ActionSpans, NodeSpans, PatchSource};
 
 // External Uses
+use miette::SourceSpan;
 use regex::Regex;
 
 
@@ -36,7 +38,8 @@ pub struct Diagnostic {
     pub severity: Severity,
     pub message: String,
     pub action: String,
-    pub field: &'static str
+    pub field: &'static str,
+    pub span: Option<SourceSpan>
 }
 
 impl Diagnostic {
@@ -46,17 +49,32 @@ impl Diagnostic {
             _ => Severity::Error
         };
 
-        Self { kind, severity, message, action: action.to_string(), field }
+        Self { kind, severity, message, action: action.to_string(), field, span: None }
+    }
+
+    fn at(mut self, span: Option<SourceSpan>) -> Self {
+        self.span = span;
+        self
     }
 }
 
 
 pub fn validate(patch: &Patch, backend: Option<&dyn LanguageBackend>) -> Vec<Diagnostic> {
+    check(patch, None, backend)
+}
+
+pub fn validate_source(patch: &Patch, source: &PatchSource, backend: Option<&dyn LanguageBackend>) -> Vec<Diagnostic> {
+    check(patch, Some(&source.spans.actions), backend)
+}
+
+fn check(patch: &Patch, spans: Option<&ActionSpans>, backend: Option<&dyn LanguageBackend>) -> Vec<Diagnostic> {
     let mut validator = Validator { backend, ..Validator::default() };
-    validator.actions(&patch.actions, "");
+    validator.actions(&patch.actions, "", spans);
 
     let calls = std::mem::take(&mut validator.calls);
-    for (action, field, name, count) in &calls {
+    for (action, field, name, count, span) in &calls {
+        validator.current_span = *span;
+
         if !validator.names.contains_key(name) {
             validator.report(DiagnosticKind::ActionNotFound, action, field, format!("No action named '{name}'"));
             continue
@@ -75,17 +93,17 @@ pub fn validate(patch: &Patch, backend: Option<&dyn LanguageBackend>) -> Vec<Dia
         }
     }
 
-    let called: HashSet<&String> = calls.iter().map(|(_, _, name, _)| name).collect();
-    let mut unused: Vec<(&String, &String)> = validator.names.iter()
+    let called: HashSet<&String> = calls.iter().map(|(_, _, name, _, _)| name).collect();
+    let mut unused: Vec<(&String, &(String, Option<SourceSpan>))> = validator.names.iter()
         .filter(|(name, _)| !called.contains(name))
         .collect();
-    unused.sort_by_key(|(_, path)| path.to_string());
+    unused.sort_by_key(|(_, (path, _))| path.to_string());
 
     let mut diagnostics = validator.diagnostics.clone();
-    for (name, path) in unused {
+    for (name, (path, span)) in unused {
         diagnostics.push(Diagnostic::new(
             DiagnosticKind::UnusedAction, path, "name", format!("Action '{name}' is never used")
-        ));
+        ).at(*span));
     }
 
     diagnostics
@@ -109,19 +127,33 @@ enum Locals {
 struct Validator<'a> {
     backend: Option<&'a dyn LanguageBackend>,
     diagnostics: Vec<Diagnostic>,
-    names: HashMap<String, String>,
+    names: HashMap<String, (String, Option<SourceSpan>)>,
     receivers: HashSet<String>,
     required: HashMap<String, usize>,
-    calls: Vec<(String, &'static str, String, usize)>
+    calls: Vec<(String, &'static str, String, usize, Option<SourceSpan>)>,
+    current: Option<&'a NodeSpans>,
+    current_span: Option<SourceSpan>
 }
 
-impl Validator<'_> {
+impl<'a> Validator<'a> {
     fn report(&mut self, kind: DiagnosticKind, action: &str, field: &'static str, message: String) {
-        self.diagnostics.push(Diagnostic::new(kind, action, field, message));
+        let span = self.span(field);
+        self.diagnostics.push(Diagnostic::new(kind, action, field, message).at(span));
     }
 
-    fn actions(&mut self, actions: &Actions, parent: &str) {
-        for builder in actions.builders.iter().flatten() {
+    fn span(&self, field: &str) -> Option<SourceSpan> {
+        self.current_span.or_else(|| self.current?.fields.get(field).copied())
+    }
+
+    fn enter(&mut self, spans: Option<&'a [NodeSpans]>, index: usize) {
+        self.current = spans.and_then(|spans| spans.get(index));
+        self.current_span = None;
+    }
+
+    fn actions(&mut self, actions: &Actions, parent: &str, spans: Option<&'a ActionSpans>) {
+        for (index, builder) in actions.builders.iter().flatten().enumerate() {
+            self.enter(spans.map(|spans| spans.builders.as_slice()), index);
+            let nested = self.current.map(|current| &current.actions);
             let path = self.name(parent, &builder.name);
 
             self.location(&path, "location", &builder.location);
@@ -131,10 +163,12 @@ impl Validator<'_> {
 
             let locals = self.regex(&path, "match", &builder.r#match);
             self.expression(&path, "build", &builder.build, locals, None);
-            self.actions(&builder.actions, &path);
+            self.actions(&builder.actions, &path, nested);
         }
 
         for (index, replacer) in actions.replacers.iter().flatten().enumerate() {
+            self.enter(spans.map(|spans| spans.replacers.as_slice()), index);
+            let nested = self.current.map(|current| &current.actions);
             let path = join(parent, &format!("replacer #{}", index + 1));
 
             self.location(&path, "location", &replacer.location);
@@ -144,10 +178,11 @@ impl Validator<'_> {
 
             let locals = self.regex(&path, "from", &replacer.from);
             self.expression(&path, "to", &replacer.to, locals, None);
-            self.actions(&replacer.actions, &path);
+            self.actions(&replacer.actions, &path, nested);
         }
 
-        for maker in actions.makers.iter().flatten() {
+        for (index, maker) in actions.makers.iter().flatten().enumerate() {
+            self.enter(spans.map(|spans| spans.makers.as_slice()), index);
             let path = self.name(parent, &maker.name);
             self.receivers.insert(maker.name.clone());
 
@@ -158,7 +193,8 @@ impl Validator<'_> {
             self.expression(&path, "make", &maker.make, locals, Some(&maker.name));
         }
 
-        for list in actions.lists.iter().flatten() {
+        for (index, list) in actions.lists.iter().flatten().enumerate() {
+            self.enter(spans.map(|spans| spans.lists.as_slice()), index);
             let path = self.name(parent, &list.name);
             self.receivers.insert(list.name.clone());
             if let Some(index) = &list.index {
@@ -166,7 +202,8 @@ impl Validator<'_> {
             }
         }
 
-        for switch in actions.switchers.iter().flatten() {
+        for (index, switch) in actions.switchers.iter().flatten().enumerate() {
+            self.enter(spans.map(|spans| spans.switchers.as_slice()), index);
             let path = self.name(parent, &switch.name);
             self.receivers.insert(switch.name.clone());
             self.expression(&path, "index", &switch.index, Locals::Unavailable("'index' has no regex"), Some(&switch.name));
@@ -176,11 +213,12 @@ impl Validator<'_> {
     fn name(&mut self, parent: &str, name: &str) -> String {
         let path = join(parent, name);
 
-        if let Some(first) = self.names.get(name) {
+        if let Some((first, _)) = self.names.get(name) {
             let message = format!("Action '{name}' is already defined at '{first}', so this one is never used");
             self.report(DiagnosticKind::DuplicateAction, &path, "name", message);
         } else {
-            self.names.insert(name.to_string(), path.clone());
+            let span = self.span("name");
+            self.names.insert(name.to_string(), (path.clone(), span));
         }
 
         path
@@ -219,7 +257,8 @@ impl Validator<'_> {
                 self.walk(action, field, part, locals, arguments);
             },
             ExpressionAST::ActionCall((name, call_arguments)) => {
-                self.calls.push((action.to_string(), field, name.to_string(), call_arguments.len()));
+                let span = self.span(field);
+                self.calls.push((action.to_string(), field, name.to_string(), call_arguments.len(), span));
 
                 for argument in call_arguments {
                     self.walk(action, field, argument, locals, arguments);

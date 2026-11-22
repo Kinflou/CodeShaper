@@ -6,7 +6,7 @@ use std::ops::Range;
 // External Uses
 use codeshaper_core::ast::backend::LanguageBackend;
 use codeshaper_core::shaping::patch::Patch;
-use codeshaper_core::shaping::patch::validation::{validate, Diagnostic, DiagnosticKind, Severity};
+use codeshaper_core::shaping::patch::validation::{validate, validate_source, Diagnostic, DiagnosticKind, Severity};
 use miette::{bail, Result};
 
 
@@ -28,10 +28,26 @@ impl LanguageBackend for LineBackend {
     }
 }
 
-fn patch(actions: &str) -> Patch {
-    let content = format!("enabled true\nalias \"lines\"\nfile \"*.txt\"\n\nactions {{\n{actions}\n}}\n");
+fn content(actions: &str) -> String {
+    format!("enabled true\nalias \"lines\"\nfile \"*.txt\"\n\nactions {{\n{actions}\n}}\n")
+}
 
-    Patch::from_kdl("test.kdl", &content).unwrap()
+fn patch(actions: &str) -> Patch {
+    Patch::from_kdl("test.kdl", &content(actions)).unwrap()
+}
+
+fn check_source(actions: &str) -> (String, Vec<Diagnostic>) {
+    let content = content(actions);
+    let (patch, source) = Patch::parse("test.kdl", &content).unwrap();
+    let diagnostics = validate_source(&patch, &source, Some(&LineBackend));
+
+    (content, diagnostics)
+}
+
+fn spanned<'a>(content: &'a str, diagnostic: &Diagnostic) -> (usize, &'a str) {
+    let span = diagnostic.span.unwrap();
+
+    (span.offset(), &content[span.offset()..span.offset() + span.len()])
 }
 
 fn check(actions: &str) -> Vec<Diagnostic> {
@@ -149,6 +165,42 @@ fn duplicate_and_unused_actions() {
         (DiagnosticKind::UnusedAction, "names", "name"),
     ]);
     assert_eq!(diagnostics[1].severity, Severity::Warning);
+}
+
+#[test]
+fn spans_point_at_values() {
+    let (content, diagnostics) = check_source(&replacer("Missing", "old (", "new #[gone]"));
+
+    assert_eq!(kinds(&diagnostics), vec![
+        (DiagnosticKind::LocationNotFound, "replacer #1", "location"),
+        (DiagnosticKind::IncorrectRegex, "replacer #1", "from"),
+        (DiagnosticKind::ActionNotFound, "replacer #1", "to"),
+    ]);
+    assert_eq!(spanned(&content, &diagnostics[0]).1, r#""Missing""#);
+    assert_eq!(spanned(&content, &diagnostics[1]).1, r#"r"old (""#);
+    assert_eq!(spanned(&content, &diagnostics[2]).1, r#""new #[gone]""#);
+}
+
+#[test]
+fn duplicate_points_at_the_second_definition() {
+    let actions = format!(r#"{NAMES_BUILDER}
+    {}"#, replacer("Line", "old", "new").replace("from", r#"actions {
+                builders {
+                    builder "names" {
+                        location "Line"
+                        match r"(\w+)"
+                        build "$[0]"
+                    }
+                }
+            }
+            from"#));
+
+    let (content, diagnostics) = check_source(&actions);
+    let first = content.find(r#""names""#).unwrap();
+    let second = content.rfind(r#""names""#).unwrap();
+
+    assert_eq!(spanned(&content, &diagnostics[0]), (second, r#""names""#));
+    assert_eq!(spanned(&content, &diagnostics[1]), (first, r#""names""#));
 }
 
 #[test]
