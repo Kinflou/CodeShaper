@@ -1,0 +1,12 @@
+[package]
+name = "codeshaper-target-godot"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+# local
+codeshaper-core.workspace=true
+
+# display
+miette = "5.9.0"

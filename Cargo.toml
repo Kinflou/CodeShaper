@@ -7,12 +7,14 @@ members = [
     "core",
     "plugins/nav-ast-pest",
     "plugins/nav-ast-treesitter",
+    "plugins/target-godot",
     "plugins/target-text"
 ]
 
 [workspace.dependencies]
 codeshaper-core = { path="core/" }
-codeshaper-nav-ast-treesitter = { path="plugins/nav-ast-treesitter/" }
+codeshaper-nav-ast-treesitter = { path="plugins/nav-ast-treesitter/", default-features=false }
+codeshaper-target-godot = { path="plugins/target-godot/" }
 codeshaper-target-text = { path="plugins/target-text/" }
 tempfile = "3.10.1"
 

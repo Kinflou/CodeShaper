@@ -126,6 +126,7 @@ version = "0.1.0"
 dependencies = [
  "codeshaper-core",
  "codeshaper-nav-ast-treesitter",
+ "codeshaper-target-godot",
  "codeshaper-target-text",
  "tempfile",
 ]
@@ -169,6 +170,14 @@ dependencies = [
  "tree-sitter-cpp",
  "tree-sitter-gdscript",
  "tree-sitter-godot-resource",
+]
+
+[[package]]
+name = "codeshaper-target-godot"
+version = "0.1.0"
+dependencies = [
+ "codeshaper-core",
+ "miette",
 ]
 
 [[package]]

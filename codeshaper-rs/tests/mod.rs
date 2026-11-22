@@ -43,6 +43,16 @@ fn default_plugins_registered() {
     assert_eq!(registry.loader("text").unwrap().name(), "text");
 }
 
+#[cfg(all(feature = "gdscript", feature = "godot"))]
+#[test]
+fn godot_plugins_registered() {
+    let registry = registry();
+
+    assert_eq!(registry.backend("gdscript").unwrap().name(), "gdscript");
+    assert_eq!(registry.backend("godot_resource").unwrap().name(), "godot_resource");
+    assert_eq!(registry.loader("godot").unwrap().name(), "godot");
+}
+
 #[test]
 fn example_target_files_have_backends() {
     let registry = registry();
@@ -107,4 +117,38 @@ fn example_session_walks_back_to_original() {
 
     assert_eq!(session.content(0).unwrap().replace("\r\n", "\n"), read(&Path::new(EXAMPLE_TARGET).join("CallerModule.cpp")));
     assert_eq!(session.content(1).unwrap().replace("\r\n", "\n"), read(&Path::new(EXAMPLE_TARGET).join("ReturnModule.cpp")));
+}
+
+#[cfg(all(feature = "gdscript", feature = "godot"))]
+#[test]
+fn godot_migration_runs_end_to_end() {
+    const GODOT_EXAMPLE: &str = "examples/Godot/Godot 3 to 4 Migration/";
+
+    let directory = tempfile::tempdir().unwrap();
+    let example = directory.path();
+    copy_directory(Path::new(GODOT_EXAMPLE), example);
+
+    let operation = Operation::from_file(&example.join("configuration.kdl")).unwrap();
+    let report = operation.run(&registry()).unwrap();
+
+    let outcome = |path: &str| report.files.iter()
+        .find(|file| file.path == Path::new(path))
+        .map(|file| file.outcome.clone());
+
+    assert_eq!(outcome("player.gd"), Some(Outcome::Patched(vec![
+        "character_body_script.kdl".to_string(), "export_annotations.kdl".to_string()
+    ])));
+    assert_eq!(outcome("player.tscn"), Some(Outcome::Patched(vec!["character_body_scene.kdl".to_string()])));
+    assert_eq!(outcome("project.godot"), Some(Outcome::Unchanged));
+    assert_eq!(outcome("notes/draft.gd"), None);
+    assert_eq!(report.files.len(), 3);
+
+    for name in ["player.gd", "player.tscn"] {
+        assert_eq!(read(&example.join("target").join(name)), read(&example.join("expected_result").join(name)));
+    }
+
+    let original = Path::new(GODOT_EXAMPLE).join("target");
+    for name in ["project.godot", "notes/draft.gd", "icon.svg.import"] {
+        assert_eq!(read(&example.join("target").join(name)), read(&original.join(name)));
+    }
 }

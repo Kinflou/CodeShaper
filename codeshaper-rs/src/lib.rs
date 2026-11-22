@@ -24,8 +24,11 @@ pub fn registry() -> Registry {
     #[allow(unused_mut)]
     let mut registry = Registry::default();
 
-    #[cfg(feature = "cpp")]
+    #[cfg(any(feature = "cpp", feature = "gdscript"))]
     codeshaper_nav_ast_treesitter::register(&mut registry);
+
+    #[cfg(feature = "godot")]
+    codeshaper_target_godot::register(&mut registry);
 
     #[cfg(feature = "text")]
     codeshaper_target_text::register(&mut registry);

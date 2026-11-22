@@ -23,6 +23,7 @@ codeshaper-core.workspace=true
 
 # plugins
 codeshaper-nav-ast-treesitter = { workspace=true, optional=true }
+codeshaper-target-godot = { workspace=true, optional=true }
 codeshaper-target-text = { workspace=true, optional=true }
 
 
@@ -31,6 +32,8 @@ tempfile.workspace=true
 
 
 [features]
-default = ["cpp", "text"]
-cpp = ["dep:codeshaper-nav-ast-treesitter"]
+default = ["cpp", "gdscript", "godot", "text"]
+cpp = ["dep:codeshaper-nav-ast-treesitter", "codeshaper-nav-ast-treesitter/cpp"]
+gdscript = ["dep:codeshaper-nav-ast-treesitter", "codeshaper-nav-ast-treesitter/gdscript", "codeshaper-nav-ast-treesitter/godot-resource"]
+godot = ["dep:codeshaper-target-godot"]
 text = ["dep:codeshaper-target-text"]
