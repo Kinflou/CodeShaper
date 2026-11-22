@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use crate::completion::completion;
 use crate::diagnostics::diagnostics;
 use crate::document::{kind, DocumentKind};
+use crate::hover::hover;
 use crate::navigation::{definition, references};
 use crate::position::LineIndex;
 use crate::syntax::Outline;
@@ -18,12 +19,12 @@ use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
     Notification as _, PublishDiagnostics
 };
-use lsp_types::request::{Completion, GotoDefinition, References, Request as _, SemanticTokensFullRequest};
+use lsp_types::request::{Completion, GotoDefinition, HoverRequest, References, Request as _, SemanticTokensFullRequest};
 use lsp_types::{
     CompletionParams, CompletionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, Location,
-    Position, PublishDiagnosticsParams, ReferenceParams, SemanticTokens, SemanticTokensParams, SemanticTokensResult,
-    Uri
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+    HoverContents, HoverParams, Location, MarkupContent, MarkupKind, Position, PublishDiagnosticsParams,
+    ReferenceParams, SemanticTokens, SemanticTokensParams, SemanticTokensResult, Uri
 };
 use miette::{miette, IntoDiagnostic, Result};
 use url::Url;
@@ -67,6 +68,19 @@ impl<'c> Server<'c> {
                     .unwrap_or_default();
 
                 Response::new_ok(request.id, CompletionResponse::Array(items))
+            }
+            HoverRequest::METHOD => {
+                let params: HoverParams = serde_json::from_value(request.params).into_diagnostic()?;
+                let position = params.text_document_position_params;
+                let found = self.patch_at(&position.text_document.uri, position.position).and_then(|(project, text, offset)| {
+                    let (value, range) = hover(&self.registry, &project, text, offset)?;
+                    Some(Hover {
+                        contents: HoverContents::Markup(MarkupContent { kind: MarkupKind::Markdown, value }),
+                        range: Some(LineIndex::new(text).range(range))
+                    })
+                });
+
+                Response::new_ok(request.id, found)
             }
             GotoDefinition::METHOD => {
                 let params: GotoDefinitionParams = serde_json::from_value(request.params).into_diagnostic()?;

@@ -15,6 +15,10 @@ pub trait LanguageBackend {
         Ok(())
     }
 
+    fn describe_location(&self, location: &str) -> Result<String> {
+        self.check_location(location).map(|_| format!("{} location `{}`", self.name(), location.trim()))
+    }
+
     fn location_names(&self, _segment: usize) -> Vec<String> {
         vec![]
     }

@@ -9,9 +9,9 @@ use crate::{project, BROKEN};
 // External Uses
 use lsp_server::{Connection, Message, Notification, Request, RequestId, Response};
 use lsp_types::notification::{DidOpenTextDocument, Exit, Initialized, Notification as _, PublishDiagnostics};
-use lsp_types::request::{Completion, GotoDefinition, Initialize, References, Request as _, SemanticTokensFullRequest, Shutdown};
+use lsp_types::request::{Completion, GotoDefinition, HoverRequest, Initialize, References, Request as _, SemanticTokensFullRequest, Shutdown};
 use lsp_types::{
-    CompletionParams, GotoDefinitionParams, GotoDefinitionResponse, Location, ReferenceContext, ReferenceParams, CompletionResponse, DidOpenTextDocumentParams, InitializeParams, InitializedParams, Position,
+    CompletionParams, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams, Location, ReferenceContext, ReferenceParams, CompletionResponse, DidOpenTextDocumentParams, InitializeParams, InitializedParams, Position,
     PublishDiagnosticsParams, SemanticTokensParams, SemanticTokensResult, TextDocumentIdentifier, TextDocumentItem,
     TextDocumentPositionParams, Uri
 };
@@ -171,6 +171,28 @@ fn definition_and_references_of_actions() {
     assert_eq!(locations.iter().map(|location| location.range.start).collect::<Vec<_>>(), vec![
         Position::new(8, 18), Position::new(8, 26)
     ]);
+
+    client.stop();
+}
+
+#[test]
+fn hover_describes_locations() {
+    let text = "alias \"cpp\"\nactions {\n    replacers {\n        replacer {\n            location \"FunctionDefinition\"\n        }\n    }\n}\n";
+    let (_directory, project) = project(&[("hover.kdl", "")]);
+    let mut client = Client::start();
+    let uri = client.open(&project.join("patches/hover.kdl"), text);
+
+    let params = HoverParams {
+        text_document_position_params: at(&uri, Position::new(4, 24)),
+        work_done_progress_params: Default::default()
+    };
+    let response = client.request(HoverRequest::METHOD, to_json!(params));
+    let Some(Hover { contents: HoverContents::Markup(markup), range }) = serde_json::from_value(response.response_result.unwrap()).unwrap() else {
+        panic!("expected a hover")
+    };
+
+    assert_eq!(markup.value, "cpp: node kind `function_definition`");
+    assert_eq!(range.map(|range| (range.start, range.end)), Some((Position::new(4, 21), Position::new(4, 41))));
 
     client.stop();
 }

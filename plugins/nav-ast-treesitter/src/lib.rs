@@ -149,6 +149,24 @@ impl LanguageBackend for TreeSitterBackend {
         Ok(())
     }
 
+    fn describe_location(&self, location: &str) -> Result<String> {
+        let location = location.trim();
+
+        if location.starts_with('(') {
+            self.query(location)?;
+            return Ok(format!("{} query, located at its `@target` capture", self.name))
+        }
+
+        let segments = location.split('.').enumerate()
+            .map(|(index, segment)| Ok(match self.segment(index, segment)? {
+                Segment::Field(field) => format!("field `{field}`"),
+                Segment::Kind(kind) => format!("node kind `{kind}`")
+            }))
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(format!("{}: {}", self.name, segments.join(" › ")))
+    }
+
     fn location_names(&self, segment: usize) -> Vec<String> {
         let mut names: Vec<String> = (0..self.language.node_kind_count() as u16)
             .filter(|id| self.language.node_kind_is_named(*id) && self.language.node_kind_is_visible(*id))
