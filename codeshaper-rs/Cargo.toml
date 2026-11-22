@@ -2,13 +2,13 @@
 name = "codeshaper"
 version = "0.1.0"
 authors = ["Kinflou"]
-description = """ANtlr4 and Regex AST Shaper"""
-categories = ["regex", "antlr", "automation"]
-keywords = ["text", "code", "manipulation", "regex", "antlr", "automation"]
+description = """tree-sitter and Regex AST Shaper"""
+categories = ["regex", "tree-sitter", "automation"]
+keywords = ["text", "code", "manipulation", "regex", "tree-sitter", "automation"]
 license = "MIT"
 documentation = "https://docs.rs/codeshaper"
 repository = "https://github.com/kinflou/CodeShaper"
-readme = "README-CRATE.md"
+readme = "README.md"
 edition = "2021"
 
 
@@ -18,3 +18,22 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 
 [dependencies]
+# local
+codeshaper-core.workspace=true
+
+# plugins
+codeshaper-nav-ast-treesitter = { workspace=true, optional=true }
+codeshaper-target-godot = { workspace=true, optional=true }
+codeshaper-target-text = { workspace=true, optional=true }
+
+
+[dev-dependencies]
+tempfile.workspace=true
+
+
+[features]
+default = ["cpp", "gdscript", "godot", "text"]
+cpp = ["dep:codeshaper-nav-ast-treesitter", "codeshaper-nav-ast-treesitter/cpp"]
+gdscript = ["dep:codeshaper-nav-ast-treesitter", "codeshaper-nav-ast-treesitter/gdscript", "codeshaper-nav-ast-treesitter/godot-resource"]
+godot = ["dep:codeshaper-target-godot"]
+text = ["dep:codeshaper-target-text"]

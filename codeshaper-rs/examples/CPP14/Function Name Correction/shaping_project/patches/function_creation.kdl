@@ -1,0 +1,21 @@
+enabled true
+alias "cpp"
+file "CallerModule.cpp"
+
+actions {
+    builders {
+        builder "method_call_builder" {
+            location r#"(function_definition declarator: (function_declarator declarator: (identifier) @target (#not-match? @target "Caller$")))"#
+            match r"(\w+)"
+            build "\t$[0]();\n"
+            collect true
+        }
+    }
+    replacers {
+        replacer {
+            location "FunctionDefinition.body"
+            from r"(// Lets call some methods!)\n\}"
+            to "$[0]\n#[method_call_builder]}"
+        }
+    }
+}

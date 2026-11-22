@@ -1,0 +1,25 @@
+[package]
+name = "codeshaper-nav-ast-treesitter"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+# local
+codeshaper-core.workspace=true
+
+# parsing
+tree-sitter = "0.27.2"
+tree-sitter-cpp = { version="0.23.4", optional=true }
+tree-sitter-gdscript = { version="6.1.0", optional=true }
+tree-sitter-godot-resource = { version="0.7.0", optional=true }
+
+# display
+miette.workspace=true
+
+
+[features]
+default = ["cpp"]
+cpp = ["dep:tree-sitter-cpp"]
+gdscript = ["dep:tree-sitter-gdscript"]
+godot-resource = ["dep:tree-sitter-godot-resource"]

@@ -1,0 +1,16 @@
+[package]
+name = "codeshaper-target-text"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+# local
+codeshaper-core.workspace=true
+
+# parsing
+glob = "0.3.0"
+knus.workspace=true
+
+# display
+miette.workspace=true

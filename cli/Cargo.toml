@@ -1,0 +1,25 @@
+[package]
+name = "codeshaper-cli"
+version = "0.1.0"
+edition = "2021"
+
+
+[[bin]]
+name = "codeshaper"
+path = "src/main.rs"
+
+
+[dependencies]
+# local
+codeshaper.workspace=true
+
+# interface
+clap = { version="4.6.9", features=["derive"] }
+similar = "3.2.1"
+
+# display
+miette = { workspace=true, features=["fancy"] }
+
+
+[dev-dependencies]
+tempfile.workspace=true

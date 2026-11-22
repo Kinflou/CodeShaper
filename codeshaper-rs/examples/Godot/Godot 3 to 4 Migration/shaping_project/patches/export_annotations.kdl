@@ -1,0 +1,13 @@
+enabled true
+alias ""
+file "**/*.gd"
+
+actions {
+    replacers {
+        replacer {
+            location "ExportVariableStatement"
+            from r"^export var (\w+)"
+            to "@export var $[0]"
+        }
+    }
+}

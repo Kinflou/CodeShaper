@@ -1,0 +1,6 @@
+name "Test Shaping Project"
+
+target "text"
+ast-set "cpp"
+
+description "A little test with some cases"

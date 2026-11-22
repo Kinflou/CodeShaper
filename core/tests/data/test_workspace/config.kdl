@@ -1,0 +1,6 @@
+name "Test Workspace"
+project "shaping_project/"
+target "target/origin/"
+output "target/expected_result/"
+backup "target/backup/"
+result "backup-and-replace"

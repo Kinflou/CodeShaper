@@ -1,6 +1,6 @@
 # CodeShaper
 A tool to automate code/text manipulation using
-Regex and ANtlr4
+Regex and tree-sitter
 
 
 ## Documentation

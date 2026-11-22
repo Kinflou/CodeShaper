@@ -1,0 +1,6 @@
+name "Function Name Correction"
+project "function_name_correction/shaping_project/"
+target "function_name_correction/target/origin/"
+output "function_name_correction/target/expected_result/"
+backup "function_name_correction/target/backup/"
+result "backup-and-replace"
