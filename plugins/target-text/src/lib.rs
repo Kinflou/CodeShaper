@@ -5,11 +5,17 @@ pub mod project;
 use std::path::Path;
 
 // Crate Uses
-use crate::target::{File, Group, Solution, TargetLoader};
-use crate::target::text::project::Project;
+use crate::project::Project;
 
 // External Uses
+use codeshaper_core::registry::Registry;
+use codeshaper_core::target::{File, Group, Solution, TargetLoader};
 use miette::{bail, Context, Result};
+
+
+pub fn register(registry: &mut Registry) {
+    registry.add_loader(Box::new(TextLoader));
+}
 
 
 pub struct TextLoader;

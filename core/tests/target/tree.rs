@@ -4,11 +4,8 @@ use std::path::{Path, PathBuf};
 // Crate Uses
 
 // External Uses
-use codeshaper_core::target::{File, Group, Solution, TargetLoader};
-use codeshaper_core::target::text::TextLoader;
+use codeshaper_core::target::{File, Group, Solution};
 
-
-const EXAMPLE_TARGET: &str = "../codeshaper-rs/examples/CPP14/Function Name Correction/target/";
 
 fn file(path: &str) -> File {
     File { path: path.into(), language: None }
@@ -37,16 +34,3 @@ fn files_are_depth_first() {
     assert_eq!(paths, vec![Path::new("main.cpp"), Path::new("nested.cpp"), Path::new("other.cpp")]);
 }
 
-#[test]
-fn text_loader_loads_example() {
-    let solution = TextLoader.load(Path::new(EXAMPLE_TARGET)).unwrap();
-
-    assert_eq!(solution.name, "Function Name Correction");
-    assert_eq!(solution.directory, Path::new(EXAMPLE_TARGET));
-    assert_eq!(solution.groups.len(), 1);
-    assert_eq!(solution.groups[0].name, "root");
-    assert_eq!(
-        solution.files(),
-        vec![&file("CallerModule.cpp"), &file("ReturnModule.cpp"), &file("Module.cpp"), &file("Module.h")]
-    );
-}

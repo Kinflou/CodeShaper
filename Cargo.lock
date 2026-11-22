@@ -157,6 +157,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "codeshaper-target-text"
+version = "0.1.0"
+dependencies = [
+ "codeshaper-core",
+ "knuffel",
+ "miette",
+]
+
+[[package]]
 name = "codeshaper-tool-ui"
 version = "0.1.0"
 

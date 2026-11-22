@@ -6,7 +6,8 @@ members = [
     "tool-ui",
     "core",
     "plugins/nav-ast-pest",
-    "plugins/nav-ast-treesitter"
+    "plugins/nav-ast-treesitter",
+    "plugins/target-text"
 ]
 
 [workspace.dependencies]
