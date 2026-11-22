@@ -1,10 +1,14 @@
 // Action Expressions Syntax Grammar - v1
 action = {
-	 (text | expression)*
+	 SOI ~ (text | expression | unclosed)* ~ EOI
 }
 
 text = @{ wild_char+ }
-wild_char = { !expression ~ ANY}
+wild_char = { !expression ~ !opener ~ ANY }
+
+opener = _{ ("#" | "$" | "@") ~ "[" }
+
+unclosed = @{ opener ~ char* }
 
 expression = _{
     (action_call | local_call

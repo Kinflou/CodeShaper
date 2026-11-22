@@ -95,6 +95,14 @@ fn incorrect_regex() {
 }
 
 #[test]
+fn unclosed_call() {
+    let diagnostics = check(&replacer("Line", "old (\\w+)", "new $[0] #[names"));
+
+    assert_eq!(kinds(&diagnostics), vec![(DiagnosticKind::IncorrectExpression, "replacer #1", "to")]);
+    assert!(diagnostics[0].message.contains("'#[names' is not a complete call"));
+}
+
+#[test]
 fn location_not_found() {
     let actions = replacer("Missing", "old", "new");
 
