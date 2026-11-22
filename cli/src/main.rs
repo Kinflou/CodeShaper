@@ -13,9 +13,10 @@ use codeshaper::core::shaping::operation::{patch_backend, Operation};
 use codeshaper::core::shaping::operation::report::Outcome;
 use codeshaper::core::shaping::patch::Patch;
 use codeshaper::core::shaping::patch::controller::PatchController;
-use codeshaper::core::shaping::patch::validation::{validate, Diagnostic, Severity};
+use codeshaper::core::shaping::patch::source::PatchSource;
+use codeshaper::core::shaping::patch::validation::{validate_source, Diagnostic, Severity};
 use codeshaper::registry;
-use miette::{miette, Context, IntoDiagnostic, Result};
+use miette::{miette, Context, IntoDiagnostic, MietteHandlerOpts, Result};
 use similar::TextDiff;
 
 
@@ -55,6 +56,8 @@ enum Command {
 
 
 fn main() -> Result<ExitCode> {
+    miette::set_hook(Box::new(|_| Box::new(MietteHandlerOpts::new().wrap_lines(false).build())))?;
+
     match Cli::parse().command {
         Command::Run { configuration, dry_run: false } => run(&configuration),
         Command::Run { configuration, dry_run: true } => dry_run(&configuration),
@@ -124,27 +127,29 @@ fn check_operation(paths: &[PathBuf]) -> Result<ExitCode> {
     let operation = Operation::from_file(configuration)?;
     let found = operation.check(&registry())?;
 
-    Ok(report_diagnostics(found))
+    Ok(report_diagnostics(found, &operation.project.sources))
 }
 
 fn check_patches(paths: &[PathBuf]) -> Result<ExitCode> {
     let registry = registry();
     let mut found = vec![];
+    let mut sources = BTreeMap::new();
 
     for path in paths {
-        let patch = Patch::from_path(path)?;
+        let (patch, source) = Patch::load(path)?;
         let backend = patch_backend(&registry, &patch, "");
         let name = path.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_default();
 
-        found.extend(validate(&patch, backend).into_iter().map(|diagnostic| (name.clone(), diagnostic)));
+        found.extend(validate_source(&patch, &source, backend).into_iter().map(|diagnostic| (name.clone(), diagnostic)));
+        sources.insert(name, source);
     }
 
-    Ok(report_diagnostics(found))
+    Ok(report_diagnostics(found, &sources))
 }
 
 fn apply(patch_path: &Path, file: &Path, in_place: bool) -> Result<ExitCode> {
     let registry = registry();
-    let patch = Patch::from_path(patch_path)?;
+    let (patch, source) = Patch::load(patch_path)?;
 
     let backend = match patch.alias.as_str() {
         "" => registry.backend_for(file),
@@ -152,9 +157,11 @@ fn apply(patch_path: &Path, file: &Path, in_place: bool) -> Result<ExitCode> {
     }.ok_or_else(|| miette!("No language backend for {} with patch alias '{}'", file.display(), patch.alias))?;
 
     let name = patch_path.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_default();
-    let diagnostics: Vec<_> = validate(&patch, Some(backend)).into_iter().map(|diagnostic| (name.clone(), diagnostic)).collect();
+    let diagnostics: Vec<_> = validate_source(&patch, &source, Some(backend)).into_iter()
+        .map(|diagnostic| (name.clone(), diagnostic))
+        .collect();
     if diagnostics.iter().any(|(_, diagnostic)| diagnostic.severity == Severity::Error) {
-        return Ok(report_diagnostics(diagnostics))
+        return Ok(report_diagnostics(diagnostics, &BTreeMap::from([(name, source)])))
     }
 
     let source = fs::read_to_string(file)
@@ -184,7 +191,7 @@ fn print_diff(path: &Path, old: &str, new: &str) {
     print!("{}", diff.unified_diff().header(&format!("a/{path}"), &format!("b/{path}")));
 }
 
-fn report_diagnostics(found: Vec<(String, Diagnostic)>) -> ExitCode {
+fn report_diagnostics(found: Vec<(String, Diagnostic)>, sources: &BTreeMap<String, PatchSource>) -> ExitCode {
     let mut errors = 0;
     let mut warnings = 0;
 
@@ -194,10 +201,15 @@ fn report_diagnostics(found: Vec<(String, Diagnostic)>) -> ExitCode {
             Severity::Warning => { warnings += 1; "warning" }
         };
 
-        println!(
+        let title = format!(
             "{severity}[{}] {patch} › {} › {}: {}",
             kebab_case(&format!("{:?}", diagnostic.kind)), diagnostic.action, diagnostic.field, diagnostic.message
         );
+
+        match sources.get(patch).filter(|_| diagnostic.span.is_some()) {
+            Some(source) => println!("{:?}", source.report(diagnostic, title)),
+            None => println!("{title}")
+        }
     }
 
     println!("{errors} error(s), {warnings} warning(s)");

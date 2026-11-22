@@ -123,6 +123,8 @@ actions {
     assert!(text.contains("error[location-not-found] broken.kdl › replacer #1 › location"));
     assert!(text.contains("error[incorrect-regex] broken.kdl › replacer #1 › from"));
     assert!(text.contains("error[action-not-found] broken.kdl › replacer #1 › to"));
+    assert!(text.contains("[broken.kdl:9:18]"));
+    assert!(text.contains(r#"from r"old (""#));
     assert!(text.contains("3 error(s), 0 warning(s)"));
 }
 
