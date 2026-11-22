@@ -47,3 +47,15 @@ fn invalid_file_patterns_are_errors() {
 
     assert!(operation.preview(&registry(), "bad.kdl", &patch).is_err());
 }
+
+#[test]
+fn locate_counts_places_in_matching_files() {
+    let directory = workspace("replace", &[]);
+    let operation = Operation::from_file(&directory.path().join("configuration.kdl")).unwrap();
+    let patch = Patch::from_kdl("rename.kdl", &rename("lines", "Line")).unwrap();
+
+    let matches = operation.locate(&registry(), "rename.kdl", &patch, "Line").unwrap();
+
+    assert_eq!((matches.files, matches.matched_files, matches.places), (2, 2, 3));
+    assert_eq!(operation.locate(&registry(), "rename.kdl", &patch, "Missing").unwrap().places, 0);
+}

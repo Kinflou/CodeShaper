@@ -33,6 +33,13 @@ pub struct Operation {
     pub project: Project,
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct LocationMatches {
+    pub files: usize,
+    pub matched_files: usize,
+    pub places: usize
+}
+
 
 impl Operation {
     pub fn from_file(path: &Path) -> Result<Self> {
@@ -133,14 +140,11 @@ impl Operation {
     }
 
     pub fn preview(&self, registry: &Registry, name: &str, patch: &Patch) -> Result<Vec<Change>> {
-        let pattern = file_pattern(name, patch)?;
-        let target = self.directory.join(&self.configuration.target);
-        let solution = registry.load_target(&self.project.settings.target, &target)?;
+        let (directory, files) = self.matching_files(registry, name, patch)?;
 
-        let changes = solution.files().into_iter()
-            .filter(|file| pattern.matches_path(&file.path))
+        let changes = files.iter()
             .map(|file| {
-                let path = solution.directory.join(&file.path);
+                let path = directory.join(&file.path);
                 let before = fs::read_to_string(&path)
                     .into_diagnostic()
                     .wrap_err_with(|| format!("Could not read {}", path.display()));
@@ -156,6 +160,38 @@ impl Operation {
             .collect();
 
         Ok(changes)
+    }
+
+    pub fn locate(&self, registry: &Registry, name: &str, patch: &Patch, location: &str) -> Result<LocationMatches> {
+        let (directory, files) = self.matching_files(registry, name, patch)?;
+        let mut matches = LocationMatches { files: files.len(), ..LocationMatches::default() };
+
+        for file in &files {
+            let Ok(source) = fs::read_to_string(directory.join(&file.path)) else { continue };
+            let Ok(found) = self.backend(registry, patch, file).and_then(|backend| backend.locate(&source, location)) else {
+                continue
+            };
+
+            if !found.is_empty() {
+                matches.matched_files += 1;
+                matches.places += found.len();
+            }
+        }
+
+        Ok(matches)
+    }
+
+    fn matching_files(&self, registry: &Registry, name: &str, patch: &Patch) -> Result<(PathBuf, Vec<File>)> {
+        let pattern = file_pattern(name, patch)?;
+        let target = self.directory.join(&self.configuration.target);
+        let solution = registry.load_target(&self.project.settings.target, &target)?;
+
+        let files = solution.files().into_iter()
+            .filter(|file| pattern.matches_path(&file.path))
+            .cloned()
+            .collect();
+
+        Ok((solution.directory, files))
     }
 
     fn matching_patches(&self, file: &File) -> Result<Vec<&String>> {

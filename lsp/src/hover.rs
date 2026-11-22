@@ -5,11 +5,14 @@ use std::path::Path;
 // Crate Uses
 use crate::completion::backend;
 use crate::navigation::name_at;
+use crate::preview::configuration;
 use crate::schema::LOCATIONS;
 use crate::syntax::{Context, Outline};
 
 // External Uses
 use codeshaper::core::registry::Registry;
+use codeshaper::core::shaping::operation::{LocationMatches, Operation};
+use codeshaper::core::shaping::patch::Patch;
 
 
 pub fn hover(registry: &Registry, project: &Path, text: &str, offset: usize) -> Option<(String, Range<usize>)> {
@@ -28,8 +31,23 @@ pub fn hover(registry: &Registry, project: &Path, text: &str, offset: usize) -> 
     let backend = backend(registry, project, &outline)?;
     let description = match backend.describe_location(&literal.value) {
         Ok(description) => description,
-        Err(error) => format!("Not a {} location: {error}", backend.name())
+        Err(error) => return Some((format!("Not a {} location: {error}", backend.name()), literal.range))
     };
 
-    Some((description, literal.range))
+    let found = matches(registry, project, &outline, &literal.value).map(|matches| format!(
+        "\n\nMatches {} place(s) in {} of {} target file(s)", matches.places, matches.matched_files, matches.files
+    ));
+
+    Some((description + &found.unwrap_or_default(), literal.range))
+}
+
+fn matches(registry: &Registry, project: &Path, outline: &Outline, location: &str) -> Option<LocationMatches> {
+    let patch = Patch {
+        alias: outline.argument("alias").unwrap_or_default().to_string(),
+        file: outline.argument("file").unwrap_or_default().to_string(),
+        ..Patch::default()
+    };
+    let operation = Operation::from_file(&configuration(project).ok()?).ok()?;
+
+    operation.locate(registry, "", &patch, location).ok()
 }

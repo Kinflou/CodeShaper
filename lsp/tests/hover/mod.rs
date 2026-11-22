@@ -54,3 +54,14 @@ fn locations_are_described_by_the_backend() {
 fn other_values_have_no_hover() {
     assert_eq!(at("@[0]=", 1), None);
 }
+
+#[test]
+fn locations_count_matches_in_target_files() {
+    let (_directory, project) = crate::preview::operation();
+    let text = crate::preview::RENAME;
+    let offset = text.find("FunctionDefinition").unwrap() + 2;
+
+    let (hovered, _) = hover(&codeshaper::registry(), &project, text, offset).unwrap();
+
+    assert_eq!(hovered, "cpp: node kind `function_definition`\n\nMatches 2 place(s) in 2 of 2 target file(s)");
+}
