@@ -5,8 +5,14 @@ use std::ops::Range;
 
 // External Uses
 use codeshaper_core::ast::backend::LanguageBackend;
+use codeshaper_core::registry::Registry;
 use miette::{miette, bail, Result};
 use tree_sitter::{Language, Node, Parser, Query, QueryCursor, StreamingIterator, Tree};
+
+
+pub fn register(registry: &mut Registry) {
+    registry.add_backend(Box::new(TreeSitterBackend::cpp()), &["cpp", "cc", "cxx", "c", "h", "hpp", "inc"]);
+}
 
 
 pub struct TreeSitterBackend {

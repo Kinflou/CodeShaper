@@ -7,9 +7,10 @@ use std::rc::Rc;
 
 // External Uses
 use codeshaper_core::ast::backend::LanguageBackend;
+use codeshaper_core::registry::Registry;
 use codeshaper_core::shaping::patch::Patch;
 use codeshaper_core::shaping::patch::controller::PatchController;
-use codeshaper_nav_ast_treesitter::TreeSitterBackend;
+use codeshaper_nav_ast_treesitter::{register, TreeSitterBackend};
 
 
 const EXAMPLE: &str = "../../codeshaper-rs/examples/CPP14/Function Name Correction";
@@ -118,4 +119,15 @@ fn example_patches_load() {
 
         assert!(Patch::from_path(&path).is_ok(), "{} does not load", path.display());
     }
+}
+
+#[test]
+fn registers_cpp_extensions() {
+    let mut registry = Registry::default();
+    register(&mut registry);
+
+    assert_eq!(registry.backend("cpp").unwrap().name(), "cpp");
+    assert_eq!(registry.backend_for(Path::new("Module.cpp")).unwrap().name(), "cpp");
+    assert_eq!(registry.backend_for(Path::new("core/object/object.inc")).unwrap().name(), "cpp");
+    assert!(registry.backend_for(Path::new("player.gd")).is_none());
 }
