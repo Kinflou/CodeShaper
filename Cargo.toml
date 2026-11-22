@@ -5,8 +5,8 @@ members = [
     "codeshaper-rs",
     "tool-ui",
     "core",
-    "nav-ast-pest",
-    "nav-ast-treesitter"
+    "plugins/nav-ast-pest",
+    "plugins/nav-ast-treesitter"
 ]
 
 [profile.release]

@@ -12,7 +12,7 @@ use codeshaper_core::shaping::patch::controller::PatchController;
 use codeshaper_nav_ast_treesitter::TreeSitterBackend;
 
 
-const EXAMPLE: &str = "../codeshaper-rs/examples/CPP14/Function Name Correction";
+const EXAMPLE: &str = "../../codeshaper-rs/examples/CPP14/Function Name Correction";
 
 fn example_file(path: &str) -> String {
     fs::read_to_string(Path::new(EXAMPLE).join(path)).unwrap().replace("\r\n", "\n")
