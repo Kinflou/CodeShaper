@@ -2,24 +2,23 @@
 use std::path::Path;
 
 // Crate Uses
-use crate::projects::function_name_correction::OPERATION_CONFIGURATION_PATH;
+use crate::projects::function_name_correction::PROJECT_SETTINGS_PATH;
 
 // External Uses
-use codeshaper_core::shaping::operation::configuration::OperationConfiguration;
-use codeshaper_core::shaping::project::settings::ProjectSettings;
+use codeshaper_core::shaping::project::Project;
 
 
-#[allow(unused)]
 #[test]
 fn load_patches() {
-    let path = Path::new(OPERATION_CONFIGURATION_PATH);
-    let operation_configuration = OperationConfiguration::from_file(path)
-        .unwrap();
+    let project = Project::from_directory(Path::new(PROJECT_SETTINGS_PATH)).unwrap();
+    let names: Vec<&str> = project.patches.keys().map(String::as_str).collect();
 
-    let project_settings = ProjectSettings::from_path(
-        Path::new(&operation_configuration.project)
-    ).unwrap();
-
-    assert_eq!(project_settings.name, "Function Name Correction");
+    assert_eq!(names, vec![
+        "function_creation.kdl",
+        "function_name_correction.kdl",
+        "function_name_correction_cpp.kdl",
+        "function_return_creation.kdl"
+    ]);
+    assert!(project.patches["function_creation.kdl"].enabled);
+    assert!(!project.patches["function_name_correction.kdl"].enabled);
 }
-
