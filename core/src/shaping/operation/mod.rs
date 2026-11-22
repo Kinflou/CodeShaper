@@ -18,6 +18,7 @@ use crate::shaping::operation::report::Report;
 use crate::shaping::operation::session::Session;
 use crate::shaping::patch::Patch;
 use crate::shaping::patch::controller::PatchController;
+use crate::shaping::patch::validation::{validate, Severity};
 use crate::shaping::project::Project;
 use crate::target::File;
 
@@ -48,6 +49,7 @@ impl Operation {
 
     pub fn session<'a>(&'a self, registry: &'a Registry) -> Result<Session<'a>> {
         self.check_destinations()?;
+        self.check_patches(registry)?;
 
         let target = self.directory.join(&self.configuration.target);
         let solution = registry.load_target(&self.project.settings.target, &target)?;
@@ -67,6 +69,32 @@ impl Operation {
                 bail!("Operation '{}' creates new files but has no output directory", self.configuration.name),
             _ => Ok(())
         }
+    }
+
+    fn check_patches(&self, registry: &Registry) -> Result<()> {
+        let mut errors = vec![];
+
+        for (name, patch) in &self.project.patches {
+            if !patch.enabled { continue }
+
+            let backend = [patch.alias.as_str(), self.project.settings.ast_set.as_str()].into_iter()
+                .find(|name| !name.is_empty())
+                .map_or_else(|| registry.backend_for(Path::new(&patch.file)), |name| registry.backend(name));
+
+            for diagnostic in validate(patch, backend) {
+                if diagnostic.severity != Severity::Error { continue }
+
+                errors.push(miette!(
+                    "Patch {}: {} '{}': {}", name, diagnostic.action, diagnostic.field, diagnostic.message
+                ));
+            }
+        }
+
+        if !errors.is_empty() {
+            return Err(InvalidPatches { errors }.into());
+        }
+
+        Ok(())
     }
 
     fn matching_patches(&self, file: &File) -> Result<Vec<&String>> {
@@ -161,6 +189,26 @@ impl Display for RunFailed {
 impl std::error::Error for RunFailed {}
 
 impl Diagnostic for RunFailed {
+    fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
+        Some(Box::new(self.errors.iter().map(|error| error.as_ref() as &dyn Diagnostic)))
+    }
+}
+
+
+#[derive(Debug)]
+struct InvalidPatches {
+    errors: Vec<miette::Report>
+}
+
+impl Display for InvalidPatches {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} patch error(s) found, nothing was run", self.errors.len())
+    }
+}
+
+impl std::error::Error for InvalidPatches {}
+
+impl Diagnostic for InvalidPatches {
     fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
         Some(Box::new(self.errors.iter().map(|error| error.as_ref() as &dyn Diagnostic)))
     }

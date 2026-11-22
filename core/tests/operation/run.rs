@@ -1,7 +1,7 @@
 // Standard Uses
 
 // Crate Uses
-use crate::operation::{read, rename, report, run, workspace};
+use crate::operation::{patch, read, rename, report, run, workspace};
 
 // External Uses
 use codeshaper_core::shaping::operation::report::Outcome;
@@ -65,4 +65,47 @@ fn unregistered_alias_fails() {
     assert_eq!(related.len(), 2);
     assert!(related[0].contains("'cobol'"));
     assert_eq!(read(&directory, "target/a.txt"), "old one\nkeep\n");
+}
+
+#[test]
+fn invalid_patches_stop_the_run() {
+    let duplicate = patch("lines", "Line", r"old (\w+)", "new $[0]").replace("actions {", r#"actions {
+    builders {
+        builder "word" {
+            location "Line"
+            match r"(\w+)"
+            build "$[0]"
+        }
+        builder "word" {
+            location "Line"
+            match r"(\w+)"
+            build "$[0]"
+        }
+    }"#);
+    let directory = workspace("replace", &[("duplicate.kdl", duplicate), ("rename.kdl", rename("lines", "Line"))]);
+
+    let error = run(&directory).unwrap_err();
+    let related: Vec<String> = error.related().unwrap().map(|error| error.to_string()).collect();
+
+    assert!(error.to_string().contains("nothing was run"));
+    assert_eq!(related.len(), 1);
+    assert!(related[0].contains("Patch duplicate.kdl: word 'name': Action 'word' is already defined"));
+    assert_eq!(read(&directory, "target/a.txt"), "old one\nkeep\n");
+}
+
+#[test]
+fn warnings_do_not_stop_the_run() {
+    let unused = rename("lines", "Line").replace("actions {", r#"actions {
+    builders {
+        builder "unused" {
+            location "Line"
+            match r"(\w+)"
+            build "$[0]"
+        }
+    }"#);
+    let directory = workspace("replace", &[("rename.kdl", unused)]);
+
+    run(&directory).unwrap();
+
+    assert_eq!(read(&directory, "target/a.txt"), "new one\nkeep\n");
 }
