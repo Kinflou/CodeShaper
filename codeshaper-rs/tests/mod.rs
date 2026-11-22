@@ -152,3 +152,30 @@ fn godot_migration_runs_end_to_end() {
         assert_eq!(read(&example.join("target").join(name)), read(&original.join(name)));
     }
 }
+
+#[cfg(all(feature = "gdscript", feature = "godot"))]
+#[test]
+fn godot_migration_patches_validate() {
+    use codeshaper::core::shaping::patch::Patch;
+    use codeshaper::core::shaping::patch::validation::{validate, Severity};
+
+    let registry = registry();
+    let patches = Path::new("examples/Godot/Godot 3 to 4 Migration/shaping_project/patches");
+
+    for entry in fs::read_dir(patches).unwrap() {
+        let path = entry.unwrap().path();
+        let patch = Patch::from_path(&path).unwrap();
+
+        let backend = match patch.alias.as_str() {
+            "" => registry.backend_for(Path::new(&patch.file)),
+            alias => registry.backend(alias)
+        };
+
+        let errors: Vec<_> = validate(&patch, backend).into_iter()
+            .filter(|diagnostic| diagnostic.severity == Severity::Error)
+            .collect();
+
+        assert!(backend.is_some(), "{} has no backend", path.display());
+        assert!(errors.is_empty(), "{}: {errors:#?}", path.display());
+    }
+}

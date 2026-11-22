@@ -4,7 +4,6 @@ pub mod replacer;
 pub mod indexer;
 pub mod maker;
 pub mod composer;
-pub mod error;
 
 // Standard Uses
 

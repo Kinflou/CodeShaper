@@ -4,6 +4,7 @@ pub mod builder;
 pub mod replacer;
 pub mod maker;
 pub mod resolver;
+pub mod validation;
 
 // Standard Uses
 use std::fs;
@@ -64,19 +65,16 @@ impl Patch {
 
         match extension {
             "json5" => from_json5(content),
-            "kdl" => from_kdl(path.file_name().unwrap().to_str().unwrap(), content),
+            "kdl" => Self::from_kdl(path.file_name().unwrap().to_str().unwrap(), content),
             &_ => { bail!("Extension {} is not supported", extension) }
         }
+    }
+
+    pub fn from_kdl(filename: &str, content: &str) -> Result<Self> {
+        knuffel::parse::<Patch>(filename, content).map_err(miette::Report::new)
     }
 }
 
 fn from_json5(content: &str) -> Result<Patch> {
     json5::from_str(content).map_err(|err| miette!("{}", err))
-}
-
-fn from_kdl(filename: &str, content: &str) -> Result<Patch> {
-    match knuffel::parse::<Patch>(filename, content) {
-        Ok(patch) => Ok(patch),
-        Err(err) => Err(miette::Report::new(err))
-    }
 }

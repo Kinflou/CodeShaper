@@ -1,0 +1,172 @@
+// Standard Uses
+use std::ops::Range;
+
+// Crate Uses
+
+// External Uses
+use codeshaper_core::ast::backend::LanguageBackend;
+use codeshaper_core::shaping::patch::Patch;
+use codeshaper_core::shaping::patch::validation::{validate, Diagnostic, DiagnosticKind, Severity};
+use miette::{bail, Result};
+
+
+struct LineBackend;
+
+impl LanguageBackend for LineBackend {
+    fn name(&self) -> &str { "lines" }
+
+    fn locate(&self, _source: &str, _location: &str) -> Result<Vec<Range<usize>>> {
+        Ok(vec![])
+    }
+
+    fn check_location(&self, location: &str) -> Result<()> {
+        if location != "Line" {
+            bail!("'{location}' is not a lines location")
+        }
+
+        Ok(())
+    }
+}
+
+fn patch(actions: &str) -> Patch {
+    let content = format!("enabled true\nalias \"lines\"\nfile \"*.txt\"\n\nactions {{\n{actions}\n}}\n");
+
+    Patch::from_kdl("test.kdl", &content).unwrap()
+}
+
+fn check(actions: &str) -> Vec<Diagnostic> {
+    validate(&patch(actions), Some(&LineBackend))
+}
+
+fn kinds(diagnostics: &[Diagnostic]) -> Vec<(DiagnosticKind, &str, &str)> {
+    diagnostics.iter()
+        .map(|diagnostic| (diagnostic.kind, diagnostic.action.as_str(), diagnostic.field))
+        .collect()
+}
+
+fn replacer(location: &str, from: &str, to: &str) -> String {
+    format!(r#"replacers {{
+        replacer {{
+            location "{location}"
+            from r"{from}"
+            to "{to}"
+        }}
+    }}"#)
+}
+
+const NAMES_BUILDER: &str = r#"builders {
+        builder "names" {
+            location "Line"
+            match r"(\w+)"
+            build "$[0]"
+        }
+    }"#;
+
+
+#[test]
+fn clean_patch() {
+    let actions = format!("{NAMES_BUILDER}\n{}", replacer("Line", r"old (\w+)", "new $[0] #[names]"));
+
+    assert_eq!(check(&actions), vec![]);
+}
+
+#[test]
+fn incorrect_regex() {
+    let diagnostics = check(&replacer("Line", "old (", "new $[0]"));
+
+    assert_eq!(kinds(&diagnostics), vec![(DiagnosticKind::IncorrectRegex, "replacer #1", "from")]);
+    assert_eq!(diagnostics[0].severity, Severity::Error);
+}
+
+#[test]
+fn location_not_found() {
+    let actions = replacer("Missing", "old", "new");
+
+    assert_eq!(kinds(&check(&actions)), vec![(DiagnosticKind::LocationNotFound, "replacer #1", "location")]);
+    assert_eq!(validate(&patch(&actions), None), vec![]);
+}
+
+#[test]
+fn action_not_found() {
+    let diagnostics = check(&replacer("Line", "old", "#[nope]"));
+
+    assert_eq!(kinds(&diagnostics), vec![(DiagnosticKind::ActionNotFound, "replacer #1", "to")]);
+    assert!(diagnostics[0].message.contains("'nope'"));
+}
+
+#[test]
+fn locals_out_of_range_or_named() {
+    let diagnostics = check(&replacer("Line", r"old (\w+)", "$[1] $[name]"));
+
+    assert_eq!(kinds(&diagnostics), vec![
+        (DiagnosticKind::IncorrectArgs, "replacer #1", "to"),
+        (DiagnosticKind::IncorrectArgs, "replacer #1", "to"),
+    ]);
+    assert!(diagnostics[0].message.contains("needs 2 capture group(s), but the regex has 1"));
+}
+
+#[test]
+fn arguments_outside_makers_and_indexes() {
+    assert_eq!(
+        kinds(&check(&replacer("Line", "old", "@[0]"))),
+        vec![(DiagnosticKind::IncorrectArgs, "replacer #1", "to")]
+    );
+}
+
+#[test]
+fn makers_take_arguments_but_need_prepare_for_locals() {
+    let actions = format!(r#"makers {{
+        maker "wrap" {{
+            make "<@[0]>"
+        }}
+        maker "local" {{
+            make "$[0]"
+        }}
+    }}
+    {}"#, replacer("Line", r"old (\w+)", "#[wrap]($[0]) #[local]"));
+
+    assert_eq!(kinds(&check(&actions)), vec![(DiagnosticKind::IncorrectArgs, "local", "make")]);
+}
+
+#[test]
+fn duplicate_and_unused_actions() {
+    let actions = format!(r#"{NAMES_BUILDER}
+    {}"#, replacer("Line", "old", "new").replace("from", r#"actions {
+                builders {
+                    builder "names" {
+                        location "Line"
+                        match r"(\w+)"
+                        build "$[0]"
+                    }
+                }
+            }
+            from"#));
+
+    let diagnostics = check(&actions);
+
+    assert_eq!(kinds(&diagnostics), vec![
+        (DiagnosticKind::DuplicateAction, "replacer #1/names", "name"),
+        (DiagnosticKind::UnusedAction, "names", "name"),
+    ]);
+    assert_eq!(diagnostics[1].severity, Severity::Warning);
+}
+
+#[test]
+fn calls_pass_enough_arguments() {
+    let actions = format!(r#"{NAMES_BUILDER}
+    makers {{
+        maker "pair" {{
+            make "@[0]=@[1]"
+        }}
+    }}
+    {}"#, replacer("Line", r"old (\w+)", "#[pair]($[0], $[0]) #[pair]($[0]) #[names]($[0])"));
+
+    let diagnostics = check(&actions);
+
+    assert_eq!(kinds(&diagnostics), vec![
+        (DiagnosticKind::IncorrectArgs, "replacer #1", "to"),
+        (DiagnosticKind::IncorrectArgs, "replacer #1", "to"),
+    ]);
+    assert!(diagnostics[0].message.contains("'#[pair]' is called with 1 argument(s), but uses '@[1]'"));
+    assert!(diagnostics[1].message.contains("'#[names]' takes no arguments, but is called with 1"));
+}

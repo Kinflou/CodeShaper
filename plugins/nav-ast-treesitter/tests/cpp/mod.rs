@@ -10,6 +10,7 @@ use codeshaper_core::ast::backend::LanguageBackend;
 use codeshaper_core::registry::Registry;
 use codeshaper_core::shaping::patch::Patch;
 use codeshaper_core::shaping::patch::controller::PatchController;
+use codeshaper_core::shaping::patch::validation::{validate, Severity};
 use codeshaper_nav_ast_treesitter::{register, TreeSitterBackend};
 
 
@@ -142,4 +143,21 @@ fn check_locations() {
     assert!(backend.check_location("Body").is_err());
     assert!(backend.check_location("(function_definition)").is_err());
     assert!(backend.check_location("(function_definition").is_err());
+}
+
+#[test]
+fn example_patches_validate() {
+    let patches = Path::new(EXAMPLE).join("shaping_project/patches");
+    let backend = TreeSitterBackend::cpp();
+
+    for entry in fs::read_dir(patches).unwrap() {
+        let path = entry.unwrap().path();
+        let patch = Patch::from_path(&path).unwrap();
+
+        let errors: Vec<_> = validate(&patch, Some(&backend)).into_iter()
+            .filter(|diagnostic| diagnostic.severity == Severity::Error)
+            .collect();
+
+        assert!(errors.is_empty(), "{}: {errors:#?}", path.display());
+    }
 }
