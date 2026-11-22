@@ -1,10 +1,15 @@
 # CodeShaper for VS Code
 
-Highlighting, diagnostics and completion for CodeShaper patch files.
+Highlighting, diagnostics, completion and previews for CodeShaper patch files.
 
 Highlighting comes from a bundled KDL 1 grammar (see `syntaxes/NOTICE.md`) plus an injection that
-colours `#[…]`, `$[…]` and `@[…]` inside strings. Diagnostics and completion come from
-`codeshaper lsp`.
+colours `#[…]`, `$[…]` and `@[…]` inside strings. Diagnostics, completion, navigation and hover come
+from `codeshaper lsp`.
+
+Each patch gets a **Preview result** lens, a preview button in the editor's title bar, and
+*CodeShaper: Preview Patch Result* in the command palette. It runs that patch alone, as currently typed, on the original target files its `file`
+pattern matches, and opens a diff of the result. When several files would change, pick one first.
+The target is found through the operation configuration next to the shaping project.
 
 ## Setup
 

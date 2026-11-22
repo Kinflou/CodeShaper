@@ -5,6 +5,7 @@
   "version": "0.1.0",
   "publisher": "kinflou",
   "license": "MIT",
+  "icon": "images/icon.png",
   "repository": "https://github.com/Kinflou/CodeShaper",
   "engines": {
     "vscode": "^1.91.0"
@@ -43,6 +44,31 @@
         ]
       }
     ],
+    "commands": [
+      {
+        "command": "codeshaper.preview",
+        "title": "CodeShaper: Preview Patch Result",
+        "icon": {
+          "light": "images/preview-light.png",
+          "dark": "images/preview-dark.png"
+        }
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "codeshaper.preview",
+          "when": "resourceLangId == kdl && resourcePath =~ /[\\\\/]patches[\\\\/]/",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "codeshaper.preview",
+          "when": "editorLangId == kdl"
+        }
+      ]
+    },
     "configuration": {
       "title": "CodeShaper",
       "properties": {
