@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "cli",
     "codeshaper-rs",
     "tool-ui",
     "core",
@@ -11,6 +12,7 @@ members = [
 ]
 
 [workspace.dependencies]
+codeshaper = { path="codeshaper-rs/" }
 codeshaper-core = { path="core/" }
 codeshaper-nav-ast-treesitter = { path="plugins/nav-ast-treesitter/", default-features=false }
 codeshaper-target-godot = { path="plugins/target-godot/" }
