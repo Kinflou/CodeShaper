@@ -4,39 +4,38 @@ use std::collections::HashMap;
 // Crate Uses
 
 // External Uses
-use miette::Result;
-use knuffel::Decode;
+use knus::Decode;
 
 
 #[derive(Default, Clone, Debug, PartialEq)]
 #[derive(Decode)]
 pub struct Switch {
-    #[knuffel(argument)]
+    #[knus(argument)]
     pub name: String,
 
-    #[knuffel(child, unwrap(properties))]
+    #[knus(child, unwrap(properties))]
     pub cases: HashMap<String, String>,
 
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub index: String,
 
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub default: Option<String>
 }
 
 #[derive(Default, Clone, Debug, PartialEq)]
 #[derive(Decode)]
 pub struct List {
-    #[knuffel(argument)]
+    #[knus(argument)]
     pub name: String,
 
-    #[knuffel(child, unwrap(arguments))]
+    #[knus(child, unwrap(arguments))]
     pub values: Vec<String>,
 
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub index: Option<String>,
 
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub default: Option<String>
 }
 

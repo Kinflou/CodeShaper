@@ -20,6 +20,17 @@ fn load_patch_kdl() {
     pretty_assertions::assert_eq!(*EXPECTED_PATCH, patch);
 }
 
+#[test]
+fn invalid_patch_reports_labelled_error() {
+    let content = "enabled \"yes\"\nalias \"text\"\nfile \"test.txt\"\nactions {\n}\n";
+
+    let report = Patch::from_kdl("broken.kdl", content).unwrap_err();
+
+    assert!(report.source_code().is_some());
+    let mut related = report.related().unwrap();
+    assert!(related.any(|error| error.labels().is_some_and(|mut labels| labels.next().is_some())));
+}
+
 pub static EXPECTED_PATCH: LazyLock<Patch> = LazyLock::new(|| {
     Patch {
         enabled: true,

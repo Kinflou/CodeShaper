@@ -4,25 +4,25 @@
 use crate::shaping::patch::Actions;
 
 // External Uses
-use knuffel::Decode;
+use knus::Decode;
 
 
 #[derive(Default, Clone, Debug, PartialEq)]
 #[derive(Decode)]
 pub struct Replacer {
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub location: String,
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub from: String,
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub to: String,
-    #[knuffel(child, unwrap(argument), default)]
+    #[knus(child, unwrap(argument), default)]
     pub flags: String,
-    #[knuffel(child, unwrap(argument), default)]
+    #[knus(child, unwrap(argument), default)]
     pub reference_location: String,
-    #[knuffel(child, unwrap(argument), default)]
+    #[knus(child, unwrap(argument), default)]
     pub reference: String,
-    #[knuffel(child, default)]
+    #[knus(child, default)]
     pub actions: Actions
 }
 

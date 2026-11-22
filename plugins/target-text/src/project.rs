@@ -5,28 +5,28 @@ use std::path::Path;
 // Crate Uses
 
 // External Uses
-use miette::{Context, IntoDiagnostic, Result};
+use miette::{Context, IntoDiagnostic, Report, Result};
 
 
-#[derive(knuffel::Decode)]
+#[derive(knus::Decode)]
 pub struct Group {
-    #[knuffel(argument)]
+    #[knus(argument)]
     pub name: String,
-    #[knuffel(child, unwrap(arguments), default)]
+    #[knus(child, unwrap(arguments), default)]
     pub files: Vec<String>,
-    #[knuffel(child, unwrap(arguments), default)]
+    #[knus(child, unwrap(arguments), default)]
     pub include: Vec<String>,
-    #[knuffel(child, unwrap(arguments), default)]
+    #[knus(child, unwrap(arguments), default)]
     pub exclude: Vec<String>,
-    #[knuffel(children(name="group"))]
+    #[knus(children(name="group"))]
     pub groups: Vec<Group>
 }
 
-#[derive(knuffel::Decode)]
+#[derive(knus::Decode)]
 pub struct Project {
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub name: String,
-    #[knuffel(children(name="group"))]
+    #[knus(children(name="group"))]
     pub groups: Vec<Group>,
 }
 
@@ -43,5 +43,5 @@ impl Project {
 
 
 pub fn from_kdl(content: &str) -> Result<Project> {
-    knuffel::parse::<Project>("project.kdl", content).map_err(|error| miette::miette!("{error}"))
+    knus::parse::<Project>("project.kdl", content).map_err(Report::new)
 }

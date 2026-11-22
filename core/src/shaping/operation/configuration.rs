@@ -6,30 +6,30 @@ use std::path::Path;
 // Crate Uses
 
 // External Uses
-use miette::{bail, Context, IntoDiagnostic, Result};
+use miette::{bail, Context, IntoDiagnostic, Report, Result};
 
 
 #[derive(Debug, Clone, PartialEq)]
-#[derive(knuffel::Decode)]
+#[derive(knus::Decode)]
 pub struct OperationConfiguration {
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub name: String,
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub project: String,
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub target: String,
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub output: String,
 
-    #[knuffel(child, unwrap(argument), default)]
+    #[knus(child, unwrap(argument), default)]
     pub backup: String,
 
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub result: ResultOptions
 }
 
 #[derive(Debug, Clone, PartialEq)]
-#[derive(knuffel::DecodeScalar)]
+#[derive(knus::DecodeScalar)]
 pub enum ResultOptions {
     Replace,
     BackupAndReplace,
@@ -74,7 +74,7 @@ fn from_extension(content: &str, extension: &str) -> Result<OperationConfigurati
 }
 
 pub fn from_kdl(content: &str) -> Result<OperationConfiguration> {
-    knuffel::parse::<OperationConfiguration>("configuration.kdl", content)
-        .map_err(|error| miette::miette!("{error}"))
+    knus::parse::<OperationConfiguration>("configuration.kdl", content)
+        .map_err(Report::new)
 }
 

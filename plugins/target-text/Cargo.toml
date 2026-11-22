@@ -10,7 +10,7 @@ codeshaper-core.workspace=true
 
 # parsing
 glob = "0.3.0"
-knuffel = "3.2.0"
+knus.workspace=true
 
 # display
 miette.workspace=true

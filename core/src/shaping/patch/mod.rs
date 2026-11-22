@@ -16,40 +16,40 @@ use crate::shaping::patch::replacer::Replacer;
 use crate::shaping::patch::maker::Maker;
 
 // External Uses
-use miette::{miette, bail, IntoDiagnostic, Result};
+use miette::{bail, IntoDiagnostic, Report, Result};
 use crate::shaping::patch::resolver::{List, Switch};
 
 
 #[derive(Default, Clone, Debug, PartialEq)]
-#[derive(knuffel::Decode)]
+#[derive(knus::Decode)]
 pub struct Patch {
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub enabled: bool,
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub alias: String,
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub file: String,
-    #[knuffel(child)]
+    #[knus(child)]
     pub actions: Actions,
 }
 
 
 #[derive(Default, Clone, Debug, PartialEq)]
-#[derive(knuffel::Decode)]
+#[derive(knus::Decode)]
 pub struct Actions {
-    #[knuffel(child, unwrap(children(name="builder")))]
+    #[knus(child, unwrap(children(name="builder")))]
     pub builders: Option<Vec<Builder>>,
 
-    #[knuffel(child, unwrap(children(name="replacer")))]
+    #[knus(child, unwrap(children(name="replacer")))]
     pub replacers: Option<Vec<Replacer>>,
 
-    #[knuffel(child, unwrap(children(name="maker")))]
+    #[knus(child, unwrap(children(name="maker")))]
     pub makers: Option<Vec<Maker>>,
 
-    #[knuffel(child, unwrap(children(name="switch")))]
+    #[knus(child, unwrap(children(name="switch")))]
     pub switchers: Option<Vec<Switch>>,
 
-    #[knuffel(child, unwrap(children(name="list")))]
+    #[knus(child, unwrap(children(name="list")))]
     pub lists: Option<Vec<List>>,
 }
 
@@ -67,6 +67,6 @@ impl Patch {
     }
 
     pub fn from_kdl(filename: &str, content: &str) -> Result<Self> {
-        knuffel::parse::<Patch>(filename, content).map_err(|error| miette!("{error}"))
+        knus::parse::<Patch>(filename, content).map_err(Report::new)
     }
 }

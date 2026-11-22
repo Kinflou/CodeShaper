@@ -5,21 +5,21 @@ use std::path::Path;
 // Crate Uses
 
 // External Uses
-use miette::{miette, bail, Context, IntoDiagnostic, Result};
+use miette::{miette, bail, Context, IntoDiagnostic, Report, Result};
 use glob::glob;
-use knuffel::parse;
+use knus::parse;
 
 
 #[derive(Default, Debug, Clone, PartialEq)]
-#[derive(knuffel::Decode)]
+#[derive(knus::Decode)]
 pub struct ProjectSettings {
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub name: String,
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub target: String,
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub ast_set: String,
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub description: String
 }
 
@@ -58,6 +58,6 @@ fn from_extension(content: &str, extension: &str) -> Result<ProjectSettings> {
 
 fn from_kdl(content: &str) -> Result<ProjectSettings> {
     parse::<ProjectSettings>("settings.kdl", content)
-        .map_err(|error| miette::miette!("{error}"))
+        .map_err(Report::new)
 }
 

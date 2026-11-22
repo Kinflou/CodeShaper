@@ -4,27 +4,26 @@
 use crate::shaping::patch::Actions;
 
 // External Uses
-use miette::Result;
 
 
 #[derive(Default, Clone, Debug, PartialEq)]
-#[derive(knuffel::Decode)]
+#[derive(knus::Decode)]
 pub struct Builder {
-    #[knuffel(argument)]
+    #[knus(argument)]
     pub name: String,
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub location: String,
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub reference_location: Option<String>,
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub r#match: String,
-    #[knuffel(child, unwrap(argument))]
+    #[knus(child, unwrap(argument))]
     pub build: String,
-    #[knuffel(child, unwrap(argument), default)]
+    #[knus(child, unwrap(argument), default)]
     pub collect: bool,
-    #[knuffel(child, unwrap(argument), default)]
+    #[knus(child, unwrap(argument), default)]
     pub separator: String,
-    #[knuffel(child, default)]
+    #[knus(child, default)]
     pub actions: Actions,
 }
 
