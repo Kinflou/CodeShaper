@@ -10,8 +10,16 @@ use miette::{miette, bail, Result};
 use tree_sitter::{Language, Node, Parser, Query, QueryCursor, StreamingIterator, Tree};
 
 
+#[allow(unused_variables)]
 pub fn register(registry: &mut Registry) {
+    #[cfg(feature = "cpp")]
     registry.add_backend(Box::new(TreeSitterBackend::cpp()), &["cpp", "cc", "cxx", "c", "h", "hpp", "inc"]);
+
+    #[cfg(feature = "gdscript")]
+    registry.add_backend(Box::new(TreeSitterBackend::gdscript()), &["gd"]);
+
+    #[cfg(feature = "godot-resource")]
+    registry.add_backend(Box::new(TreeSitterBackend::godot_resource()), &["tscn", "tres", "godot"]);
 }
 
 
@@ -25,8 +33,19 @@ impl TreeSitterBackend {
         Self { name: name.to_string(), language }
     }
 
+    #[cfg(feature = "cpp")]
     pub fn cpp() -> Self {
         Self::new("cpp", tree_sitter_cpp::LANGUAGE.into())
+    }
+
+    #[cfg(feature = "gdscript")]
+    pub fn gdscript() -> Self {
+        Self::new("gdscript", tree_sitter_gdscript::LANGUAGE.into())
+    }
+
+    #[cfg(feature = "godot-resource")]
+    pub fn godot_resource() -> Self {
+        Self::new("godot_resource", tree_sitter_godot_resource::LANGUAGE.into())
     }
 
     fn parse(&self, source: &str) -> Result<Tree> {
