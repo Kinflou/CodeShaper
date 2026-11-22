@@ -1,8 +1,12 @@
 // Standard Uses
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 // Crate Uses
+use crate::completion::completion;
 use crate::diagnostics::diagnostics;
+use crate::document::{kind, DocumentKind};
+use crate::position::LineIndex;
 
 // External Uses
 use codeshaper::core::registry::Registry;
@@ -11,9 +15,10 @@ use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
     Notification as _, PublishDiagnostics
 };
+use lsp_types::request::{Completion, Request as _};
 use lsp_types::{
-    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DidSaveTextDocumentParams, PublishDiagnosticsParams, Uri
+    CompletionParams, CompletionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, Position, PublishDiagnosticsParams, Uri
 };
 use miette::{miette, IntoDiagnostic, Result};
 use url::Url;
@@ -48,10 +53,30 @@ impl<'c> Server<'c> {
     }
 
     fn request(&mut self, request: Request) -> Result<()> {
-        let message = format!("Unsupported request '{}'", request.method);
-        let response = Response::new_err(request.id, ErrorCode::MethodNotFound as i32, message);
+        let response = match request.method.as_str() {
+            Completion::METHOD => {
+                let params: CompletionParams = serde_json::from_value(request.params).into_diagnostic()?;
+                let position = params.text_document_position;
+                let items = self.patch_at(&position.text_document.uri, position.position)
+                    .map(|(project, text, offset)| completion(&self.registry, &project, text, offset))
+                    .unwrap_or_default();
+
+                Response::new_ok(request.id, CompletionResponse::Array(items))
+            }
+            method => {
+                let message = format!("Unsupported request '{method}'");
+                Response::new_err(request.id, ErrorCode::MethodNotFound as i32, message)
+            }
+        };
 
         self.connection.sender.send(response.into()).into_diagnostic()
+    }
+
+    fn patch_at(&self, uri: &Uri, position: Position) -> Option<(PathBuf, &str, usize)> {
+        let text = self.documents.get(uri)?;
+        let DocumentKind::Patch { project } = kind(&path(uri)?) else { return None };
+
+        Some((project, text.as_str(), LineIndex::new(text).offset(position)))
     }
 
     fn notification(&mut self, notification: Notification) -> Result<()> {
@@ -88,9 +113,7 @@ impl<'c> Server<'c> {
 
     fn publish(&self, uri: &Uri) -> Result<()> {
         let Some(text) = self.documents.get(uri) else { return Ok(()) };
-        let Some(path) = Url::parse(uri.as_str()).ok().and_then(|url| url.to_file_path().ok()) else {
-            return Ok(())
-        };
+        let Some(path) = path(uri) else { return Ok(()) };
 
         self.send(uri.clone(), diagnostics(&self.registry, &path, text))
     }
@@ -103,3 +126,7 @@ impl<'c> Server<'c> {
     }
 }
 
+
+fn path(uri: &Uri) -> Option<PathBuf> {
+    Url::parse(uri.as_str()).ok()?.to_file_path().ok()
+}

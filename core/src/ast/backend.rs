@@ -14,4 +14,8 @@ pub trait LanguageBackend {
     fn check_location(&self, _location: &str) -> Result<()> {
         Ok(())
     }
+
+    fn location_names(&self, _segment: usize) -> Vec<String> {
+        vec![]
+    }
 }

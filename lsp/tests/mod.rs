@@ -1,7 +1,9 @@
 // Relative Modules
+mod completion;
 mod diagnostics;
 mod position;
 mod protocol;
+mod syntax;
 
 // Standard Uses
 use std::fs;

@@ -1,52 +1,119 @@
 // Standard Uses
-use std::thread;
+use std::path::Path;
+use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 // Crate Uses
 use crate::{project, BROKEN};
 
 // External Uses
-use lsp_server::{Connection, Message, Notification, Request, RequestId};
+use lsp_server::{Connection, Message, Notification, Request, RequestId, Response};
 use lsp_types::notification::{DidOpenTextDocument, Exit, Initialized, Notification as _, PublishDiagnostics};
-use lsp_types::request::{Initialize, Request as _, Shutdown};
+use lsp_types::request::{Completion, Initialize, Request as _, Shutdown};
 use lsp_types::{
-    DidOpenTextDocumentParams, InitializeParams, InitializedParams, PublishDiagnosticsParams, TextDocumentItem, Uri
+    CompletionParams, CompletionResponse, DidOpenTextDocumentParams, InitializeParams, InitializedParams, Position,
+    PublishDiagnosticsParams, TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams, Uri
 };
 use url::Url;
 
 
-fn receive(client: &Connection) -> Message {
-    client.receiver.recv_timeout(Duration::from_secs(10)).unwrap()
+macro_rules! to_json {
+    ($value:expr) => { serde_json::to_value($value).unwrap() };
+}
+
+
+pub struct Client {
+    connection: Connection,
+    server: Option<JoinHandle<Result<(), String>>>,
+    next: i32
+}
+
+impl Client {
+    pub fn start() -> Self {
+        let (server, connection) = Connection::memory();
+        let handle = thread::spawn(move || codeshaper_lsp::serve(&server).map_err(|error| error.to_string()));
+        let mut client = Self { connection, server: Some(handle), next: 0 };
+
+        client.request(Initialize::METHOD, to_json!(InitializeParams::default()));
+        client.notify(Initialized::METHOD, to_json!(InitializedParams {}));
+        client
+    }
+
+    pub fn open(&self, path: &Path, text: &str) -> Uri {
+        let uri: Uri = Url::from_file_path(path).unwrap().as_str().parse().unwrap();
+        let document = TextDocumentItem::new(uri.clone(), "kdl".to_string(), 1, text.to_string());
+
+        self.notify(DidOpenTextDocument::METHOD, to_json!(DidOpenTextDocumentParams { text_document: document }));
+        uri
+    }
+
+    pub fn request(&mut self, method: &str, params: serde_json::Value) -> Response {
+        self.next += 1;
+        let id = RequestId::from(self.next);
+        self.connection.sender.send(Request::new(id.clone(), method.to_string(), params).into()).unwrap();
+
+        loop {
+            if let Message::Response(response) = self.receive() {
+                if response.id == id { return response }
+            }
+        }
+    }
+
+    pub fn notify(&self, method: &str, params: serde_json::Value) {
+        self.connection.sender.send(Notification::new(method.to_string(), params).into()).unwrap();
+    }
+
+    pub fn receive(&self) -> Message {
+        self.connection.receiver.recv_timeout(Duration::from_secs(10)).unwrap()
+    }
+
+    pub fn stop(mut self) {
+        self.request(Shutdown::METHOD, serde_json::Value::Null);
+        self.notify(Exit::METHOD, serde_json::Value::Null);
+
+        assert_eq!(self.server.take().unwrap().join().unwrap(), Ok(()));
+    }
+}
+
+pub fn at(uri: &Uri, position: Position) -> TextDocumentPositionParams {
+    TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri.clone()), position)
 }
 
 
 #[test]
 fn diagnostics_are_published_on_open() {
     let (_directory, project) = project(&[("broken.kdl", BROKEN)]);
-    let path = project.join("patches/broken.kdl");
-    let uri: Uri = Url::from_file_path(&path).unwrap().as_str().parse().unwrap();
+    let client = Client::start();
 
-    let (server, client) = Connection::memory();
-    let handle = thread::spawn(move || codeshaper_lsp::serve(&server).map_err(|error| error.to_string()));
+    let uri = client.open(&project.join("patches/broken.kdl"), BROKEN);
 
-    client.sender.send(Request::new(RequestId::from(1), Initialize::METHOD.to_string(), InitializeParams::default()).into()).unwrap();
-    assert!(matches!(receive(&client), Message::Response(response) if response.id == RequestId::from(1)));
-    client.sender.send(Notification::new(Initialized::METHOD.to_string(), InitializedParams {}).into()).unwrap();
-
-    let document = TextDocumentItem::new(uri.clone(), "kdl".to_string(), 1, BROKEN.to_string());
-    client.sender.send(Notification::new(
-        DidOpenTextDocument::METHOD.to_string(), DidOpenTextDocumentParams { text_document: document }
-    ).into()).unwrap();
-
-    let Message::Notification(published) = receive(&client) else { panic!("expected a notification") };
+    let Message::Notification(published) = client.receive() else { panic!("expected a notification") };
     assert_eq!(published.method, PublishDiagnostics::METHOD);
     let params: PublishDiagnosticsParams = serde_json::from_value(published.params).unwrap();
     assert_eq!(params.uri, uri);
     assert_eq!(params.diagnostics.len(), 3);
 
-    client.sender.send(Request::new(RequestId::from(2), Shutdown::METHOD.to_string(), ()).into()).unwrap();
-    assert!(matches!(receive(&client), Message::Response(response) if response.id == RequestId::from(2)));
-    client.sender.send(Notification::new(Exit::METHOD.to_string(), ()).into()).unwrap();
+    client.stop();
+}
 
-    assert_eq!(handle.join().unwrap(), Ok(()));
+#[test]
+fn completion_offers_fields() {
+    let (_directory, project) = project(&[("partial.kdl", "")]);
+    let mut client = Client::start();
+    let uri = client.open(&project.join("patches/partial.kdl"), "actions {\n    makers {\n        maker \"m\" {\n            ma\n");
+
+    let params = CompletionParams {
+        text_document_position: at(&uri, Position::new(3, 14)),
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+        context: None
+    };
+    let response = client.request(Completion::METHOD, to_json!(params));
+    let Some(CompletionResponse::Array(items)) = serde_json::from_value(response.response_result.unwrap()).unwrap() else {
+        panic!("expected completion items")
+    };
+
+    assert_eq!(items.iter().map(|item| item.label.as_str()).collect::<Vec<_>>(), vec!["prepare", "make"]);
+
+    client.stop();
 }

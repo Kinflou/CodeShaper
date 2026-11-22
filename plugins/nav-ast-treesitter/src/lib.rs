@@ -148,6 +148,25 @@ impl LanguageBackend for TreeSitterBackend {
 
         Ok(())
     }
+
+    fn location_names(&self, segment: usize) -> Vec<String> {
+        let mut names: Vec<String> = (0..self.language.node_kind_count() as u16)
+            .filter(|id| self.language.node_kind_is_named(*id) && self.language.node_kind_is_visible(*id))
+            .filter_map(|id| self.language.node_kind_for_id(id))
+            .filter(|kind| !kind.starts_with('_'))
+            .map(to_pascal_case)
+            .collect();
+
+        if segment > 0 {
+            names.extend((1..=self.language.field_count() as u16)
+                .filter_map(|id| self.language.field_name_for_id(id))
+                .map(to_pascal_case));
+        }
+
+        names.sort();
+        names.dedup();
+        names
+    }
 }
 
 
@@ -199,4 +218,13 @@ fn to_snake_case(name: &str) -> String {
     }
 
     snake
+}
+
+fn to_pascal_case(name: &str) -> String {
+    name.split('_')
+        .map(|word| {
+            let mut characters = word.chars();
+            characters.next().map(|first| first.to_uppercase().chain(characters).collect::<String>()).unwrap_or_default()
+        })
+        .collect()
 }

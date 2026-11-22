@@ -1,9 +1,8 @@
 // Standard Uses
-use std::fs;
 use std::path::Path;
 
 // Crate Uses
-use crate::document::{kind, DocumentKind};
+use crate::document::{ast_set, kind, DocumentKind};
 use crate::position::LineIndex;
 
 // External Uses
@@ -42,11 +41,7 @@ fn patch(registry: &Registry, project: &Path, path: &Path, text: &str, index: &L
         Err(report) => return parse_errors(&report, index)
     };
 
-    let ast_set = fs::read_to_string(project.join("settings.kdl")).ok()
-        .and_then(|content| settings::from_kdl(&content).ok())
-        .map(|settings| settings.ast_set)
-        .unwrap_or_default();
-    let backend = patch_backend(registry, &patch, &ast_set);
+    let backend = patch_backend(registry, &patch, &ast_set(project));
 
     validate_source(&patch, &source, backend).into_iter()
         .map(|diagnostic| {
