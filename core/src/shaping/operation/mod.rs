@@ -18,7 +18,7 @@ use crate::shaping::operation::report::Report;
 use crate::shaping::operation::session::Session;
 use crate::shaping::patch::Patch;
 use crate::shaping::patch::controller::PatchController;
-use crate::shaping::patch::validation::{validate, Severity};
+use crate::shaping::patch::validation::{validate, Diagnostic as PatchDiagnostic, DiagnosticKind, Severity};
 use crate::shaping::project::Project;
 use crate::target::File;
 
@@ -71,15 +71,46 @@ impl Operation {
         }
     }
 
+    pub fn check(&self, registry: &Registry) -> Result<Vec<(String, PatchDiagnostic)>> {
+        let ast_set = &self.project.settings.ast_set;
+        let mut found = vec![];
+
+        for (name, patch) in &self.project.patches {
+            let backend = patch_backend(registry, patch, ast_set);
+            found.extend(validate(patch, backend).into_iter().map(|diagnostic| (name.clone(), diagnostic)));
+        }
+
+        let target = self.directory.join(&self.configuration.target);
+        let solution = registry.load_target(&self.project.settings.target, &target)?;
+        let files = solution.files();
+
+        for (name, patch) in &self.project.patches {
+            if !patch.enabled { continue }
+
+            let diagnostic = match Pattern::new(&patch.file) {
+                Err(error) => PatchDiagnostic::new(
+                    DiagnosticKind::IncorrectFilePattern, "patch", "file", error.to_string()
+                ),
+                Ok(pattern) if !files.iter().any(|file| pattern.matches_path(&file.path)) => PatchDiagnostic::new(
+                    DiagnosticKind::FileNotMatched, "patch", "file",
+                    format!("'{}' matches no file in the target", patch.file)
+                ),
+                Ok(_) => continue
+            };
+
+            found.push((name.clone(), diagnostic));
+        }
+
+        Ok(found)
+    }
+
     fn check_patches(&self, registry: &Registry) -> Result<()> {
         let mut errors = vec![];
 
         for (name, patch) in &self.project.patches {
             if !patch.enabled { continue }
 
-            let backend = [patch.alias.as_str(), self.project.settings.ast_set.as_str()].into_iter()
-                .find(|name| !name.is_empty())
-                .map_or_else(|| registry.backend_for(Path::new(&patch.file)), |name| registry.backend(name));
+            let backend = patch_backend(registry, patch, &self.project.settings.ast_set);
 
             for diagnostic in validate(patch, backend) {
                 if diagnostic.severity != Severity::Error { continue }
@@ -155,6 +186,13 @@ impl Operation {
     }
 }
 
+
+pub fn patch_backend<'r>(registry: &'r Registry, patch: &Patch, ast_set: &str) -> Option<&'r dyn LanguageBackend> {
+    match [patch.alias.as_str(), ast_set].into_iter().find(|name| !name.is_empty()) {
+        Some(name) => registry.backend(name),
+        None => registry.backend_for(Path::new(&patch.file))
+    }
+}
 
 fn create_parent(path: &Path) -> Result<()> {
     if let Some(parent) = path.parent() {

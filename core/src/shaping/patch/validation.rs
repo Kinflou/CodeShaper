@@ -25,7 +25,9 @@ pub enum DiagnosticKind {
     IncorrectArgs,
     IncorrectExpression,
     DuplicateAction,
-    UnusedAction
+    UnusedAction,
+    IncorrectFilePattern,
+    FileNotMatched
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,6 +37,17 @@ pub struct Diagnostic {
     pub message: String,
     pub action: String,
     pub field: &'static str
+}
+
+impl Diagnostic {
+    pub fn new(kind: DiagnosticKind, action: &str, field: &'static str, message: String) -> Self {
+        let severity = match kind {
+            DiagnosticKind::UnusedAction | DiagnosticKind::FileNotMatched => Severity::Warning,
+            _ => Severity::Error
+        };
+
+        Self { kind, severity, message, action: action.to_string(), field }
+    }
 }
 
 
@@ -70,7 +83,7 @@ pub fn validate(patch: &Patch, backend: Option<&dyn LanguageBackend>) -> Vec<Dia
 
     let mut diagnostics = validator.diagnostics.clone();
     for (name, path) in unused {
-        diagnostics.push(diagnostic(
+        diagnostics.push(Diagnostic::new(
             DiagnosticKind::UnusedAction, path, "name", format!("Action '{name}' is never used")
         ));
     }
@@ -79,14 +92,6 @@ pub fn validate(patch: &Patch, backend: Option<&dyn LanguageBackend>) -> Vec<Dia
 }
 
 
-fn diagnostic(kind: DiagnosticKind, action: &str, field: &'static str, message: String) -> Diagnostic {
-    let severity = match kind {
-        DiagnosticKind::UnusedAction => Severity::Warning,
-        _ => Severity::Error
-    };
-
-    Diagnostic { kind, severity, message, action: action.to_string(), field }
-}
 
 fn join(parent: &str, action: &str) -> String {
     if parent.is_empty() { action.to_string() } else { format!("{parent}/{action}") }
@@ -112,7 +117,7 @@ struct Validator<'a> {
 
 impl Validator<'_> {
     fn report(&mut self, kind: DiagnosticKind, action: &str, field: &'static str, message: String) {
-        self.diagnostics.push(diagnostic(kind, action, field, message));
+        self.diagnostics.push(Diagnostic::new(kind, action, field, message));
     }
 
     fn actions(&mut self, actions: &Actions, parent: &str) {

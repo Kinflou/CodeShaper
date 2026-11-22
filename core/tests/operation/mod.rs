@@ -1,5 +1,6 @@
 // Relative Modules
 mod actions;
+mod check;
 mod run;
 mod session;
 

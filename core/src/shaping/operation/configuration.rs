@@ -43,11 +43,10 @@ pub enum ResultOptions {
 impl OperationConfiguration {
 
     pub fn from_file(path: &Path) -> Result<OperationConfiguration> {
-        let extension = path.extension().unwrap().to_str().unwrap();
+        let extension = path.extension().and_then(|extension| extension.to_str()).unwrap_or_default();
         let content = fs::read_to_string(path)
             .into_diagnostic()
-            .context("Could not load operation configuration")
-            .unwrap();
+            .wrap_err_with(|| format!("Could not load operation configuration {}", path.display()))?;
 
         from_extension(content.as_str(), extension)
     }
@@ -75,7 +74,7 @@ fn from_extension(content: &str, extension: &str) -> Result<OperationConfigurati
     match extension {
         "json5" => from_json5(content),
         "kdl" => from_kdl(content),
-        &_ => { bail!("") }
+        &_ => { bail!("Operation configuration extension '{}' is not supported", extension) }
     }
 }
 
