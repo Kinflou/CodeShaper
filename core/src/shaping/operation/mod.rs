@@ -15,7 +15,7 @@ use crate::ast::backend::LanguageBackend;
 use crate::registry::Registry;
 use crate::shaping::operation::configuration::{OperationConfiguration, ResultOptions};
 use crate::shaping::operation::report::Report;
-use crate::shaping::operation::session::Session;
+use crate::shaping::operation::session::{Change, Session};
 use crate::shaping::patch::Patch;
 use crate::shaping::patch::controller::PatchController;
 use crate::shaping::patch::validation::{validate_source, Diagnostic as PatchDiagnostic, DiagnosticKind, Severity};
@@ -132,17 +132,39 @@ impl Operation {
         Ok(())
     }
 
+    pub fn preview(&self, registry: &Registry, name: &str, patch: &Patch) -> Result<Vec<Change>> {
+        let pattern = file_pattern(name, patch)?;
+        let target = self.directory.join(&self.configuration.target);
+        let solution = registry.load_target(&self.project.settings.target, &target)?;
+
+        let changes = solution.files().into_iter()
+            .filter(|file| pattern.matches_path(&file.path))
+            .map(|file| {
+                let path = solution.directory.join(&file.path);
+                let before = fs::read_to_string(&path)
+                    .into_diagnostic()
+                    .wrap_err_with(|| format!("Could not read {}", path.display()));
+
+                match before {
+                    Ok(before) => {
+                        let result = self.apply_patch(registry, name, patch, file, &before);
+                        Change { file: file.path.clone(), patch: name.to_string(), before, result }
+                    }
+                    Err(error) => Change { file: file.path.clone(), patch: name.to_string(), before: String::new(), result: Err(error) }
+                }
+            })
+            .collect();
+
+        Ok(changes)
+    }
+
     fn matching_patches(&self, file: &File) -> Result<Vec<&String>> {
         let mut matching = vec![];
 
         for (name, patch) in &self.project.patches {
             if !patch.enabled { continue }
 
-            let pattern = Pattern::new(&patch.file)
-                .into_diagnostic()
-                .wrap_err_with(|| format!("Patch {} has an invalid file pattern '{}'", name, patch.file))?;
-
-            if pattern.matches_path(&file.path) {
+            if file_pattern(name, patch)?.matches_path(&file.path) {
                 matching.push(name);
             }
         }
@@ -150,9 +172,7 @@ impl Operation {
         Ok(matching)
     }
 
-    fn apply_patch(&self, registry: &Registry, name: &str, file: &File, source: &str) -> Result<String> {
-        let patch = &self.project.patches[name];
-
+    fn apply_patch(&self, registry: &Registry, name: &str, patch: &Patch, file: &File, source: &str) -> Result<String> {
         self.backend(registry, patch, file)
             .and_then(|backend| PatchController::with(Rc::new(patch.clone())).apply(backend, source))
             .wrap_err_with(|| format!("Patch {} could not shape {}", name, file.path.display()))
@@ -196,6 +216,12 @@ pub fn patch_backend<'r>(registry: &'r Registry, patch: &Patch, ast_set: &str) -
         Some(name) => registry.backend(name),
         None => registry.backend_for(Path::new(&patch.file))
     }
+}
+
+fn file_pattern(name: &str, patch: &Patch) -> Result<Pattern> {
+    Pattern::new(&patch.file)
+        .into_diagnostic()
+        .wrap_err_with(|| format!("Patch {} has an invalid file pattern '{}'", name, patch.file))
 }
 
 fn create_parent(path: &Path) -> Result<()> {

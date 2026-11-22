@@ -229,7 +229,7 @@ impl<'a> Session<'a> {
 
         let (before, result) = match before {
             Ok(before) => {
-                let result = self.operation.apply_patch(self.registry, &patch, file, &before);
+                let result = self.operation.apply_patch(self.registry, &patch, &self.operation.project.patches[&patch], file, &before);
                 (before, result)
             }
             Err(error) => (String::new(), Err(error))

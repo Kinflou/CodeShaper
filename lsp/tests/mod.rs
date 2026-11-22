@@ -4,6 +4,7 @@ mod diagnostics;
 mod hover;
 mod navigation;
 mod position;
+mod preview;
 mod protocol;
 mod syntax;
 mod tokens;

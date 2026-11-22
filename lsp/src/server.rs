@@ -9,6 +9,7 @@ use crate::document::{kind, DocumentKind};
 use crate::hover::hover;
 use crate::navigation::{definition, references};
 use crate::position::LineIndex;
+use crate::preview::preview;
 use crate::syntax::Outline;
 use crate::tokens::tokens;
 
@@ -19,15 +20,22 @@ use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
     Notification as _, PublishDiagnostics
 };
-use lsp_types::request::{Completion, GotoDefinition, HoverRequest, References, Request as _, SemanticTokensFullRequest};
+use lsp_types::request::{
+    CodeLensRequest, Completion, GotoDefinition, HoverRequest, References, Request as _, SemanticTokensFullRequest
+};
 use lsp_types::{
-    CompletionParams, CompletionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
+    CodeLens, CodeLensParams, Command, CompletionParams, CompletionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, Hover,
     HoverContents, HoverParams, Location, MarkupContent, MarkupKind, Position, PublishDiagnosticsParams,
-    ReferenceParams, SemanticTokens, SemanticTokensParams, SemanticTokensResult, Uri
+    Range, ReferenceParams, SemanticTokens, SemanticTokensParams, SemanticTokensResult, Uri
 };
+use serde_json::json;
 use miette::{miette, IntoDiagnostic, Result};
 use url::Url;
+
+
+const PREVIEW_COMMAND: &str = "codeshaper.preview";
+const PREVIEW_REQUEST: &str = "codeshaper/preview";
 
 
 pub struct Server<'c> {
@@ -109,6 +117,20 @@ impl<'c> Server<'c> {
 
                 Response::new_ok(request.id, found)
             }
+            CodeLensRequest::METHOD => {
+                let params: CodeLensParams = serde_json::from_value(request.params).into_diagnostic()?;
+                let uri = params.text_document.uri;
+                let lenses: Vec<CodeLens> = self.patch_at(&uri, Position::default()).map(|_| CodeLens {
+                    range: Range::default(),
+                    command: Some(Command::new(
+                        "Preview result".to_string(), PREVIEW_COMMAND.to_string(), Some(vec![json!(uri.as_str())])
+                    )),
+                    data: None
+                }).into_iter().collect();
+
+                Response::new_ok(request.id, lenses)
+            }
+            PREVIEW_REQUEST => self.preview(request),
             SemanticTokensFullRequest::METHOD => {
                 let params: SemanticTokensParams = serde_json::from_value(request.params).into_diagnostic()?;
                 let data = self.documents.get(&params.text_document.uri).map(|text| tokens(text)).unwrap_or_default();
@@ -122,6 +144,40 @@ impl<'c> Server<'c> {
         };
 
         self.connection.sender.send(response.into()).into_diagnostic()
+    }
+
+    fn preview(&self, request: Request) -> Response {
+        let uri = request.params.get("uri").and_then(|uri| uri.as_str()?.parse::<Uri>().ok());
+        let Some((uri, (project, text, _))) = uri.and_then(|uri| Some((uri.clone(), self.patch_at(&uri, Position::default())?))) else {
+            return Response::new_err(request.id, ErrorCode::InvalidParams as i32, "Not an open patch document".to_string())
+        };
+        let name = path(&uri).and_then(|path| Some(path.file_name()?.to_string_lossy().to_string())).unwrap_or_default();
+
+        let (target, changes) = match preview(&self.registry, &project, &name, text) {
+            Ok(previewed) => previewed,
+            Err(error) => return Response::new_err(request.id, ErrorCode::RequestFailed as i32, message(&error))
+        };
+
+        let matched = changes.len();
+        let mut files = vec![];
+        let mut errors = vec![];
+
+        for change in changes {
+            let path = change.file.display().to_string();
+
+            match change.result {
+                Ok(result) if result != change.before => files.push(json!({
+                    "uri": Url::from_file_path(target.join(&change.file)).map(|url| url.to_string()).unwrap_or_default(),
+                    "path": path,
+                    "before": change.before,
+                    "result": result
+                })),
+                Ok(_) => {}
+                Err(error) => errors.push(json!({ "path": path, "message": message(&error) }))
+            }
+        }
+
+        Response::new_ok(request.id, json!({ "matched": matched, "files": files, "errors": errors }))
     }
 
     fn patch_at(&self, uri: &Uri, position: Position) -> Option<(PathBuf, &str, usize)> {
@@ -181,4 +237,8 @@ impl<'c> Server<'c> {
 
 fn path(uri: &Uri) -> Option<PathBuf> {
     Url::parse(uri.as_str()).ok()?.to_file_path().ok()
+}
+
+fn message(error: &miette::Report) -> String {
+    error.chain().map(|cause| cause.to_string()).collect::<Vec<_>>().join(": ")
 }

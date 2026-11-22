@@ -5,6 +5,7 @@ pub mod document;
 pub mod hover;
 pub mod navigation;
 pub mod position;
+pub mod preview;
 pub mod schema;
 pub mod server;
 pub mod syntax;
@@ -19,7 +20,7 @@ use crate::tokens::LEGEND;
 // External Uses
 use lsp_server::Connection;
 use lsp_types::{
-    CompletionOptions, HoverProviderCapability, OneOf, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
+    CodeLensOptions, CompletionOptions, HoverProviderCapability, OneOf, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
     SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind
 };
 use miette::{miette, IntoDiagnostic, Result};
@@ -33,6 +34,7 @@ pub fn capabilities() -> ServerCapabilities {
             ..CompletionOptions::default()
         }),
         hover_provider: Some(HoverProviderCapability::Simple(true)),
+        code_lens_provider: Some(CodeLensOptions { resolve_provider: Some(false) }),
         definition_provider: Some(OneOf::Left(true)),
         references_provider: Some(OneOf::Left(true)),
         semantic_tokens_provider: Some(SemanticTokensServerCapabilities::SemanticTokensOptions(SemanticTokensOptions {

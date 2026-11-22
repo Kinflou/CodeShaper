@@ -4,14 +4,15 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 // Crate Uses
+use crate::preview::{operation, RENAME};
 use crate::{project, BROKEN};
 
 // External Uses
 use lsp_server::{Connection, Message, Notification, Request, RequestId, Response};
 use lsp_types::notification::{DidOpenTextDocument, Exit, Initialized, Notification as _, PublishDiagnostics};
-use lsp_types::request::{Completion, GotoDefinition, HoverRequest, Initialize, References, Request as _, SemanticTokensFullRequest, Shutdown};
+use lsp_types::request::{CodeLensRequest, Completion, GotoDefinition, HoverRequest, Initialize, References, Request as _, SemanticTokensFullRequest, Shutdown};
 use lsp_types::{
-    CompletionParams, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams, Location, ReferenceContext, ReferenceParams, CompletionResponse, DidOpenTextDocumentParams, InitializeParams, InitializedParams, Position,
+    CodeLens, CodeLensParams, CompletionParams, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams, Location, ReferenceContext, ReferenceParams, CompletionResponse, DidOpenTextDocumentParams, InitializeParams, InitializedParams, Position,
     PublishDiagnosticsParams, SemanticTokensParams, SemanticTokensResult, TextDocumentIdentifier, TextDocumentItem,
     TextDocumentPositionParams, Uri
 };
@@ -193,6 +194,37 @@ fn hover_describes_locations() {
 
     assert_eq!(markup.value, "cpp: node kind `function_definition`");
     assert_eq!(range.map(|range| (range.start, range.end)), Some((Position::new(4, 21), Position::new(4, 41))));
+
+    client.stop();
+}
+
+#[test]
+fn preview_lens_and_request() {
+    let (_directory, project) = operation();
+    let mut client = Client::start();
+    let uri = client.open(&project.join("patches/rename.kdl"), RENAME);
+
+    let params = CodeLensParams {
+        text_document: TextDocumentIdentifier::new(uri.clone()),
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default()
+    };
+    let response = client.request(CodeLensRequest::METHOD, to_json!(params));
+    let lenses: Vec<CodeLens> = serde_json::from_value(response.response_result.unwrap()).unwrap();
+    let command = lenses[0].command.clone().unwrap();
+    assert_eq!((command.title.as_str(), command.command.as_str()), ("Preview result", "codeshaper.preview"));
+    assert_eq!(command.arguments, Some(vec![serde_json::json!(uri.as_str())]));
+
+    let response = client.request("codeshaper/preview", serde_json::json!({ "uri": uri.as_str() }));
+    let result = response.response_result.unwrap();
+    assert_eq!(result["matched"], 2);
+    assert_eq!(result["files"].as_array().unwrap().len(), 1);
+    assert_eq!(result["files"][0]["path"], "a.cpp");
+    assert_eq!(result["files"][0]["result"], "void new() {}\n");
+    assert!(result["files"][0]["uri"].as_str().unwrap().ends_with("/target/a.cpp"));
+
+    let response = client.request("codeshaper/preview", serde_json::json!({ "uri": "file:///nowhere/rename.kdl" }));
+    assert!(response.response_result.is_err());
 
     client.stop();
 }
