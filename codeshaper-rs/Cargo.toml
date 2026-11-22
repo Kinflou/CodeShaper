@@ -18,3 +18,15 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 
 [dependencies]
+# local
+codeshaper-core.workspace=true
+
+# plugins
+codeshaper-nav-ast-treesitter = { workspace=true, optional=true }
+codeshaper-target-text = { workspace=true, optional=true }
+
+
+[features]
+default = ["cpp", "text"]
+cpp = ["dep:codeshaper-nav-ast-treesitter"]
+text = ["dep:codeshaper-target-text"]

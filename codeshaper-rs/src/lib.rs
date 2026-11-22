@@ -10,3 +10,25 @@ html_favicon_url =
 
 
 // Relative Modules
+
+// Standard Uses
+
+// Crate Uses
+
+// External Uses
+pub use codeshaper_core as core;
+pub use codeshaper_core::registry::Registry;
+
+
+pub fn registry() -> Registry {
+    #[allow(unused_mut)]
+    let mut registry = Registry::default();
+
+    #[cfg(feature = "cpp")]
+    codeshaper_nav_ast_treesitter::register(&mut registry);
+
+    #[cfg(feature = "text")]
+    codeshaper_target_text::register(&mut registry);
+
+    registry
+}

@@ -12,6 +12,8 @@ members = [
 
 [workspace.dependencies]
 codeshaper-core = { path="core/" }
+codeshaper-nav-ast-treesitter = { path="plugins/nav-ast-treesitter/" }
+codeshaper-target-text = { path="plugins/target-text/" }
 
 [profile.release]
 opt-level = 2
