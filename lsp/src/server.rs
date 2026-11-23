@@ -7,9 +7,10 @@ use crate::completion::completion;
 use crate::diagnostics::{coverage, diagnostics};
 use crate::document::{kind, DocumentKind};
 use crate::hover::hover;
-use crate::navigation::{definition, references};
+use crate::navigation::{definition, references, rename, symbol_at};
 use crate::position::LineIndex;
 use crate::preview::{preview, replacement_counts};
+use crate::symbols::{folding, symbols};
 use crate::syntax::Outline;
 use crate::tokens::tokens;
 use crate::trace::{Limits, Traces};
@@ -22,13 +23,16 @@ use lsp_types::notification::{
     Notification as _, PublishDiagnostics
 };
 use lsp_types::request::{
-    CodeLensRefresh, CodeLensRequest, Completion, GotoDefinition, HoverRequest, References, Request as _, SemanticTokensFullRequest
+    CodeLensRefresh, CodeLensRequest, Completion, DocumentSymbolRequest, FoldingRangeRequest, GotoDefinition, HoverRequest,
+    PrepareRenameRequest, References, Rename, Request as _, SemanticTokensFullRequest
 };
 use lsp_types::{
     CodeLens, CodeLensParams, Command, CompletionParams, CompletionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, Hover,
     HoverContents, HoverParams, Location, MarkupContent, MarkupKind, Position, PublishDiagnosticsParams,
-    Range, ReferenceParams, SemanticTokens, SemanticTokensParams, SemanticTokensResult, Uri
+    Range, ReferenceParams, SemanticTokens, SemanticTokensParams, SemanticTokensResult, Uri,
+    DocumentSymbolParams, DocumentSymbolResponse, FoldingRangeParams, PrepareRenameResponse, RenameParams,
+    TextDocumentPositionParams, TextEdit, WorkspaceEdit
 };
 use serde_json::json;
 use miette::{miette, IntoDiagnostic, Result};
@@ -134,6 +138,42 @@ impl<'c> Server<'c> {
                         .map(|range| Location::new(uri.clone(), index.range(range)))
                         .collect()
                 }).unwrap_or_default();
+
+                Response::new_ok(request.id, found)
+            }
+            PrepareRenameRequest::METHOD => {
+                let params: TextDocumentPositionParams = serde_json::from_value(request.params).into_diagnostic()?;
+                let found = self.documents.get(&params.text_document.uri).and_then(|text| {
+                    let index = LineIndex::new(text);
+                    let symbol = symbol_at(&Outline::parse(text), text, index.offset(params.position))?;
+                    Some(PrepareRenameResponse::Range(index.range(symbol.range)))
+                });
+
+                Response::new_ok(request.id, found)
+            }
+            Rename::METHOD => {
+                let params: RenameParams = serde_json::from_value(request.params).into_diagnostic()?;
+                let position = params.text_document_position;
+                let uri = position.text_document.uri;
+                let found = self.documents.get(&uri).and_then(|text| {
+                    let index = LineIndex::new(text);
+                    let ranges = rename(&Outline::parse(text), text, index.offset(position.position), &params.new_name)?;
+                    let edits = ranges.into_iter().map(|range| TextEdit::new(index.range(range), params.new_name.clone())).collect();
+
+                    Some(WorkspaceEdit::new(HashMap::from([(uri.clone(), edits)])))
+                });
+
+                Response::new_ok(request.id, found)
+            }
+            DocumentSymbolRequest::METHOD => {
+                let params: DocumentSymbolParams = serde_json::from_value(request.params).into_diagnostic()?;
+                let found = self.documents.get(&params.text_document.uri).map(|text| DocumentSymbolResponse::Nested(symbols(text)));
+
+                Response::new_ok(request.id, found)
+            }
+            FoldingRangeRequest::METHOD => {
+                let params: FoldingRangeParams = serde_json::from_value(request.params).into_diagnostic()?;
+                let found = self.documents.get(&params.text_document.uri).map(|text| folding(text));
 
                 Response::new_ok(request.id, found)
             }

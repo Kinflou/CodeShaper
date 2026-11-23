@@ -3,8 +3,9 @@ use std::path::Path;
 
 // Crate Uses
 use crate::document::ast_set;
-use crate::schema::{self, LOCATIONS};
+use crate::schema::{self, regex_field, LOCATIONS};
 use crate::syntax::{Context, Outline};
+use crate::trace::groups;
 
 // External Uses
 use codeshaper::core::ast::backend::LanguageBackend;
@@ -29,6 +30,16 @@ pub fn completion(registry: &Registry, project: &Path, text: &str, offset: usize
             if before.rfind("#[").is_some_and(|open| !before[open..].contains(']')) {
                 return outline.actions()
                     .map(|(node, name)| item(&name.value, CompletionItemKind::FUNCTION, Some(&node.name)))
+                    .collect()
+            }
+
+            if before.rfind("$[").is_some_and(|open| !before[open..].contains(']')) {
+                let action = outline.nodes[node].parent.map(|action| outline.nodes[action].name.as_str());
+                let Some(field) = action.and_then(regex_field) else { return vec![] };
+                let pattern = outline.nodes[node].parent.and_then(|action| outline.field(action, field));
+
+                return groups(pattern.map(|literal| literal.value.as_str()).unwrap_or_default()).iter().enumerate()
+                    .map(|(index, group)| item(&index.to_string(), CompletionItemKind::VARIABLE, Some(group)))
                     .collect()
             }
 

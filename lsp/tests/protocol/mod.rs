@@ -11,9 +11,9 @@ use crate::{project, BROKEN};
 // External Uses
 use lsp_server::{Connection, Message, Notification, Request, RequestId, Response};
 use lsp_types::notification::{DidChangeTextDocument, DidOpenTextDocument, DidSaveTextDocument, Exit, Initialized, Notification as _, PublishDiagnostics};
-use lsp_types::request::{CodeLensRefresh, CodeLensRequest, Completion, GotoDefinition, HoverRequest, Initialize, References, Request as _, SemanticTokensFullRequest, Shutdown};
+use lsp_types::request::{CodeLensRefresh, CodeLensRequest, PrepareRenameRequest, Rename, Completion, GotoDefinition, HoverRequest, Initialize, References, Request as _, SemanticTokensFullRequest, Shutdown};
 use lsp_types::{
-    CodeLens, CodeLensParams, CodeLensWorkspaceClientCapabilities, WorkspaceClientCapabilities, CompletionParams, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams, Location, NumberOrString, ReferenceContext, ReferenceParams, CompletionResponse, DidOpenTextDocumentParams, InitializeParams, InitializedParams, Position,
+    CodeLens, CodeLensParams, PrepareRenameResponse, RenameParams, WorkspaceEdit, CodeLensWorkspaceClientCapabilities, WorkspaceClientCapabilities, CompletionParams, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams, Location, NumberOrString, ReferenceContext, ReferenceParams, CompletionResponse, DidOpenTextDocumentParams, InitializeParams, InitializedParams, Position,
     DidChangeTextDocumentParams, DidSaveTextDocumentParams, PublishDiagnosticsParams, SemanticTokensParams,
     TextDocumentContentChangeEvent, VersionedTextDocumentIdentifier, SemanticTokensResult, TextDocumentIdentifier, TextDocumentItem,
     TextDocumentPositionParams, Uri
@@ -233,6 +233,34 @@ fn definition_and_references_of_actions() {
     assert_eq!(locations.iter().map(|location| location.range.start).collect::<Vec<_>>(), vec![
         Position::new(8, 18), Position::new(8, 26)
     ]);
+
+    client.stop();
+}
+
+#[test]
+fn rename_edits_every_use() {
+    let text = "actions {\n    makers {\n        maker \"pair\" {\n            make \"x\"\n        }\n    }\n    replacers {\n        replacer {\n            to \"#[pair] #[pair]\"\n        }\n    }\n}\n";
+    let (_directory, project) = project(&[("rename.kdl", "")]);
+    let mut client = Client::start();
+    let uri = client.open(&project.join("patches/rename.kdl"), text);
+
+    let response = client.request(PrepareRenameRequest::METHOD, to_json!(at(&uri, Position::new(8, 19))));
+    let Some(PrepareRenameResponse::Range(range)) = serde_json::from_value(response.response_result.unwrap()).unwrap() else {
+        panic!("expected a rename range")
+    };
+    assert_eq!((range.start, range.end), (Position::new(8, 18), Position::new(8, 22)));
+
+    let params = RenameParams {
+        text_document_position: at(&uri, Position::new(2, 16)),
+        new_name: "couple".to_string(),
+        work_done_progress_params: Default::default()
+    };
+    let response = client.request(Rename::METHOD, to_json!(params));
+    let edit: WorkspaceEdit = serde_json::from_value(response.response_result.unwrap()).unwrap();
+    let edits = &edit.changes.unwrap()[&uri];
+
+    assert_eq!(edits.len(), 3);
+    assert!(edits.iter().all(|edit| edit.new_text == "couple"));
 
     client.stop();
 }

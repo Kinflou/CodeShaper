@@ -3,7 +3,7 @@
 // Crate Uses
 
 // External Uses
-use codeshaper_lsp::navigation::{definition, references};
+use codeshaper_lsp::navigation::{definition, references, rename};
 use codeshaper_lsp::syntax::Outline;
 
 
@@ -50,4 +50,28 @@ fn references_with_and_without_the_declaration() {
     let calls = references(&outline, PATCH, at, false);
     assert_eq!(calls.iter().map(|range| &PATCH[range.clone()]).collect::<Vec<_>>(), vec!["names", "names"]);
     assert_eq!(references(&outline, PATCH, at, true).len(), 3);
+}
+
+#[test]
+fn rename_covers_the_definition_and_every_call() {
+    let outline = Outline::parse(PATCH);
+    let mut ranges = rename(&outline, PATCH, nth("#[pair]", 0) + 3, "couple").unwrap();
+    ranges.sort_by_key(|range| std::cmp::Reverse(range.start));
+
+    let mut renamed = PATCH.to_string();
+    for range in ranges {
+        renamed.replace_range(range, "couple");
+    }
+
+    assert_eq!(renamed.matches("couple").count(), 3);
+    assert!(!renamed.contains("pair"));
+}
+
+#[test]
+fn rename_refuses_invalid_names_and_plain_text() {
+    let outline = Outline::parse(PATCH);
+
+    assert_eq!(rename(&outline, PATCH, nth("#[pair]", 0) + 3, "two words"), None);
+    assert_eq!(rename(&outline, PATCH, nth("#[pair]", 0) + 3, ""), None);
+    assert_eq!(rename(&outline, PATCH, nth("x)", 0), "other"), None);
 }

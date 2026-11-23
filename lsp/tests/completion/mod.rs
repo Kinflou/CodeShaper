@@ -116,3 +116,16 @@ fn action_names_inside_expressions() {
     assert_eq!(labels(text, text.len()), vec!["pair"]);
     assert_eq!(labels(&format!("{text}air] "), text.len() + 5), Vec::<String>::new());
 }
+
+#[test]
+fn locals_offer_the_regex_groups() {
+    let text = "actions {\n    replacers {\n        replacer {\n            from r\"(\\w+) (?:x) (?P<n>\\d)\"\n            to \"a $[\"\n        }\n    }\n}\n";
+    let offset = text.find("$[").unwrap() + 2;
+    let (_directory, project) = project(&[]);
+
+    let items = completion(&codeshaper::registry(), &project, text, offset);
+    let found: Vec<(&str, Option<&str>)> = items.iter().map(|item| (item.label.as_str(), item.detail.as_deref())).collect();
+
+    assert_eq!(found, vec![("0", Some(r"(\w+)")), ("1", Some(r"(?P<n>\d)"))]);
+    assert_eq!(labels(&text.replace("from", "location"), offset), Vec::<String>::new());
+}

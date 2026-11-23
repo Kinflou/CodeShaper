@@ -8,6 +8,7 @@ pub mod position;
 pub mod preview;
 pub mod schema;
 pub mod server;
+pub mod symbols;
 pub mod syntax;
 pub mod tokens;
 pub mod trace;
@@ -22,7 +23,7 @@ use crate::trace::Limits;
 // External Uses
 use lsp_server::Connection;
 use lsp_types::{
-    CodeLensOptions, CompletionOptions, HoverProviderCapability, OneOf, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
+    CodeLensOptions, CompletionOptions, FoldingRangeProviderCapability, HoverProviderCapability, OneOf, RenameOptions, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
     SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind
 };
 use miette::{miette, IntoDiagnostic, Result};
@@ -39,6 +40,9 @@ pub fn capabilities() -> ServerCapabilities {
         code_lens_provider: Some(CodeLensOptions { resolve_provider: Some(false) }),
         definition_provider: Some(OneOf::Left(true)),
         references_provider: Some(OneOf::Left(true)),
+        rename_provider: Some(OneOf::Right(RenameOptions { prepare_provider: Some(true), work_done_progress_options: Default::default() })),
+        document_symbol_provider: Some(OneOf::Left(true)),
+        folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
         semantic_tokens_provider: Some(SemanticTokensServerCapabilities::SemanticTokensOptions(SemanticTokensOptions {
             legend: SemanticTokensLegend { token_types: LEGEND.to_vec(), token_modifiers: vec![] },
             full: Some(SemanticTokensFullOptions::Bool(true)),

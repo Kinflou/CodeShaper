@@ -67,3 +67,10 @@ pub fn symbol_at(outline: &Outline, text: &str, offset: usize) -> Option<Symbol>
         .chain(definitions(outline))
         .find(|symbol| symbol.range.start <= offset && offset <= symbol.range.end)
 }
+
+pub fn rename(outline: &Outline, text: &str, offset: usize, name: &str) -> Option<Vec<Range<usize>>> {
+    if name.is_empty() || !name.chars().all(is_name) { return None }
+    symbol_at(outline, text, offset)?;
+
+    Some(references(outline, text, offset, true))
+}
