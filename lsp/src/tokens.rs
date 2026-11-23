@@ -1,15 +1,18 @@
 // Standard Uses
+use std::ops::Range;
 
 // Crate Uses
 use crate::position::LineIndex;
+use crate::schema::LOCATIONS;
 use crate::syntax::{is_name, Outline};
 
 // External Uses
 use lsp_types::{SemanticToken, SemanticTokenType};
 
 
-pub const LEGEND: [SemanticTokenType; 3] = [
-    SemanticTokenType::FUNCTION, SemanticTokenType::VARIABLE, SemanticTokenType::PARAMETER
+pub const LEGEND: [SemanticTokenType; 5] = [
+    SemanticTokenType::FUNCTION, SemanticTokenType::VARIABLE, SemanticTokenType::PARAMETER,
+    SemanticTokenType::TYPE, SemanticTokenType::PROPERTY
 ];
 
 
@@ -17,8 +20,13 @@ pub fn tokens(text: &str) -> Vec<SemanticToken> {
     let outline = Outline::parse(text);
     let mut found = vec![];
 
-    for (_, literal) in outline.literals().filter(|(_, literal)| literal.quoted) {
+    for (node, literal) in outline.literals().filter(|(_, literal)| literal.quoted) {
         let content = &text[literal.content.clone()];
+
+        if LOCATIONS.contains(&outline.nodes[node].name.as_str()) {
+            found.extend(location(content, &literal.content));
+            continue
+        }
 
         for (index, marker) in content.char_indices() {
             let kind = match (marker, content.as_bytes().get(index + 1) == Some(&b'[')) {
@@ -41,6 +49,25 @@ pub fn tokens(text: &str) -> Vec<SemanticToken> {
 
     found.sort();
     encode(text, &found)
+}
+
+fn location(content: &str, range: &Range<usize>) -> Vec<(usize, usize, u32)> {
+    if content.trim_start().starts_with('(') { return vec![] }
+
+    let mut start = range.start;
+    let mut found = vec![];
+
+    for (index, segment) in content.split('.').enumerate() {
+        let end = start + segment.len();
+        let named = segment.chars().all(|character| character.is_ascii_alphanumeric() || character == '_');
+
+        if named && !segment.is_empty() {
+            found.push((start, end, if index == 0 { 3 } else { 4 }));
+        }
+        start = end + 1;
+    }
+
+    found
 }
 
 fn encode(text: &str, found: &[(usize, usize, u32)]) -> Vec<SemanticToken> {

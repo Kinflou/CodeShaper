@@ -3,6 +3,9 @@
     "injectionSelector": "L:string.quoted.double.kdl",
     "patterns": [
         {
+            "include": "#location"
+        },
+        {
             "include": "#action"
         },
         {
@@ -13,6 +16,17 @@
         }
     ],
     "repository": {
+        "location": {
+            "match": "(?<=location \\\")([A-Za-z_][A-Za-z0-9_]*)((?:\\.[A-Za-z_][A-Za-z0-9_]*)*)(?=\\\")",
+            "captures": {
+                "1": {
+                    "name": "entity.name.type.location.codeshaper"
+                },
+                "2": {
+                    "name": "variable.other.property.location.codeshaper"
+                }
+            }
+        },
         "action": {
             "match": "(#\\[)([A-Za-z0-9_!-]+)(\\])",
             "captures": {
