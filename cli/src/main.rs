@@ -20,8 +20,14 @@ use miette::{miette, Context, IntoDiagnostic, MietteHandlerOpts, Result};
 use similar::TextDiff;
 
 
+const VERSION: &str = match option_env!("CODESHAPER_VERSION") {
+    Some(version) => version,
+    None => env!("CARGO_PKG_VERSION")
+};
+
+
 #[derive(Parser)]
-#[command(name = "codeshaper", version, about = "Shape code with patches over syntax trees")]
+#[command(name = "codeshaper", version = VERSION, about = "Shape code with patches over syntax trees")]
 struct Cli {
     #[command(subcommand)]
     command: Command

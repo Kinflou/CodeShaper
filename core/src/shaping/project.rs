@@ -3,7 +3,7 @@ pub mod settings;
 
 // Standard Uses
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, MAIN_SEPARATOR};
 
 // Crate Uses
 use crate::shaping::patch::Patch;
@@ -52,7 +52,7 @@ pub fn load_patches(directory: &Path) -> Result<(BTreeMap<String, Patch>, BTreeM
 
     for entry in entries {
         let path = entry.into_diagnostic()?;
-        let name = path.strip_prefix(directory).into_diagnostic()?.to_string_lossy().to_string();
+        let name = path.strip_prefix(directory).into_diagnostic()?.to_string_lossy().replace(MAIN_SEPARATOR, "/");
 
         let (patch, source) = Patch::load(&path)
             .wrap_err_with(|| format!("Could not load patch {}", path.display()))?;

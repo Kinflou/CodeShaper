@@ -1,3 +1,4 @@
+import * as fs from "fs";
 import * as path from "path";
 import {
     commands, window, workspace, EventEmitter, ExtensionContext, TextDocumentContentProvider, Uri
@@ -41,9 +42,16 @@ class PreviewProvider implements TextDocumentContentProvider {
     }
 }
 
+function serverCommand(configured: string, extensionPath: string): string {
+    const name = process.platform === "win32" ? "codeshaper.exe" : "codeshaper";
+    const bundled = path.join(extensionPath, "server", name);
+
+    return configured.trim() || (fs.existsSync(bundled) ? bundled : "codeshaper");
+}
+
 export async function activate(context: ExtensionContext): Promise<void> {
     const configuration = workspace.getConfiguration("codeshaper");
-    const command = configuration.get<string>("server.path", "codeshaper");
+    const command = serverCommand(configuration.get<string>("server.path", ""), context.extensionPath);
 
     const serverOptions: ServerOptions = { command, args: ["lsp"] };
     const clientOptions: LanguageClientOptions = {

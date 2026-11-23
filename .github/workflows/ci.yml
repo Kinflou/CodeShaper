@@ -2,20 +2,140 @@ name: CI
 
 on:
   push:
+    branches:
+      - "**"
+    tags:
+      - "v*"
   pull_request:
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  lint:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      label: ${{ steps.version.outputs.label }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - id: version
+        run: .github/scripts/version.sh >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check --workspace --all-targets
-      - run: cargo test --workspace
-      - run: cargo clippy --workspace --all-targets
+      - run: cargo check --workspace --all-targets --locked
+      - run: cargo clippy --workspace --all-targets --locked
+
+  build:
+    needs: lint
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-22.04
+            binary: codeshaper
+          - target: linux-arm64
+            runner: ubuntu-22.04-arm
+            binary: codeshaper
+          - target: win32-x64
+            runner: windows-latest
+            binary: codeshaper.exe
+            rustflags: -C target-feature=+crt-static
+          - target: darwin-arm64
+            runner: macos-latest
+            binary: codeshaper
+    env:
+      RUSTFLAGS: ${{ matrix.rustflags }}
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --locked
+      - run: cargo build --release --locked -p codeshaper-cli
+        env:
+          CODESHAPER_VERSION: ${{ needs.lint.outputs.label }}
+      - run: target/release/${{ matrix.binary }} --version
+      - uses: actions/upload-artifact@v7
+        with:
+          name: server-${{ matrix.target }}
+          path: target/release/${{ matrix.binary }}
+          if-no-files-found: error
+          retention-days: 7
+
+  package:
+    needs: [lint, build]
+    if: ${{ !cancelled() && needs.lint.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+      - run: npm ci
+        working-directory: editors/vscode
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: server-*
+          path: servers
+      - run: .github/scripts/package.sh servers packages "$VERSION"
+        env:
+          VERSION: ${{ needs.lint.outputs.version }}
+          PRERELEASE: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packages
+          path: packages
+          if-no-files-found: error
+          retention-days: 7
+
+  dev:
+    needs: package
+    if: ${{ !cancelled() && needs.package.result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v8
+        with:
+          name: packages
+          path: packages
+      - run: |
+          .github/scripts/publish.sh packages "dev-$GITHUB_RUN_NUMBER" "Dev build $GITHUB_RUN_NUMBER" "dev-*" \
+            --prerelease --target "$GITHUB_SHA"
+      - run: .github/scripts/prune.sh 10
+
+  release:
+    needs: [build, package]
+    if: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v8
+        with:
+          name: packages
+          path: packages
+      - run: .github/scripts/publish.sh packages "$GITHUB_REF_NAME" "CodeShaper ${GITHUB_REF_NAME#v}" "v*" --verify-tag

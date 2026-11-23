@@ -1,5 +1,5 @@
 // Standard Uses
-use std::path::Path;
+use std::path::{Path, MAIN_SEPARATOR};
 
 // Crate Uses
 
@@ -22,7 +22,8 @@ fn tree(group: &Group, depth: usize, lines: &mut Vec<String>) {
 
     for file in &group.files {
         let language = file.language.as_deref().unwrap_or("-");
-        lines.push(format!("{}{} [{}]", "  ".repeat(depth + 1), file.path.display(), language));
+        let path = file.path.to_string_lossy().replace(MAIN_SEPARATOR, "/");
+        lines.push(format!("{}{} [{}]", "  ".repeat(depth + 1), path, language));
     }
 
     for child in &group.groups {

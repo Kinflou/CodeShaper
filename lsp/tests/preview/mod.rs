@@ -54,7 +54,8 @@ pub fn operation() -> (TempDir, PathBuf) {
 fn the_configuration_pointing_at_the_project_is_found() {
     let (directory, project) = operation();
 
-    assert_eq!(configuration(&project).unwrap(), directory.path().canonicalize().unwrap().join("configuration.kdl"));
+    let found = configuration(&project).unwrap().canonicalize().unwrap();
+    assert_eq!(found, directory.path().canonicalize().unwrap().join("configuration.kdl"));
 }
 
 #[test]

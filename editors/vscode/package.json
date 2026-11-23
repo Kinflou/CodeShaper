@@ -4,7 +4,7 @@
   "description": "Diagnostics, completion and navigation for CodeShaper patches",
   "version": "0.1.0",
   "publisher": "kinflou",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "icon": "images/icon.png",
   "repository": "https://github.com/Kinflou/CodeShaper",
   "engines": {
@@ -81,8 +81,8 @@
       "properties": {
         "codeshaper.server.path": {
           "type": "string",
-          "default": "codeshaper",
-          "description": "Path to the codeshaper executable, started as `codeshaper lsp`."
+          "default": "",
+          "description": "Path to the codeshaper executable, started as `codeshaper lsp`. When empty, the one included with the extension is used, or `codeshaper` on the PATH if there is none."
         },
         "codeshaper.hover.samples": {
           "type": "integer",
@@ -106,8 +106,10 @@
     }
   },
   "scripts": {
+    "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
   },
   "dependencies": {
     "vscode-languageclient": "^11.0.1"
@@ -115,6 +117,7 @@
   "devDependencies": {
     "@types/node": "^20.19.43",
     "@types/vscode": "^1.91.0",
+    "@vscode/vsce": "3.9.2",
     "typescript": "^5.9.3"
   }
 }

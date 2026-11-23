@@ -13,11 +13,12 @@ use codeshaper::core::shaping::operation::session::Change;
 use codeshaper::core::shaping::operation::Operation;
 use codeshaper::core::shaping::patch::Patch;
 use codeshaper::core::shaping::patch::trace::Trace;
+use dunce::canonicalize;
 use miette::{miette, IntoDiagnostic, Result};
 
 
 pub fn configuration(project: &Path) -> Result<PathBuf> {
-    let project = project.canonicalize().into_diagnostic()?;
+    let project = canonicalize(project).into_diagnostic()?;
     let parent = project.parent().ok_or_else(|| miette!("{} has no parent directory", project.display()))?;
 
     let mut candidates: Vec<PathBuf> = fs::read_dir(parent).into_diagnostic()?
@@ -31,7 +32,7 @@ pub fn configuration(project: &Path) -> Result<PathBuf> {
             let Some(found) = fs::read_to_string(path).ok().and_then(|content| configuration::from_kdl(&content).ok()) else {
                 return false
             };
-            parent.join(found.project).canonicalize().is_ok_and(|directory| directory == project)
+            canonicalize(parent.join(found.project)).is_ok_and(|directory| directory == project)
         })
         .ok_or_else(|| miette!("No operation configuration next to {} points at it", project.display()))
 }
