@@ -19,7 +19,7 @@ use crate::shaping::operation::session::{Change, Session};
 use crate::shaping::patch::Patch;
 use crate::shaping::patch::controller::PatchController;
 use crate::shaping::patch::trace::Trace;
-use crate::shaping::patch::validation::{validate_source, Diagnostic as PatchDiagnostic, DiagnosticKind, Severity};
+use crate::shaping::patch::validation::{validate, validate_source, Diagnostic as PatchDiagnostic, DiagnosticKind, Severity};
 use crate::shaping::project::Project;
 use crate::target::File;
 
@@ -140,7 +140,22 @@ impl Operation {
         Ok(())
     }
 
+    fn check_patch(&self, registry: &Registry, name: &str, patch: &Patch) -> Result<()> {
+        let backend = patch_backend(registry, patch, &self.project.settings.ast_set);
+        let errors: Vec<String> = validate(patch, backend).into_iter()
+            .filter(|diagnostic| diagnostic.severity == Severity::Error)
+            .map(|diagnostic| format!("{} '{}': {}", diagnostic.action, diagnostic.field, diagnostic.message))
+            .collect();
+
+        if !errors.is_empty() {
+            bail!("Patch {} has errors: {}", name, errors.join("; "))
+        }
+
+        Ok(())
+    }
+
     pub fn preview(&self, registry: &Registry, name: &str, patch: &Patch) -> Result<Vec<Change>> {
+        self.check_patch(registry, name, patch)?;
         let (directory, files) = self.matching_files(registry, name, patch)?;
 
         let changes = files.iter()
@@ -183,6 +198,7 @@ impl Operation {
     }
 
     pub fn trace(&self, registry: &Registry, name: &str, patch: &Patch, limit: usize) -> Result<Trace> {
+        self.check_patch(registry, name, patch)?;
         let (directory, files) = self.matching_files(registry, name, patch)?;
         let patch = Rc::new(patch.clone());
         let mut trace = Trace::new(limit);

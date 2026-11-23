@@ -13,15 +13,12 @@ use crate::shaping::operation::actions::builder::BuilderAction;
 use crate::shaping::operation::actions::maker::MakerAction;
 use crate::shaping::operation::actions::replacer::ReplacerAction;
 use crate::shaping::operation::actions::indexer::{ListAction, SwitchAction};
-use crate::utils::dual_key_map::DualKeyMap;
 
 // External Uses
 use indextree::{Children, Node, NodeId};
 use enum_dispatch::enum_dispatch;
 use miette::{bail, Result};
 
-
-pub(crate) type LocalsMap = DualKeyMap<usize, String, String>;
 
 #[allow(unused)]
 #[enum_dispatch]

@@ -3,8 +3,8 @@
 // Crate Uses
 use crate::shaping::patch::replacer::Replacer;
 use crate::shaping::patch::controller::PatchController;
-use crate::shaping::operation::actions::{Action, LocalsMap};
-use crate::shaping::operation::actions::composer::Composer;
+use crate::shaping::operation::actions::Action;
+use crate::shaping::operation::actions::composer::{Composer, Locals};
 use crate::shaping::patch::trace::Sample;
 use crate::expressions::visitor;
 
@@ -42,13 +42,7 @@ impl ReplacerAction {
         for captures in from.captures_iter(input) {
             let found = captures.get(0)?;
 
-            let mut locals = LocalsMap::default();
-            for (index, group) in captures.iter().skip(1).enumerate() {
-                if let Some(group) = group {
-                    locals.push_with_left(index, group.as_str().to_owned());
-                }
-            }
-            *composer.locals.borrow_mut() = locals;
+            *composer.locals.borrow_mut() = Locals::from(&captures);
 
             let replacement = visitor::navigate_expression(
                 composer, controller, &self.replacer.to, &[]

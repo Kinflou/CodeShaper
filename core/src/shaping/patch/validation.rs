@@ -27,6 +27,7 @@ pub enum DiagnosticKind {
     IncorrectArgs,
     IncorrectExpression,
     DuplicateAction,
+    RecursiveAction,
     UnusedAction,
     IncorrectFilePattern,
     FileNotMatched
@@ -41,6 +42,7 @@ impl DiagnosticKind {
             Self::IncorrectArgs => "incorrect-args",
             Self::IncorrectExpression => "incorrect-expression",
             Self::DuplicateAction => "duplicate-action",
+            Self::RecursiveAction => "recursive-action",
             Self::UnusedAction => "unused-action",
             Self::IncorrectFilePattern => "incorrect-file-pattern",
             Self::FileNotMatched => "file-not-matched"
@@ -96,6 +98,10 @@ fn check(patch: &Patch, spans: Option<&ActionSpans>, backend: Option<&dyn Langua
             continue
         }
 
+        if leads_to(&calls, &validator.names, name, action) {
+            validator.report(DiagnosticKind::RecursiveAction, action, field, format!("'#[{name}]' calls back to this action"));
+        }
+
         let required = validator.required.get(name).copied().unwrap_or(0);
 
         if !validator.receivers.contains(name) && *count > 0 {
@@ -127,6 +133,23 @@ fn check(patch: &Patch, spans: Option<&ActionSpans>, backend: Option<&dyn Langua
 
 
 
+fn leads_to(
+    calls: &[Call], names: &HashMap<String, (String, Option<SourceSpan>)>, name: &str, target: &str
+) -> bool {
+    let mut pending = vec![name];
+    let mut seen = HashSet::new();
+
+    while let Some(name) = pending.pop() {
+        if !seen.insert(name) { continue }
+        let Some((path, _)) = names.get(name) else { continue };
+        if path == target { return true }
+
+        pending.extend(calls.iter().filter(|call| call.0 == *path).map(|call| call.2.as_str()));
+    }
+
+    false
+}
+
 fn join(parent: &str, action: &str) -> String {
     if parent.is_empty() { action.to_string() } else { format!("{parent}/{action}") }
 }
@@ -139,6 +162,8 @@ enum Locals {
     Unknown
 }
 
+type Call = (String, &'static str, String, usize, Option<SourceSpan>);
+
 #[derive(Default)]
 struct Validator<'a> {
     backend: Option<&'a dyn LanguageBackend>,
@@ -146,7 +171,7 @@ struct Validator<'a> {
     names: HashMap<String, (String, Option<SourceSpan>)>,
     receivers: HashSet<String>,
     required: HashMap<String, usize>,
-    calls: Vec<(String, &'static str, String, usize, Option<SourceSpan>)>,
+    calls: Vec<Call>,
     current: Option<&'a NodeSpans>,
     current_span: Option<SourceSpan>
 }

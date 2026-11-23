@@ -35,19 +35,11 @@ impl ListAction {
     pub fn index(&self, controller: &PatchController, index: usize) -> Option<String> {
         if self.list.values.is_empty() { return None }
 
-        if index <= self.list.values.len() {
+        if index < self.list.values.len() {
             return self.list.values.get(index).cloned()
         }
 
-        if let Some(default) = &self.list.default {
-            let Some(default_index) = self.resolve_index_expr(
-                controller, &self.list.index.clone().unwrap(), &[]
-            ) else { return None };
-
-            return self.index(controller, default_index)
-        }
-
-        None
+        self.list.default.clone()
     }
 
     pub fn index_with_args(&self, controller: &PatchController, args: &[String]) -> Option<String> {
@@ -128,15 +120,7 @@ impl SwitchAction {
             return self.switch.cases.get(argument).cloned()
         }
 
-        if let Some(default) = &self.switch.default {
-            let Some(default_index) = self.resolve_index_expr(
-                controller, &self.switch.index.clone(), &[]
-            ) else { return None };
-
-            return self.resolve(controller, default_index.as_str())
-        }
-
-        None
+        self.switch.default.clone()
     }
 
     pub fn resolve_with_args(&self, controller: &PatchController, args: &[String]) -> Option<String> {

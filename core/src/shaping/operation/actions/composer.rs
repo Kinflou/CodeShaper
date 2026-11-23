@@ -2,24 +2,44 @@
 use std::cell::RefCell;
 
 // Crate Uses
-use crate::shaping::operation::actions::{Action, ActionOf, LocalsMap};
+use crate::shaping::operation::actions::{Action, ActionOf};
 use crate::shaping::patch::controller::PatchController;
 use crate::shaping::patch::trace::Sample;
 use crate::expressions::visitor;
 use crate::expressions::visitor::ExpressionVisitor;
 use crate::expressions::syntax::ExpressionAST;
-use crate::utils::dual_key_map::DualKeyMap;
 
 // External Uses
-use regex::Regex;
+use regex::{Captures, Regex};
 use indextree::NodeId;
 
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Locals {
+    values: Vec<String>
+}
+
+impl Locals {
+    pub fn get(&self, number: usize) -> Option<&String> {
+        self.values.get(number)
+    }
+}
+
+impl From<&Captures<'_>> for Locals {
+    fn from(captures: &Captures) -> Self {
+        let values = captures.iter().skip(1)
+            .map(|group| group.map(|group| group.as_str().to_owned()).unwrap_or_default())
+            .collect();
+
+        Self { values }
+    }
+}
 
 #[allow(unused)]
 pub struct Composer {
     action_id: NodeId,
     // patch_controller: Rc<RefCell<PatchController>>,
-    pub(crate) locals: RefCell<LocalsMap>,
+    pub(crate) locals: RefCell<Locals>,
     built: RefCell<String>,
 }
 
@@ -75,23 +95,9 @@ impl ExpressionVisitor for Composer {
     fn visit_local_call(
         &self, controller: &PatchController, variable: &str
     ) -> Option<String> {
-        let locals = self.locals.borrow();
+        let number = variable.parse::<usize>().ok()?;
 
-        let action: &ActionOf = controller.actions.get(self.action_id).unwrap().get();
-
-        if let Ok(number) = variable.parse::<usize>() {
-            let Some(local) = locals.get_by_left(number) else {
-                panic!("Local not found")
-            };
-
-            return Some(local.clone())
-        }
-
-        if let Some(local) = self.locals.borrow().get_by_right(variable.to_owned()) {
-            return None
-        }
-
-        panic!("Local '{}' not found", variable);
+        self.locals.borrow().get(number).cloned()
     }
 
     fn visit_argument_call(
@@ -103,25 +109,14 @@ impl ExpressionVisitor for Composer {
     }
 }
 
-pub fn capture_locals(reg_expr: Option<&str>, content: &str) -> LocalsMap {
-    let Some(reg_expr) = reg_expr else { return LocalsMap::default() };
-
-    let re = Regex::new(reg_expr).unwrap();
-    let Some(captures) = re.captures(content) else {
-        return DualKeyMap::default()
-    };
-
-    let mut locals = LocalsMap::default();
-    for (idx, mat) in captures.iter().skip(1).enumerate() {
-        if let Some(mat) = mat {
-            locals.push_with_left(idx, mat.as_str().to_owned())
-        }
-    };
-
+pub fn capture_locals(reg_expr: Option<&str>, content: &str) -> Locals {
     // TODO: Add named captures
     // locals.push((name.to_string(), captures.name(name).unwrap().as_str().to_string()))
 
-    locals
+    reg_expr
+        .and_then(|reg_expr| Regex::new(reg_expr).ok())
+        .and_then(|regex| regex.captures(content).map(|captures| Locals::from(&captures)))
+        .unwrap_or_default()
 }
 
 /*
