@@ -383,3 +383,24 @@ fn patches_are_toggled() {
 
     client.stop();
 }
+
+#[test]
+fn groups_are_highlighted_and_reached() {
+    let text = "actions {\n    replacers {\n        replacer {\n            from r\"(a)(b)\"\n            to \"$[1] $[0] $[1]\"\n        }\n    }\n}\n";
+    let (_directory, project) = project(&[("groups.kdl", "")]);
+    let mut client = Client::start();
+    let uri = client.open(&project.join("patches/groups.kdl"), text);
+
+    let place = serde_json::json!({ "textDocument": { "uri": uri.as_str() }, "position": { "line": 4, "character": 18 } });
+    let found = client.request("textDocument/documentHighlight", place.clone()).response_result.unwrap();
+    let starts: Vec<(u64, u64)> = found.as_array().unwrap().iter()
+        .map(|highlight| &highlight["range"]["start"])
+        .map(|start| (start["line"].as_u64().unwrap(), start["character"].as_u64().unwrap()))
+        .collect();
+    assert_eq!(starts, vec![(3, 22), (4, 16), (4, 26)]);
+
+    let definition = client.request("textDocument/definition", place).response_result.unwrap();
+    assert_eq!(definition["range"]["start"], serde_json::json!({ "line": 3, "character": 22 }));
+
+    client.stop();
+}

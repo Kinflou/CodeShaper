@@ -4,8 +4,26 @@ use std::ops::Range;
 // Crate Uses
 
 // External Uses
+use regex_syntax::ast::{self, Ast, GroupKind, Visitor};
 use regex_syntax::{Error, ParserBuilder};
 
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Group {
+    pub range: Range<usize>,
+    pub name: Option<String>
+}
+
+
+pub fn groups(pattern: &str, flags: &str) -> Option<Vec<Group>> {
+    let parsed = ast::parse::ParserBuilder::new()
+        .ignore_whitespace(flags.contains('x'))
+        .build()
+        .parse(pattern)
+        .ok()?;
+
+    ast::visit(&parsed, Groups::default()).ok()
+}
 
 pub fn error(pattern: &str, flags: &str) -> Option<(String, Range<usize>)> {
     let error = ParserBuilder::new()
@@ -24,4 +42,31 @@ pub fn error(pattern: &str, flags: &str) -> Option<(String, Range<usize>)> {
     };
 
     Some((message, span.start.offset..span.end.offset))
+}
+
+
+#[derive(Default)]
+struct Groups {
+    found: Vec<Group>
+}
+
+impl Visitor for Groups {
+    type Output = Vec<Group>;
+    type Err = ();
+
+    fn finish(self) -> Result<Vec<Group>, ()> {
+        Ok(self.found)
+    }
+
+    fn visit_pre(&mut self, ast: &Ast) -> Result<(), ()> {
+        let Ast::Group(group) = ast else { return Ok(()) };
+        let name = match &group.kind {
+            GroupKind::CaptureIndex(_) => None,
+            GroupKind::CaptureName { name, .. } => Some(name.name.clone()),
+            GroupKind::NonCapturing(_) => return Ok(())
+        };
+
+        self.found.push(Group { range: group.span.start.offset..group.span.end.offset, name });
+        Ok(())
+    }
 }

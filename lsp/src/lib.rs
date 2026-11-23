@@ -2,6 +2,7 @@
 pub mod completion;
 pub mod diagnostics;
 pub mod document;
+pub mod groups;
 pub mod hover;
 pub mod navigation;
 pub mod position;
@@ -42,6 +43,7 @@ pub fn capabilities() -> ServerCapabilities {
         hover_provider: Some(HoverProviderCapability::Simple(true)),
         code_lens_provider: Some(CodeLensOptions { resolve_provider: Some(false) }),
         definition_provider: Some(OneOf::Left(true)),
+        document_highlight_provider: Some(OneOf::Left(true)),
         references_provider: Some(OneOf::Left(true)),
         code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
         execute_command_provider: Some(ExecuteCommandOptions { commands: vec![TOGGLE_COMMAND.to_string()], ..ExecuteCommandOptions::default() }),

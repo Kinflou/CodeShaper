@@ -5,7 +5,7 @@ use std::rc::Rc;
 use crate::preview::{operation, RENAME};
 
 // External Uses
-use codeshaper_lsp::trace::{diff, groups, inline, truncate, Limits, Traces};
+use codeshaper_lsp::trace::{diff, inline, truncate, Limits, Traces};
 
 
 const SMALL: Limits = Limits { samples: 1, lines: 2, characters: 10 };
@@ -24,12 +24,6 @@ fn long_text_is_cut_at_the_limits() {
     assert_eq!(truncate("one\ntwo\nthree", &SMALL), "one\ntwo\n…");
     assert_eq!(truncate("0123456789abc", &SMALL), "0123456789\n…");
     assert_eq!(truncate("short", &SMALL), "short");
-}
-
-#[test]
-fn groups_skip_non_capturing_ones() {
-    assert_eq!(groups(r"(a)(?:b)(?P<n>c(d))[(]\(e\)(?<=f)"), vec!["(a)", "(?P<n>c(d))", "(d)"]);
-    assert_eq!(groups("none"), Vec::<String>::new());
 }
 
 #[test]

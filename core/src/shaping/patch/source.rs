@@ -67,7 +67,7 @@ impl PatchSource {
 }
 
 
-fn literal_offsets(text: &str) -> Vec<usize> {
+pub fn literal_offsets(text: &str) -> Vec<usize> {
     if let Some(raw) = text.strip_prefix('r') {
         let hashes = raw.bytes().take_while(|byte| *byte == b'#').count();
         let start = hashes + 2;

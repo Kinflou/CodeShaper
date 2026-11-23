@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use crate::completion::completion;
 use crate::diagnostics::{coverage, diagnostics, file};
 use crate::document::{kind, DocumentKind};
+use crate::groups::link_at;
 use crate::hover::hover;
 use crate::navigation::{definition, references, rename, symbol_at};
 use crate::position::LineIndex;
@@ -26,11 +27,11 @@ use lsp_types::notification::{
     Notification as _, PublishDiagnostics
 };
 use lsp_types::request::{
-    ApplyWorkspaceEdit, CodeActionRequest, CodeLensRefresh, CodeLensRequest, Completion, DocumentSymbolRequest, ExecuteCommand, FoldingRangeRequest, GotoDefinition, HoverRequest,
+    ApplyWorkspaceEdit, CodeActionRequest, CodeLensRefresh, CodeLensRequest, Completion, DocumentHighlightRequest, DocumentSymbolRequest, ExecuteCommand, FoldingRangeRequest, GotoDefinition, HoverRequest,
     PrepareRenameRequest, References, Rename, Request as _, SemanticTokensFullRequest
 };
 use lsp_types::{
-    ApplyWorkspaceEditParams, CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, ExecuteCommandParams,
+    ApplyWorkspaceEditParams, CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, DocumentHighlight, DocumentHighlightParams, ExecuteCommandParams,
     CodeLens, CodeLensParams, Command, CompletionParams, CompletionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, Hover,
     HoverContents, HoverParams, Location, MarkupContent, MarkupKind, Position, PublishDiagnosticsParams,
@@ -132,8 +133,30 @@ impl<'c> Server<'c> {
                         return Some(GotoDefinitionResponse::Scalar(Location::new(uri.clone(), index.range(range))))
                     }
 
+                    if let Some(link) = link_at(&outline, text, offset) {
+                        return Some(GotoDefinitionResponse::Scalar(Location::new(uri.clone(), index.range(link.group))))
+                    }
+
                     outline.literal_at(offset).filter(|(node, _)| outline.is_top(*node, "file"))?;
                     Some(GotoDefinitionResponse::Array(self.target_files(&uri, &outline)))
+                });
+
+                Response::new_ok(request.id, found)
+            }
+            DocumentHighlightRequest::METHOD => {
+                let params: DocumentHighlightParams = serde_json::from_value(request.params).into_diagnostic()?;
+                let position = params.text_document_position_params;
+                let found: Option<Vec<DocumentHighlight>> = self.documents.get(&position.text_document.uri).and_then(|text| {
+                    let index = LineIndex::new(text);
+                    let outline = Outline::parse(text);
+                    let offset = index.offset(position.position);
+                    let ranges = link_at(&outline, text, offset)
+                        .map(|link| link.ranges())
+                        .unwrap_or_else(|| references(&outline, text, offset, true));
+
+                    (!ranges.is_empty()).then(|| ranges.into_iter()
+                        .map(|range| DocumentHighlight { range: index.range(range), kind: None })
+                        .collect())
                 });
 
                 Response::new_ok(request.id, found)

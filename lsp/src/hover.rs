@@ -5,17 +5,19 @@ use std::rc::Rc;
 
 // Crate Uses
 use crate::completion::backend;
+use crate::groups::{group_number, groups, locals};
 use crate::navigation::{calls, symbol_at, Symbol};
 use crate::query::{is_query, part_at, Part, PREDICATES};
 use crate::schema::{regex_field, LOCATIONS};
-use crate::syntax::{is_name, Literal, Outline, ACTIONS};
+use crate::syntax::{Literal, Outline, ACTIONS};
 use crate::target::{self, matches};
-use crate::trace::{diff, fenced, groups, inline, truncate, Limits, Traces};
+use crate::trace::{diff, fenced, inline, truncate, Limits, Traces};
 
 // External Uses
 use codeshaper::core::ast::backend::LanguageBackend;
 use codeshaper::core::registry::Registry;
 use codeshaper::core::shaping::operation::LocationMatches;
+use codeshaper::core::shaping::patch::pattern::Group;
 use codeshaper::core::shaping::patch::replacer::FLAGS;
 use codeshaper::core::shaping::patch::trace::{ActionTrace, Trace};
 use url::Url;
@@ -63,12 +65,14 @@ pub fn hover(
     let action = outline.nodes[node].parent?;
     let kind = outline.nodes[action].name.as_str();
 
-    if let Some((variable, range)) = local_at(text, &literal, offset) {
+    let used = locals(text, &literal).into_iter().find(|(_, range)| range.start <= offset && offset <= range.end);
+    if let Some((variable, range)) = used {
         let pattern = outline.field(action, regex_field(kind)?).map(|literal| literal.value.clone()).unwrap_or_default();
+        let groups = groups(&outline, action);
         let trace = traced(registry, project, traces, text, &outline, action);
         let samples = trace.as_ref().and_then(|(trace, path)| trace.action(path));
 
-        return Some((local(&variable, regex_field(kind)?, &pattern, samples), range))
+        return Some((local(&variable, regex_field(kind)?, &pattern, &groups, samples), range))
     }
 
     let value = match (kind, field) {
@@ -79,11 +83,11 @@ pub fn hover(
         }
         ("replacer", "from") => {
             let (trace, path) = traced(registry, project, traces, text, &outline, action)?;
-            pattern(&literal.value, "located content(s)", trace.action(&path), trace.files)
+            pattern(&literal.value, &groups(&outline, action), "located content(s)", trace.action(&path), trace.files)
         }
         ("builder", "match") => {
             let (trace, path) = traced(registry, project, traces, text, &outline, action)?;
-            pattern(&literal.value, "input(s)", trace.action(&path), trace.files)
+            pattern(&literal.value, &groups(&outline, action), "input(s)", trace.action(&path), trace.files)
         }
         ("builder", "build") => {
             let (trace, path) = traced(registry, project, traces, text, &outline, action)?;
@@ -95,7 +99,7 @@ pub fn hover(
             let (trace, path) = traced(registry, project, traces, text, &outline, action)?;
             collected(collect, &separator, trace.action(&path), &language, &traces.limits)
         }
-        ("maker", "prepare") => pattern(&literal.value, "input(s)", None, 0),
+        ("maker", "prepare") => pattern(&literal.value, &groups(&outline, action), "input(s)", None, 0),
         ("maker", "make") => {
             let (trace, path) = traced(registry, project, traces, text, &outline, action)?;
             results(trace.action(&path), &trace, &language, &traces.limits)
@@ -247,32 +251,18 @@ fn traced(
     Some((traces.get(registry, project, text)?, path))
 }
 
-fn local_at(text: &str, literal: &Literal, offset: usize) -> Option<(String, Range<usize>)> {
-    let content = &text[literal.content.clone()];
-
-    content.match_indices("$[").find_map(|(index, _)| {
-        let start = literal.content.start + index;
-        let name = &text[start + 2..literal.content.end];
-        let length = name.find(|character: char| !is_name(character)).unwrap_or(name.len());
-        let end = start + 2 + length + usize::from(name[length..].starts_with(']'));
-
-        (length > 0 && start <= offset && offset <= end).then(|| (name[..length].to_string(), start..end))
-    })
-}
-
-fn local(variable: &str, field: &str, pattern: &str, samples: Option<&ActionTrace>) -> String {
-    let groups = groups(pattern);
-    let Some(group) = variable.parse::<usize>().ok().and_then(|index| groups.get(index).map(|group| (index, group))) else {
+fn local(variable: &str, field: &str, pattern: &str, groups: &[Group], samples: Option<&ActionTrace>) -> String {
+    let Some(number) = group_number(groups, variable) else {
         return format!("`$[{variable}]` has no capture group in `{field}`")
     };
 
     let mut value = format!(
-        "`$[{variable}]` is group {} of `{field}`: {}", group.0 + 1, inline(group.1)
+        "`$[{variable}]` is group {} of `{field}`: {}", number + 1, inline(&pattern[groups[number].range.clone()])
     );
 
     let seen: Vec<String> = samples.into_iter()
         .flat_map(|samples| &samples.samples)
-        .filter_map(|sample| sample.groups.get(group.0).cloned().flatten())
+        .filter_map(|sample| sample.groups.get(number).cloned().flatten())
         .map(|value| inline(&value))
         .collect();
     if !seen.is_empty() {
@@ -312,12 +302,11 @@ fn replacements(action: Option<&ActionTrace>, trace: &Trace, limits: &Limits) ->
     value
 }
 
-fn pattern(pattern: &str, inputs: &str, action: Option<&ActionTrace>, files: usize) -> String {
-    let groups = groups(pattern);
+fn pattern(pattern: &str, groups: &[Group], inputs: &str, action: Option<&ActionTrace>, files: usize) -> String {
     let mut value = match groups.is_empty() {
         true => "No capture groups".to_string(),
         false => groups.iter().enumerate()
-            .map(|(index, group)| format!("- `$[{index}]` = {}", inline(group)))
+            .map(|(index, group)| format!("- `$[{index}]` = {}", inline(&pattern[group.range.clone()])))
             .collect::<Vec<_>>()
             .join("\n")
     };

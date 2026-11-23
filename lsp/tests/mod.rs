@@ -1,6 +1,7 @@
 // Relative Modules
 mod completion;
 mod diagnostics;
+mod groups;
 mod hover;
 mod navigation;
 mod position;

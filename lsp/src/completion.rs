@@ -5,12 +5,12 @@ use std::path::Path;
 
 // Crate Uses
 use crate::document::ast_set;
+use crate::groups::groups;
 use crate::position::LineIndex;
 use crate::query::{captures, is_query, part_at, Part, PREDICATES};
 use crate::schema::{self, regex_field, LOCATIONS};
 use crate::syntax::{Context, Outline};
 use crate::target::every_file;
-use crate::trace::groups;
 
 // External Uses
 use codeshaper::core::ast::backend::LanguageBackend;
@@ -43,12 +43,13 @@ pub fn completion(registry: &Registry, project: &Path, text: &str, offset: usize
             }
 
             if before.rfind("$[").is_some_and(|open| !before[open..].contains(']')) {
-                let action = outline.nodes[node].parent.map(|action| outline.nodes[action].name.as_str());
-                let Some(field) = action.and_then(regex_field) else { return vec![] };
-                let pattern = outline.nodes[node].parent.and_then(|action| outline.field(action, field));
+                let Some(action) = outline.nodes[node].parent else { return vec![] };
+                let Some(pattern) = regex_field(&outline.nodes[action].name).and_then(|field| outline.field(action, field)) else {
+                    return vec![]
+                };
 
-                return groups(pattern.map(|literal| literal.value.as_str()).unwrap_or_default()).iter().enumerate()
-                    .map(|(index, group)| item(&index.to_string(), CompletionItemKind::VARIABLE, Some(group)))
+                return groups(&outline, action).iter().enumerate()
+                    .map(|(index, group)| item(&index.to_string(), CompletionItemKind::VARIABLE, Some(&pattern.value[group.range.clone()])))
                     .collect()
             }
 

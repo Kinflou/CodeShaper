@@ -6,6 +6,7 @@ use std::ops::Range;
 // External Uses
 use codeshaper_core::ast::backend::LanguageBackend;
 use codeshaper_core::shaping::patch::Patch;
+use codeshaper_core::shaping::patch::pattern::groups;
 use codeshaper_core::shaping::patch::validation::{validate, validate_source, Diagnostic, DiagnosticKind, Severity};
 use miette::{bail, Result};
 
@@ -264,4 +265,16 @@ fn spans_allow_for_raw_and_multiline_strings() {
 fn each_wrong_call_has_its_own_span() {
     assert_eq!(underlined(r#"r"old""#, r##""#[one]($[0]) #[two]""##), vec!["$[0]", "#[one]", "#[two]"]);
     assert_eq!(underlined(r#"r"old""#, r##""a @[0] b""##), vec!["@[0]"]);
+}
+
+#[test]
+fn groups_have_ranges_and_names() {
+    let pattern = r"(a)(?:b)(?P<n>c(d))[(]\(e\)(?i:f)";
+    let found: Vec<(&str, Option<String>)> = groups(pattern, "").unwrap().into_iter()
+        .map(|group| (&pattern[group.range], group.name))
+        .collect();
+
+    assert_eq!(found, vec![("(a)", None), ("(?P<n>c(d))", Some("n".to_string())), ("(d)", None)]);
+    assert_eq!(groups("(a # (b)\n)", "x").unwrap().len(), 1);
+    assert_eq!(groups("(a", ""), None);
 }

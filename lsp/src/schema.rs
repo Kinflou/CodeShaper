@@ -17,6 +17,15 @@ pub fn regex_field(action: &str) -> Option<&'static str> {
     }
 }
 
+pub fn template_field(action: &str) -> Option<&'static str> {
+    match action {
+        "replacer" => Some("to"),
+        "builder" => Some("build"),
+        "maker" => Some("make"),
+        _ => None
+    }
+}
+
 pub fn children(parent: Option<&str>) -> &'static [&'static str] {
     match parent {
         None => &["enabled", "alias", "file", "actions"],
