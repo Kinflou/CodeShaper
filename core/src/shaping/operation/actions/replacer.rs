@@ -42,7 +42,7 @@ impl ReplacerAction {
         for captures in from.captures_iter(input) {
             let found = captures.get(0)?;
 
-            *composer.locals.borrow_mut() = Locals::from(&captures);
+            *composer.locals.borrow_mut() = Locals::new(&from, &captures);
 
             let replacement = visitor::navigate_expression(
                 composer, controller, &self.replacer.to, &[]

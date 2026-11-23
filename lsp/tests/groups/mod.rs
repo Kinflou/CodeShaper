@@ -43,3 +43,10 @@ fn missing_groups_and_broken_patterns_have_no_link() {
     assert_eq!(linked(&replacer(r#"r"(a""#, r#""$[0]""#, ""), "$[0]", 2), None);
     assert_eq!(linked(&replacer("r\"(a) # (b)\"", r#""$[1]""#, "x"), "$[1]", 2), None);
 }
+
+#[test]
+fn names_and_numbers_share_a_link() {
+    let patch = replacer(r#"r"(a)(?P<n>b)""#, r#""$[n] $[1] $[0]""#, "");
+
+    assert_eq!(linked(&patch, "$[n]", 2), Some(("(?P<n>b)".to_string(), vec!["$[n]".to_string(), "$[1]".to_string()])));
+}

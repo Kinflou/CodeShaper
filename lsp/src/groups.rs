@@ -34,7 +34,10 @@ pub fn groups(outline: &Outline, action: usize) -> Vec<Group> {
 }
 
 pub fn group_number(groups: &[Group], variable: &str) -> Option<usize> {
-    variable.parse().ok().filter(|index| *index < groups.len())
+    match variable.parse::<usize>() {
+        Ok(number) => Some(number).filter(|number| *number < groups.len()),
+        Err(_) => groups.iter().position(|group| group.name.as_deref() == Some(variable))
+    }
 }
 
 pub fn locals(text: &str, literal: &Literal) -> Vec<(String, Range<usize>)> {

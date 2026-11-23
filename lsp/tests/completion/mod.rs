@@ -127,7 +127,7 @@ fn locals_offer_the_regex_groups() {
     let items = completion(&codeshaper::registry(), &project, text, offset);
     let found: Vec<(&str, Option<&str>)> = items.iter().map(|item| (item.label.as_str(), item.detail.as_deref())).collect();
 
-    assert_eq!(found, vec![("0", Some(r"(\w+)")), ("1", Some(r"(?P<n>\d)"))]);
+    assert_eq!(found, vec![("0", Some(r"(\w+)")), ("n", Some(r"(?P<n>\d)")), ("1", Some(r"(?P<n>\d)"))]);
     assert_eq!(labels(&text.replace("from", "location"), offset), Vec::<String>::new());
 }
 

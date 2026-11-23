@@ -156,9 +156,8 @@ fn join(parent: &str, action: &str) -> String {
 }
 
 
-#[derive(Clone, Copy)]
 enum Locals {
-    Groups(usize),
+    Groups { count: usize, names: Vec<String> },
     Unavailable(&'static str),
     Unknown
 }
@@ -219,7 +218,7 @@ impl<'a> Validator<'a> {
             }
 
             let locals = self.regex(&path, "match", &builder.r#match, "");
-            self.expression(&path, "build", &builder.build, locals, None);
+            self.expression(&path, "build", &builder.build, &locals, None);
             self.actions(&builder.actions, &path, nested);
         }
 
@@ -238,7 +237,7 @@ impl<'a> Validator<'a> {
             }
 
             let locals = self.regex(&path, "from", &replacer.from, &replacer.flags);
-            self.expression(&path, "to", &replacer.to, locals, None);
+            self.expression(&path, "to", &replacer.to, &locals, None);
             self.actions(&replacer.actions, &path, nested);
         }
 
@@ -251,7 +250,7 @@ impl<'a> Validator<'a> {
                 Some(prepare) => self.regex(&path, "prepare", prepare, ""),
                 None => Locals::Unavailable("the maker has no 'prepare' regex")
             };
-            self.expression(&path, "make", &maker.make, locals, Some(&maker.name));
+            self.expression(&path, "make", &maker.make, &locals, Some(&maker.name));
         }
 
         for (index, list) in actions.lists.iter().flatten().enumerate() {
@@ -259,7 +258,7 @@ impl<'a> Validator<'a> {
             let path = self.name(parent, &list.name);
             self.receivers.insert(list.name.clone());
             if let Some(index) = &list.index {
-                self.expression(&path, "index", index, Locals::Unavailable("'index' has no regex"), Some(&list.name));
+                self.expression(&path, "index", index, &Locals::Unavailable("'index' has no regex"), Some(&list.name));
             }
         }
 
@@ -267,7 +266,7 @@ impl<'a> Validator<'a> {
             self.enter(spans.map(|spans| spans.switchers.as_slice()), index);
             let path = self.name(parent, &switch.name);
             self.receivers.insert(switch.name.clone());
-            self.expression(&path, "index", &switch.index, Locals::Unavailable("'index' has no regex"), Some(&switch.name));
+            self.expression(&path, "index", &switch.index, &Locals::Unavailable("'index' has no regex"), Some(&switch.name));
         }
     }
 
@@ -296,7 +295,10 @@ impl<'a> Validator<'a> {
 
     fn regex(&mut self, action: &str, field: &'static str, regex: &str, flags: &str) -> Locals {
         match regex_builder(regex, flags).build() {
-            Ok(regex) => Locals::Groups(regex.captures_len() - 1),
+            Ok(regex) => Locals::Groups {
+                count: regex.captures_len() - 1,
+                names: regex.capture_names().flatten().map(str::to_string).collect()
+            },
             Err(error) => {
                 let (message, range) = match pattern::error(regex, flags) {
                     Some((message, range)) => (message, Some(range)),
@@ -308,7 +310,7 @@ impl<'a> Validator<'a> {
         }
     }
 
-    fn expression(&mut self, action: &str, field: &'static str, text: &str, locals: Locals, arguments: Option<&str>) {
+    fn expression(&mut self, action: &str, field: &'static str, text: &str, locals: &Locals, arguments: Option<&str>) {
         match parse_expression(text) {
             Ok(expression) => self.walk(action, field, &expression, locals, arguments),
             Err(error) => self.report_at(DiagnosticKind::IncorrectExpression, action, field, error.message, Some(error.span))
@@ -316,7 +318,7 @@ impl<'a> Validator<'a> {
     }
 
     fn walk(
-        &mut self, action: &str, field: &'static str, expression: &ExpressionAST, locals: Locals, arguments: Option<&str>
+        &mut self, action: &str, field: &'static str, expression: &ExpressionAST, locals: &Locals, arguments: Option<&str>
     ) {
         match expression {
             ExpressionAST::Action(parts) => for part in parts {
@@ -349,14 +351,15 @@ impl<'a> Validator<'a> {
         }
     }
 
-    fn local(&mut self, action: &str, field: &'static str, variable: &str, span: &Range<usize>, locals: Locals) {
+    fn local(&mut self, action: &str, field: &'static str, variable: &str, span: &Range<usize>, locals: &Locals) {
         let message = match (locals, variable.parse::<usize>()) {
             (Locals::Unknown, _) => return,
             (Locals::Unavailable(reason), _) => format!("'$[{variable}]' has no capture group to refer to: {reason}"),
-            (Locals::Groups(_), Err(_)) => format!("'$[{variable}]' must be a capture group number"),
-            (Locals::Groups(groups), Ok(index)) if index >= groups =>
-                format!("'$[{index}]' needs {} capture group(s), but the regex has {groups}", index + 1),
-            (Locals::Groups(_), Ok(_)) => return
+            (Locals::Groups { names, .. }, Err(_)) if names.iter().any(|name| name == variable) => return,
+            (Locals::Groups { .. }, Err(_)) => format!("'$[{variable}]' is not a capture group number or name of the regex"),
+            (Locals::Groups { count, .. }, Ok(index)) if index >= *count =>
+                format!("'$[{index}]' needs {} capture group(s), but the regex has {count}", index + 1),
+            (Locals::Groups { .. }, Ok(_)) => return
         };
 
         self.report_at(DiagnosticKind::IncorrectArgs, action, field, message, Some(span.clone()));

@@ -306,7 +306,10 @@ fn pattern(pattern: &str, groups: &[Group], inputs: &str, action: Option<&Action
     let mut value = match groups.is_empty() {
         true => "No capture groups".to_string(),
         false => groups.iter().enumerate()
-            .map(|(index, group)| format!("- `$[{index}]` = {}", inline(&pattern[group.range.clone()])))
+            .map(|(index, group)| {
+                let name = group.name.as_ref().map(|name| format!(", `$[{name}]`")).unwrap_or_default();
+                format!("- `$[{index}]`{name} = {}", inline(&pattern[group.range.clone()]))
+            })
             .collect::<Vec<_>>()
             .join("\n")
     };

@@ -1,5 +1,6 @@
 // Standard Uses
 use std::cell::RefCell;
+use std::collections::HashMap;
 
 // Crate Uses
 use crate::shaping::operation::actions::{Action, ActionOf};
@@ -16,22 +17,26 @@ use indextree::NodeId;
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Locals {
-    values: Vec<String>
+    values: Vec<String>,
+    names: HashMap<String, usize>
 }
 
 impl Locals {
-    pub fn get(&self, number: usize) -> Option<&String> {
-        self.values.get(number)
-    }
-}
-
-impl From<&Captures<'_>> for Locals {
-    fn from(captures: &Captures) -> Self {
+    pub fn new(regex: &Regex, captures: &Captures) -> Self {
         let values = captures.iter().skip(1)
             .map(|group| group.map(|group| group.as_str().to_owned()).unwrap_or_default())
             .collect();
+        let names = regex.capture_names().skip(1).enumerate()
+            .filter_map(|(number, name)| Some((name?.to_owned(), number)))
+            .collect();
 
-        Self { values }
+        Self { values, names }
+    }
+
+    pub fn get(&self, variable: &str) -> Option<&String> {
+        let number = variable.parse().ok().or_else(|| self.names.get(variable).copied())?;
+
+        self.values.get(number)
     }
 }
 
@@ -95,9 +100,7 @@ impl ExpressionVisitor for Composer {
     fn visit_local_call(
         &self, controller: &PatchController, variable: &str
     ) -> Option<String> {
-        let number = variable.parse::<usize>().ok()?;
-
-        self.locals.borrow().get(number).cloned()
+        self.locals.borrow().get(variable).cloned()
     }
 
     fn visit_argument_call(
@@ -110,12 +113,9 @@ impl ExpressionVisitor for Composer {
 }
 
 pub fn capture_locals(reg_expr: Option<&str>, content: &str) -> Locals {
-    // TODO: Add named captures
-    // locals.push((name.to_string(), captures.name(name).unwrap().as_str().to_string()))
-
     reg_expr
         .and_then(|reg_expr| Regex::new(reg_expr).ok())
-        .and_then(|regex| regex.captures(content).map(|captures| Locals::from(&captures)))
+        .and_then(|regex| regex.captures(content).map(|captures| Locals::new(&regex, &captures)))
         .unwrap_or_default()
 }
 

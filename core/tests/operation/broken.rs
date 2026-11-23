@@ -113,3 +113,11 @@ fn lists_past_the_end_use_the_default() {
 
     assert_eq!(preview(&content).unwrap(), "new other\nkeep\n");
 }
+
+#[test]
+fn named_groups_are_locals() {
+    let content = rename("lines", "Line").replace(r"old (\w+)", r"(?P<verb>old) (?P<what>\w+)").replace("new $[0]", "$[what] $[0] $[verb]");
+
+    assert_eq!(preview(&content).unwrap(), "one old old\nkeep\n");
+    assert!(preview(&content.replace("$[what]", "$[gone]")).unwrap_err().to_string().contains("'$[gone]' is not a capture group"));
+}

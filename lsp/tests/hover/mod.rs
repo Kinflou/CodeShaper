@@ -267,3 +267,11 @@ fn half_typed_patches_never_panic() {
         }
     }
 }
+
+#[test]
+fn named_groups_are_shown() {
+    let named = TRACED.replace(r"void (\w+)\(\)", r"void (?P<name>\w+)\(\)").replace("int $[0]", "int $[name]");
+
+    assert!(hovered(&named, r"void (?P", 1).0.starts_with("- `$[0]`, `$[name]` = `(?P<name>\\w+)`"));
+    assert_eq!(hovered(&named, "$[name]", 2).0, "`$[name]` is group 1 of `from`: `(?P<name>\\w+)`\n\nSeen as `old`, `keep`");
+}

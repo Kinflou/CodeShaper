@@ -48,8 +48,10 @@ pub fn completion(registry: &Registry, project: &Path, text: &str, offset: usize
                     return vec![]
                 };
 
-                return groups(&outline, action).iter().enumerate()
-                    .map(|(index, group)| item(&index.to_string(), CompletionItemKind::VARIABLE, Some(&pattern.value[group.range.clone()])))
+                return groups(&outline, action).into_iter().enumerate()
+                    .flat_map(|(index, group)| group.name.into_iter().chain([index.to_string()])
+                        .map(|label| item(&label, CompletionItemKind::VARIABLE, Some(&pattern.value[group.range.clone()])))
+                        .collect::<Vec<_>>())
                     .collect()
             }
 
