@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 // Crate Uses
 use crate::completion::backend;
-use crate::groups::{group_number, groups, locals};
+use crate::groups::{arguments, group_number, groups, locals};
 use crate::navigation::{calls, symbol_at, Symbol};
 use crate::query::{is_query, part_at, Part, PREDICATES};
 use crate::schema::{regex_field, LOCATIONS};
@@ -63,6 +63,14 @@ pub fn hover(
 
     let action = outline.nodes[node].parent?;
     let kind = outline.nodes[action].name.as_str();
+
+    let passed = arguments(text, &literal).into_iter().find(|(_, range)| range.start <= offset && offset <= range.end);
+    if let Some((variable, range)) = passed.filter(|_| matches!((kind, field), ("maker", "make") | ("list" | "switch", "index"))) {
+        let traced = traced(registry, project, traces, text, &outline, action);
+        let calls = traced.as_ref().and_then(|(trace, path)| trace.action(path));
+
+        return Some((argument(&variable, outline.nodes[action].arguments.first()?.value.as_str(), calls), range))
+    }
 
     let used = locals(text, &literal).into_iter().find(|(_, range)| range.start <= offset && offset <= range.end);
     if let Some((variable, range)) = used {
@@ -267,6 +275,26 @@ fn local(variable: &str, field: &str, pattern: &str, groups: &[Group], samples: 
         .flat_map(|samples| &samples.samples)
         .filter_map(|sample| sample.groups.get(number).cloned().flatten())
         .map(|value| inline(&value))
+        .collect();
+    if !seen.is_empty() {
+        value += &format!("\n\nSeen as {}", seen.join(", "));
+    }
+
+    value
+}
+
+fn argument(variable: &str, name: &str, calls: Option<&ActionTrace>) -> String {
+    let Ok(number) = variable.parse::<usize>() else {
+        return format!("`@[{variable}]` must be an argument number")
+    };
+    let mut value = format!("`@[{variable}]` is argument {} of `#[{name}]`", number + 1);
+
+    let Some(calls) = calls.filter(|calls| calls.calls > 0) else { return value };
+    value += &format!("\n\nPassed in {} of {} call(s)", calls.passed.get(number).unwrap_or(&0), calls.calls);
+
+    let seen: Vec<String> = calls.results.iter()
+        .filter_map(|result| result.groups.get(number)?.as_deref())
+        .map(inline)
         .collect();
     if !seen.is_empty() {
         value += &format!("\n\nSeen as {}", seen.join(", "));

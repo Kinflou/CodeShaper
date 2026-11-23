@@ -41,9 +41,17 @@ pub fn group_number(groups: &[Group], variable: &str) -> Option<usize> {
 }
 
 pub fn locals(text: &str, literal: &Literal) -> Vec<(String, Range<usize>)> {
+    marked(text, literal, "$[")
+}
+
+pub fn arguments(text: &str, literal: &Literal) -> Vec<(String, Range<usize>)> {
+    marked(text, literal, "@[")
+}
+
+fn marked(text: &str, literal: &Literal, marker: &str) -> Vec<(String, Range<usize>)> {
     let content = &text[literal.content.clone()];
 
-    content.match_indices("$[")
+    content.match_indices(marker)
         .filter_map(|(index, _)| {
             let start = literal.content.start + index;
             let name = &text[start + 2..literal.content.end];

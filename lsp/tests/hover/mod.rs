@@ -125,7 +125,7 @@ fn locations_are_described_by_the_backend() {
 
 #[test]
 fn other_values_have_no_hover() {
-    assert_eq!(at("@[0]=", 1), None);
+    assert_eq!(at("\"@[0]=", 0), None);
 }
 
 #[test]
@@ -208,7 +208,7 @@ fn collect_and_separator_show_the_joined_result() {
 
 #[test]
 fn makers_show_results_with_their_arguments() {
-    let (text, _) = hovered(INDEXED, "@[0]_", 1);
+    let (text, _) = hovered(INDEXED, "\"@[0]_", 0);
     assert_eq!(text, "Called 2 time(s) across 2 target file(s)\n\n\
         `a.cpp`, with `old`, `legacy`:\n```cpp\nold_legacy\n```\n\n\
         `b.cpp`, with `keep`, `current`:\n```cpp\nkeep_current\n```");
@@ -283,4 +283,18 @@ fn first_matches_are_shown_without_groups() {
     let (text, _) = hovered(&plain, "void old", 1);
 
     assert!(text.ends_with("Matches in 1 of 2 located content(s) across 2 target file(s), 1 match(es) in all\n\nFirst match in `a.cpp`: `void old`"), "{text}");
+}
+
+#[test]
+fn arguments_show_the_values_passed() {
+    let (text, range) = hovered(INDEXED, "@[1]", 2);
+    assert_eq!(range, "@[1]");
+    assert_eq!(text, "`@[1]` is argument 2 of `#[pair]`\n\nPassed in 2 of 2 call(s)\n\nSeen as `legacy`, `current`");
+
+    let switch = INDEXED.find("index").unwrap();
+    let (text, _) = hovered(INDEXED, &INDEXED[switch..switch + 12], 8);
+    assert_eq!(text, "`@[0]` is argument 1 of `#[kind]`\n\nPassed in 2 of 2 call(s)\n\nSeen as `old`, `keep`");
+
+    let more = INDEXED.replace("make \"@[0]_@[1]\"", "make \"@[0]_@[1]\" ").replace("@[1]\"", "@[7]\"");
+    assert_eq!(hovered(&more, "@[7]", 2).0, "`@[7]` is argument 8 of `#[pair]`");
 }

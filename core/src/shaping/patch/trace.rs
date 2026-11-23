@@ -25,6 +25,7 @@ pub struct ActionTrace {
     pub matched_files: usize,
     pub samples: Vec<Sample>,
     pub calls: usize,
+    pub passed: Vec<usize>,
     pub results: Vec<Sample>,
     pub keys: BTreeSet<String>
 }
@@ -50,7 +51,16 @@ impl ActionTrace {
 
     pub fn call(&mut self, limit: usize, result: Sample) {
         self.calls += 1;
+        self.pass(&vec![1; result.groups.len()]);
         if self.results.len() < limit { self.results.push(result) }
+    }
+
+    fn pass(&mut self, counts: &[usize]) {
+        self.passed.resize(self.passed.len().max(counts.len()), 0);
+
+        for (total, count) in self.passed.iter_mut().zip(counts) {
+            *total += count;
+        }
     }
 
     fn merge(&mut self, other: ActionTrace, file: &Path, limit: usize) {
@@ -59,6 +69,7 @@ impl ActionTrace {
         self.matches += other.matches;
         self.matched_files += usize::from(other.matches > 0);
         self.calls += other.calls;
+        self.pass(&other.passed);
         self.keys.extend(other.keys);
 
         for sample in other.samples {
