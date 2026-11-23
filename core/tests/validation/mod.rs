@@ -259,6 +259,8 @@ fn spans_allow_for_escapes() {
 fn spans_allow_for_raw_and_multiline_strings() {
     assert_eq!(underlined(r#"r"(\w+)""#, "r##\"a \"#\n  #[gone] é $[7]\"##"), vec!["$[7]", "#[gone]"]);
     assert_eq!(underlined("r#\"(\\w+)\n[z\"#", r#""x""#), vec!["["]);
+    assert_eq!(underlined("r#\"(\\w+)\r\n[z\"#", r#""x""#), vec!["["]);
+    assert_eq!(underlined(r#"r"(\w+)""#, "\"é\r\n\r\n$[7]\""), vec!["$[7]"]);
 }
 
 #[test]

@@ -72,7 +72,9 @@ pub fn literal_offsets(text: &str) -> Vec<usize> {
         let hashes = raw.bytes().take_while(|byte| *byte == b'#').count();
         let start = hashes + 2;
 
-        return (start..=text.len().saturating_sub(hashes + 1)).collect()
+        return (start..=text.len().saturating_sub(hashes + 1))
+            .filter(|at| text.as_bytes().get(at - 1..=*at) != Some(b"\r\n"))
+            .collect()
     }
 
     let end = text.len().saturating_sub(1);
@@ -89,6 +91,7 @@ pub fn literal_offsets(text: &str) -> Vec<usize> {
 
                 (length, decoded.unwrap_or(1))
             }
+            ('\r', Some('\n')) => (2, 1),
             ('\\', Some(escaped)) => (1 + escaped.len_utf8(), escaped.len_utf8()),
             _ => (character.len_utf8(), character.len_utf8())
         };

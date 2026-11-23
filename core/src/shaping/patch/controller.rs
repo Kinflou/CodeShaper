@@ -1,4 +1,5 @@
 // Standard Uses
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Range;
@@ -7,6 +8,7 @@ use std::rc::Rc;
 // Crate Uses
 use crate::ast::backend::LanguageBackend;
 use crate::ast::listener::ListenerController;
+use crate::shaping::lines::{restore, unix};
 use crate::shaping::patch::{Actions, Patch};
 use crate::shaping::patch::trace::{ActionTrace, Trace};
 use crate::shaping::operation::actions::{Action, ActionOf};
@@ -145,6 +147,17 @@ impl PatchController {
     }
 
     pub fn apply(&mut self, backend: &dyn LanguageBackend, source: &str) -> Result<String> {
+        let unix = unix(source);
+        let result = self.shape(backend, &unix)?;
+
+        Ok(match unix {
+            Cow::Borrowed(_) => result,
+            Cow::Owned(unix) if unix == result => source.to_string(),
+            Cow::Owned(_) => restore(source, &result)
+        })
+    }
+
+    fn shape(&mut self, backend: &dyn LanguageBackend, source: &str) -> Result<String> {
         let replacer_ids: Vec<NodeId> = self.actions.iter()
             .filter(|node| node.parent().is_none())
             .filter_map(|node| node.get().replacer().ok().map(|replacer| *replacer.self_id()))

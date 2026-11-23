@@ -4,6 +4,7 @@ use std::ops::Range;
 // Crate Uses
 
 // External Uses
+use codeshaper::core::shaping::lines::unix;
 
 
 pub const ACTIONS: [&str; 4] = ["builder", "maker", "switch", "list"];
@@ -259,6 +260,7 @@ impl Scanner<'_> {
                     });
                     self.at += 1 + escaped.map(char::len_utf8).unwrap_or(0);
                 }
+                b'\r' if self.bytes.get(self.at + 1) == Some(&b'\n') => self.at += 1,
                 _ => {
                     let character = self.text[self.at..].chars().next().unwrap();
                     value.push(character);
@@ -288,7 +290,7 @@ impl Scanner<'_> {
         self.at = end;
 
         Literal {
-            value: self.text[content_start..content_end].to_string(),
+            value: unix(&self.text[content_start..content_end]).into_owned(),
             range: start..end,
             content: content_start..content_end,
             quoted: true
@@ -317,7 +319,7 @@ impl Scanner<'_> {
 
     fn continue_line(&mut self) {
         self.at += 1;
-        while self.at < self.bytes.len() && matches!(self.bytes[self.at], b' ' | b'\t') {
+        while self.at < self.bytes.len() && matches!(self.bytes[self.at], b' ' | b'\t' | b'\r') {
             self.at += 1;
         }
         if self.bytes.get(self.at) == Some(&b'\n') {

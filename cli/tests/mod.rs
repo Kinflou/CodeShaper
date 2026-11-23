@@ -21,7 +21,7 @@ fn codeshaper(arguments: &[&str]) -> Output {
 }
 
 fn stdout(output: &Output) -> String {
-    String::from_utf8_lossy(&output.stdout).to_string()
+    String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n")
 }
 
 fn copy_directory(from: &Path, to: &Path) {

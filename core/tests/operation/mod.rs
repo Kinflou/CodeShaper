@@ -2,6 +2,7 @@
 mod actions;
 mod broken;
 mod check;
+mod lines;
 mod preview;
 mod run;
 mod session;
@@ -30,6 +31,9 @@ impl LanguageBackend for LineBackend {
     fn name(&self) -> &str { "lines" }
 
     fn locate(&self, source: &str, location: &str) -> Result<Vec<Range<usize>>> {
+        if location == "File" {
+            return Ok(vec![Range { start: 0, end: source.len() }])
+        }
         if location != "Line" {
             bail!("Unknown location {location}")
         }

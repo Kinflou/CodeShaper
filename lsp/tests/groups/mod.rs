@@ -38,6 +38,13 @@ fn escaped_patterns_keep_their_ranges() {
 }
 
 #[test]
+fn windows_endings_keep_their_ranges() {
+    for (from, to) in [("r\"é\r\n(a)\"", "\"\r\n$[0]\""), ("\"é\r\n(a)\"", "r\"$[0]\"")] {
+        assert_eq!(linked(&replacer(from, to, ""), "$[0]", 2), Some(("(a)".to_string(), vec!["$[0]".to_string()])));
+    }
+}
+
+#[test]
 fn missing_groups_and_broken_patterns_have_no_link() {
     assert_eq!(linked(&replacer(r#"r"(a)""#, r#""$[1]""#, ""), "$[1]", 2), None);
     assert_eq!(linked(&replacer(r#"r"(a""#, r#""$[0]""#, ""), "$[0]", 2), None);
