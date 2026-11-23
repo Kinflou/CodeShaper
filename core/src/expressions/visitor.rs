@@ -59,6 +59,7 @@ pub(crate) fn visit_expression(
         ExpressionAST::ArgumentCall { name: var, .. } => {
             result += &*visitor.visit_argument_call(controller, var, arguments)?;
         }
+        ExpressionAST::Unclosed { .. } => return None,
         ExpressionAST::Text(text) => {
             result += &*visitor.visit_text(controller, text)?;
         }

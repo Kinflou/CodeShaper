@@ -15,39 +15,45 @@ use pest_derive::Parser;
 pub struct ActionParser;
 
 pub fn parse_expression(input: &str) -> Result<ExpressionAST<'_>, ExpressionError> {
+    let expression = parse_tolerant(input)?;
+
+    match expression.errors().into_iter().next() {
+        Some(error) => Err(error),
+        None => Ok(expression)
+    }
+}
+
+pub fn parse_tolerant(input: &str) -> Result<ExpressionAST<'_>, ExpressionError> {
     let expression = ActionParser::parse(Rule::action, input)
         .map_err(|error| ExpressionError { message: error.to_string(), span: 0..input.len() })?
         .next()
         .unwrap();
 
-    parse_pair(expression)
+    Ok(parse_pair(expression))
 }
 
 
-fn parse_pair(pair: Pair<Rule>) -> Result<ExpressionAST, ExpressionError> {
+fn parse_pair(pair: Pair<Rule>) -> ExpressionAST {
     let start = pair.as_span().start();
     let head = |name: &str| start..start + name.len() + 3;
 
-    let expression = match pair.as_rule() {
+    match pair.as_rule() {
         Rule::action => ExpressionAST::Action(
             pair.into_inner()
                 .filter(|pair| pair.as_rule() != Rule::EOI)
                 .map(parse_pair)
-                .collect::<Result<Vec<ExpressionAST>, ExpressionError>>()?
+                .collect()
         ),
         Rule::text => ExpressionAST::Text(pair.as_str()),
-        Rule::unclosed => return Err(ExpressionError {
-            message: format!("'{}' is not a complete call: expected a name followed by ']'", pair.as_str()),
-            span: pair.as_span().start()..pair.as_span().end()
-        }),
+        Rule::unclosed => ExpressionAST::Unclosed { text: pair.as_str(), span: start..pair.as_span().end() },
         Rule::action_call => {
             let mut inner = pair.into_inner();
             let name = inner.next().unwrap().as_str();
-            let arguments = inner.map(parse_pair).collect::<Result<Vec<ExpressionAST>, ExpressionError>>()?;
+            let arguments = inner.map(parse_pair).collect();
 
             ExpressionAST::ActionCall { name, arguments, span: head(name) }
         }
-        Rule::argument => parse_pair(pair.into_inner().next().unwrap())?,
+        Rule::argument => parse_pair(pair.into_inner().next().unwrap()),
         Rule::string => ExpressionAST::Text(pair.into_inner().next().unwrap().as_str()),
         Rule::local_call => {
             let name = pair.into_inner().next().unwrap().as_str();
@@ -60,7 +66,5 @@ fn parse_pair(pair: Pair<Rule>) -> Result<ExpressionAST, ExpressionError> {
             ExpressionAST::ArgumentCall { name, span: head(name) }
         }
         missing => unreachable!("Rule not implemented {:?}", missing)
-    };
-
-    Ok(expression)
+    }
 }

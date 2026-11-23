@@ -18,6 +18,20 @@ pub enum ExpressionAST<'a> {
     ActionCall { name: &'a str, arguments: Vec<ExpressionAST<'a>>, span: Range<usize> },
     LocalCall { name: &'a str, span: Range<usize> },
     ArgumentCall { name: &'a str, span: Range<usize> },
+    Unclosed { text: &'a str, span: Range<usize> },
+}
+
+impl ExpressionAST<'_> {
+    pub fn errors(&self) -> Vec<ExpressionError> {
+        match self {
+            Self::Action(parts) | Self::ActionCall { arguments: parts, .. } => parts.iter().flat_map(Self::errors).collect(),
+            Self::Unclosed { text, span } => vec![ExpressionError {
+                message: format!("'{text}' is not a complete call: expected a name followed by ']'"),
+                span: span.clone()
+            }],
+            _ => vec![]
+        }
+    }
 }
 
 

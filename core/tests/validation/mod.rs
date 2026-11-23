@@ -280,3 +280,8 @@ fn groups_have_ranges_and_names() {
     assert_eq!(groups("(a # (b)\n)", "x").unwrap().len(), 1);
     assert_eq!(groups("(a", ""), None);
 }
+
+#[test]
+fn every_unclosed_call_is_reported() {
+    assert_eq!(underlined(r#"r"old""#, r##""#[one $[0] @[x \t#[gone]""##), vec!["#[one", "@[x", "$[0]", "#[gone]"]);
+}

@@ -5,7 +5,7 @@ use std::ops::Range;
 // Crate Uses
 use crate::ast::backend::{LanguageBackend, LocationError};
 use crate::expressions::syntax::ExpressionAST;
-use crate::expressions::syntax::parser::parse_expression;
+use crate::expressions::syntax::parser::parse_tolerant;
 use crate::shaping::patch::{pattern, Actions, Patch};
 use crate::shaping::patch::pattern::{check_flags, regex_builder};
 use crate::shaping::patch::source::{ActionSpans, NodeSpans, PatchSource};
@@ -320,8 +320,13 @@ impl<'a> Validator<'a> {
     }
 
     fn expression(&mut self, action: &str, field: &'static str, text: &str, locals: &Locals, arguments: Option<&str>) {
-        match parse_expression(text) {
-            Ok(expression) => self.walk(action, field, &expression, locals, arguments),
+        match parse_tolerant(text) {
+            Ok(expression) => {
+                for error in expression.errors() {
+                    self.report_at(DiagnosticKind::IncorrectExpression, action, field, error.message, Some(error.span));
+                }
+                self.walk(action, field, &expression, locals, arguments);
+            }
             Err(error) => self.report_at(DiagnosticKind::IncorrectExpression, action, field, error.message, Some(error.span))
         }
     }
@@ -362,7 +367,7 @@ impl<'a> Validator<'a> {
                     *required = (*required).max(index + 1);
                 }
             },
-            ExpressionAST::Text(_) => {}
+            ExpressionAST::Unclosed { .. } | ExpressionAST::Text(_) => {}
         }
     }
 
