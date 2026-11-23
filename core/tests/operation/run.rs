@@ -1,10 +1,46 @@
 // Standard Uses
+use std::fs;
+use std::path::Path;
 
 // Crate Uses
-use crate::operation::{patch, read, rename, report, run, workspace};
+use crate::operation::{patch, read, registry, rename, report, run, workspace};
 
 // External Uses
-use codeshaper_core::shaping::operation::report::Outcome;
+use codeshaper_core::shaping::operation::Operation;
+use codeshaper_core::shaping::operation::report::{FileReport, Outcome};
+use codeshaper_core::target::{File, Group, Solution, TargetLoader};
+use miette::Result;
+use tempfile::TempDir;
+
+
+struct GroupsLoader(Vec<&'static str>);
+
+impl TargetLoader for GroupsLoader {
+    fn name(&self) -> &str { "groups" }
+
+    fn load(&self, path: &Path) -> Result<Solution> {
+        let groups = self.0.iter()
+            .map(|file| Group {
+                name: file.to_string(),
+                groups: vec![],
+                files: vec![File { path: file.into(), language: None }]
+            })
+            .collect();
+
+        Ok(Solution { name: "Groups".to_string(), directory: path.to_path_buf(), groups })
+    }
+}
+
+fn run_groups(directory: &TempDir, files: &[&'static str]) -> Result<Vec<FileReport>> {
+    let settings = read(directory, "shaping/settings.kdl").replace("\"list\"", "\"groups\"");
+    fs::write(directory.path().join("shaping/settings.kdl"), settings).unwrap();
+
+    let mut registry = registry();
+    registry.add_loader(Box::new(GroupsLoader(files.to_vec())));
+    let operation = Operation::from_file(&directory.path().join("configuration.kdl"))?;
+
+    Ok(operation.run(&registry)?.files)
+}
 
 
 #[test]
@@ -43,6 +79,28 @@ fn backup_and_replace_keeps_original() {
     assert_eq!(read(&directory, "target/a.txt"), "new one\nkeep\n");
     assert_eq!(read(&directory, "backup/a.txt"), "old one\nkeep\n");
     assert!(!directory.path().join("backup/nested/b.txt").exists());
+}
+
+#[test]
+fn files_in_several_groups_run_once() {
+    let directory = workspace("backup-and-replace", &[("rename.kdl", patch("lines", "Line", r"(one|keep)", "$[0] $[0]"))]);
+
+    assert_eq!(run_groups(&directory, &["a.txt", "c.md", "a.txt"]).unwrap(), vec![
+        report("a.txt", Outcome::Patched(vec!["rename.kdl".to_string()])),
+        report("c.md", Outcome::Unchanged),
+    ]);
+    assert_eq!(read(&directory, "target/a.txt"), "old one one\nkeep keep\n");
+    assert_eq!(read(&directory, "backup/a.txt"), "old one\nkeep\n");
+}
+
+#[test]
+fn backups_come_before_writes() {
+    let directory = workspace("backup-and-replace", &[("rename.kdl", rename("lines", "Line"))]);
+
+    run_groups(&directory, &["a.txt", "nested/../a.txt"]).unwrap();
+
+    assert_eq!(read(&directory, "target/a.txt"), "new one\nkeep\n");
+    assert_eq!(read(&directory, "backup/a.txt"), "old one\nkeep\n");
 }
 
 #[test]

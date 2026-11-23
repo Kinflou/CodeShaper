@@ -236,6 +236,12 @@ impl<'a> Session<'a> {
             return Err(RunFailed { errors }.into());
         }
 
+        for (file, patches) in self.files.iter().zip(&patched) {
+            if !patches.is_empty() {
+                self.operation.back_up(&self.directory, &file.path)?;
+            }
+        }
+
         let mut report = Report::default();
 
         for (index, (file, patches)) in self.files.iter().zip(patched).enumerate() {

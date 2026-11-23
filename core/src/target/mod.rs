@@ -1,4 +1,5 @@
 // Standard Uses
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 // Crate Uses
@@ -25,6 +26,9 @@ impl Solution {
 
         let mut files = vec![];
         collect(&self.groups, &mut files);
+
+        let mut seen = HashSet::new();
+        files.retain(|file| seen.insert(&file.path));
 
         files
     }

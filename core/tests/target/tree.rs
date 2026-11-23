@@ -34,3 +34,18 @@ fn files_are_depth_first() {
     assert_eq!(paths, vec![Path::new("main.cpp"), Path::new("nested.cpp"), Path::new("other.cpp")]);
 }
 
+#[test]
+fn files_in_several_groups_are_listed_once() {
+    let group = |name: &str, files: Vec<File>, groups: Vec<Group>| Group { name: name.to_string(), groups, files };
+    let typed = File { path: "main.cpp".into(), language: Some("cpp".to_string()) };
+    let solution = Solution {
+        name: "Test Solution".to_string(),
+        directory: PathBuf::new(),
+        groups: vec![
+            group("root", vec![typed.clone(), file("main.cpp")], vec![group("nested", vec![file("main.cpp"), file("a.cpp")], vec![])]),
+            group("other", vec![file("a.cpp"), file("b.cpp")], vec![])
+        ]
+    };
+
+    assert_eq!(solution.files(), vec![&typed, &file("a.cpp"), &file("b.cpp")]);
+}

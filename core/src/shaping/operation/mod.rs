@@ -290,20 +290,24 @@ impl Operation {
         }
     }
 
-    fn write(&self, directory: &Path, path: &Path, content: &str) -> Result<()> {
+    fn back_up(&self, directory: &Path, path: &Path) -> Result<()> {
+        if self.configuration.result != ResultOptions::BackupAndReplace {
+            return Ok(())
+        }
+
         let source = directory.join(path);
+        let backup = self.directory.join(&self.configuration.backup).join(path);
+        create_parent(&backup)?;
+        fs::copy(&source, &backup)
+            .into_diagnostic()
+            .wrap_err_with(|| format!("Could not back up {}", source.display()))?;
 
+        Ok(())
+    }
+
+    fn write(&self, directory: &Path, path: &Path, content: &str) -> Result<()> {
         match self.configuration.result {
-            ResultOptions::Replace => write(&source, content),
-            ResultOptions::BackupAndReplace => {
-                let backup = self.directory.join(&self.configuration.backup).join(path);
-                create_parent(&backup)?;
-                fs::copy(&source, &backup)
-                    .into_diagnostic()
-                    .wrap_err_with(|| format!("Could not back up {}", source.display()))?;
-
-                write(&source, content)
-            }
+            ResultOptions::Replace | ResultOptions::BackupAndReplace => write(&directory.join(path), content),
             ResultOptions::CreateNew => write(&self.directory.join(&self.configuration.output).join(path), content)
         }
     }
