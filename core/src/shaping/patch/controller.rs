@@ -1,4 +1,5 @@
 // Standard Uses
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::rc::Rc;
@@ -7,6 +8,7 @@ use std::rc::Rc;
 use crate::ast::backend::LanguageBackend;
 use crate::ast::listener::ListenerController;
 use crate::shaping::patch::{Actions, Patch};
+use crate::shaping::patch::trace::{ActionTrace, Trace};
 use crate::shaping::operation::actions::{Action, ActionOf};
 use crate::shaping::operation::actions::builder::BuilderAction;
 use crate::shaping::operation::actions::maker::MakerAction;
@@ -23,31 +25,55 @@ pub struct PatchController {
     pub patch: Rc<Patch>,
     pub actions: Arena<ActionOf>,
     pub listener_controller: ListenerController,
+    pub trace: Option<RefCell<Trace>>,
+    paths: HashMap<NodeId, String>
 }
 
 #[allow(unused)]
 impl PatchController {
     pub fn with(patch: Rc<Patch>) -> Self {
-        let actions = Self::make_actions(patch.clone());
-
-        Self { patch, actions, listener_controller: Default::default() }
+        Self::with_listener(patch, Default::default())
     }
 
     pub fn with_listener(patch: Rc<Patch>, listener_controller: ListenerController) -> Self {
-        let actions = Self::make_actions(patch.clone());
+        let (actions, paths) = Self::make_actions(patch.clone());
 
-        Self { patch, actions, listener_controller }
+        Self { patch, actions, listener_controller, trace: None, paths }
     }
 
-    fn make_actions(patch: Rc<Patch>) -> Arena<ActionOf> {
+    pub fn traced(patch: Rc<Patch>, limit: usize) -> Self {
+        Self { trace: Some(RefCell::new(Trace::new(limit))), ..Self::with(patch) }
+    }
+
+    pub fn path(&self, id: NodeId) -> Option<&str> {
+        self.paths.get(&id).map(String::as_str)
+    }
+
+    pub fn tracing(&self) -> bool {
+        self.trace.is_some()
+    }
+
+    pub(crate) fn record(&self, id: NodeId, record: impl FnOnce(&mut ActionTrace, usize)) {
+        let (Some(trace), Some(path)) = (&self.trace, self.paths.get(&id)) else { return };
+        let mut trace = trace.borrow_mut();
+        let limit = trace.limit;
+
+        record(trace.actions.entry(path.clone()).or_default(), limit);
+    }
+
+    fn make_actions(patch: Rc<Patch>) -> (Arena<ActionOf>, HashMap<NodeId, String>) {
         let mut arena = Arena::<ActionOf>::new();
-        Self::make_inner_actions(&mut arena, &patch.actions, None);
-        arena
+        let mut paths = HashMap::new();
+        Self::make_inner_actions(&mut arena, &mut paths, &patch.actions, None);
+        (arena, paths)
     }
 
     fn make_inner_actions(
-        arena: &mut Arena<ActionOf>, actions: &Actions, parent: Option<&NodeId>
+        arena: &mut Arena<ActionOf>, paths: &mut HashMap<NodeId, String>, actions: &Actions, parent: Option<&NodeId>
     ) {
+        let parent_path = parent.and_then(|parent| paths.get(parent)).cloned().unwrap_or_default();
+        let path = |name: &str| if parent_path.is_empty() { name.to_string() } else { format!("{parent_path}/{name}") };
+
         if let Some(builders) = &actions.builders {
             for builder in builders.iter() {
                 let action = ActionOf::BuilderAction(
@@ -55,24 +81,26 @@ impl PatchController {
                 );
                 let id = arena.new_node(action);
                 arena.get_mut(id).unwrap().get_mut().builder_mut().unwrap().post_new(id);
+                paths.insert(id, path(&builder.name));
 
                 if let Some(parent) = parent { parent.append(id, arena); }
 
-                Self::make_inner_actions(arena, &builder.actions, Some(&id));
+                Self::make_inner_actions(arena, paths, &builder.actions, Some(&id));
             }
         }
 
         if let Some(replacers) = &actions.replacers {
-            for replacer in replacers.iter() {
+            for (index, replacer) in replacers.iter().enumerate() {
                 let action = ActionOf::ReplacerAction(
                     ReplacerAction::with_ref(replacer.clone(), parent.cloned())
                 );
                 let id = arena.new_node(action);
                 arena.get_mut(id).unwrap().get_mut().replacer_mut().unwrap().post_new(id);
+                paths.insert(id, path(&format!("replacer #{}", index + 1)));
 
                 if let Some(parent) = parent { parent.append(id, arena); }
 
-                Self::make_inner_actions(arena, &replacer.actions, Some(&id));
+                Self::make_inner_actions(arena, paths, &replacer.actions, Some(&id));
             }
         }
 
@@ -83,6 +111,7 @@ impl PatchController {
                 );
                 let id = arena.new_node(action);
                 arena.get_mut(id).unwrap().get_mut().maker_mut().unwrap().post_new(id);
+                paths.insert(id, path(&maker.name));
 
                 if let Some(parent) = parent { parent.append(id, arena); }
             }
@@ -95,6 +124,7 @@ impl PatchController {
                 );
                 let id = arena.new_node(action);
                 arena.get_mut(id).unwrap().get_mut().list_mut().unwrap().post_new(id);
+                paths.insert(id, path(&list.name));
 
                 if let Some(parent) = parent { parent.append(id, arena); }
             }
@@ -107,6 +137,7 @@ impl PatchController {
                 );
                 let id = arena.new_node(action);
                 arena.get_mut(id).unwrap().get_mut().switch_mut().unwrap().post_new(id);
+                paths.insert(id, path(&switch.name));
 
                 if let Some(parent) = parent { parent.append(id, arena); }
             }

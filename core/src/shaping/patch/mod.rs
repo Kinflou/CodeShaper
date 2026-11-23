@@ -6,6 +6,7 @@ pub mod maker;
 pub mod resolver;
 pub mod validation;
 pub mod source;
+pub mod trace;
 
 // Standard Uses
 use std::fs;

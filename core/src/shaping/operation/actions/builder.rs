@@ -6,10 +6,12 @@ use crate::shaping::patch::builder::Builder;
 use crate::shaping::patch::controller::PatchController;
 use crate::shaping::operation::actions::{Action, composer};
 use crate::shaping::operation::actions::composer::Composer;
+use crate::shaping::patch::trace::{groups, Sample};
 use crate::expressions::visitor;
 
 // External Uses
 use indextree::NodeId;
+use regex::Regex;
 
 
 #[allow(unused)]
@@ -134,6 +136,22 @@ impl BuilderAction {
             self.composer.as_ref().unwrap(), controller,
             &self.builder.build, &[]
         ).ok();
+
+        if controller.tracing() {
+            let regex = Regex::new(&self.builder.r#match).ok();
+            let matched = regex.as_ref().is_some_and(|regex| regex.is_match(&input));
+            let sample = Sample {
+                groups: regex.map(|regex| groups(&regex, &input)).unwrap_or_default(),
+                input,
+                output: result.clone().unwrap_or_default(),
+                ..Sample::default()
+            };
+
+            controller.record(*self.self_id(), |trace, limit| {
+                trace.input(usize::from(matched));
+                trace.sample(limit, sample);
+            });
+        }
 
         result
     }

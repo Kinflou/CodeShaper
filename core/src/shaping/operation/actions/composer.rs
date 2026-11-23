@@ -4,6 +4,7 @@ use std::cell::RefCell;
 // Crate Uses
 use crate::shaping::operation::actions::{Action, ActionOf, LocalsMap};
 use crate::shaping::patch::controller::PatchController;
+use crate::shaping::patch::trace::Sample;
 use crate::expressions::visitor;
 use crate::expressions::visitor::ExpressionVisitor;
 use crate::expressions::syntax::ExpressionAST;
@@ -51,25 +52,20 @@ impl ExpressionVisitor for Composer {
             return None
         };
 
-        match action {
-            ActionOf::BuilderAction(builder) => {
-                return builder.process(controller);
-            }
-            ActionOf::ReplacerAction(replacer) => {
+        let result = match action {
+            ActionOf::BuilderAction(builder) => builder.process(controller),
+            ActionOf::ReplacerAction(_) => None,
+            ActionOf::MakerAction(maker) => maker.make_with_args(&args, controller),
+            ActionOf::SwitchAction(switch) => switch.resolve_with_args(controller, &args),
+            ActionOf::ListAction(list) => list.index_with_args(controller, &args)
+        };
 
-            }
-            ActionOf::MakerAction(maker) => {
-                return maker.make_with_args(&args, controller)
-            }
-            ActionOf::SwitchAction(switch) => {
-                return switch.resolve_with_args(controller, &args)
-            }
-            ActionOf::ListAction(list) => {
-                return list.index_with_args(controller, &args)
-            }
+        if let (Some(output), true) = (&result, controller.tracing()) {
+            let call = Sample { groups: args.into_iter().map(Some).collect(), output: output.clone(), ..Sample::default() };
+            controller.record(*action.self_id(), |trace, limit| trace.call(limit, call));
         }
 
-        None
+        result
     }
 
     fn visit_text(&self, controller: &PatchController, text: &str) -> Option<String> {

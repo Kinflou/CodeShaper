@@ -4,6 +4,7 @@ mod check;
 mod preview;
 mod run;
 mod session;
+mod trace;
 
 // Standard Uses
 use std::fs;

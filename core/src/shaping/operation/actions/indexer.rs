@@ -58,6 +58,7 @@ impl ListAction {
             let Some(index) = self.resolve_index_expr(
                 controller,&self.list.index.clone().unwrap(), args
             ) else { return None };
+            controller.record(*self.self_id(), |trace, _| { trace.keys.insert(index.to_string()); });
 
             return self.index(controller, index)
         }
@@ -88,13 +89,9 @@ impl ListAction {
 impl Action for ListAction {
     fn name(&self) -> &str { &self.list.name }
 
-    fn self_id(&self) -> &NodeId {
-        todo!()
-    }
+    fn self_id(&self) -> &NodeId { self.self_id.as_ref().unwrap() }
 
-    fn parent_id(&self) -> &Option<NodeId> {
-        todo!()
-    }
+    fn parent_id(&self) -> &Option<NodeId> { &self.parent_id }
 
     // fn locals(&self) -> &LocalsMap { todo!() }
 
@@ -144,6 +141,7 @@ impl SwitchAction {
 
     pub fn resolve_with_args(&self, controller: &PatchController, args: &[String]) -> Option<String> {
         let key = self.resolve_index_expr(controller, &self.switch.index.clone(), args)?;
+        controller.record(*self.self_id(), |trace, _| { trace.keys.insert(key.clone()); });
 
         self.resolve(controller, &key)
     }
@@ -175,13 +173,9 @@ impl SwitchAction {
 impl Action for SwitchAction {
     fn name(&self) -> &str { &self.switch.name }
 
-    fn self_id(&self) -> &NodeId {
-        todo!()
-    }
+    fn self_id(&self) -> &NodeId { self.self_id.as_ref().unwrap() }
 
-    fn parent_id(&self) -> &Option<NodeId> {
-        todo!()
-    }
+    fn parent_id(&self) -> &Option<NodeId> { &self.parent_id }
 
     // fn locals(&self) -> &LocalsMap { todo!() }
 

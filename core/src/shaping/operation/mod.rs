@@ -18,6 +18,7 @@ use crate::shaping::operation::report::Report;
 use crate::shaping::operation::session::{Change, Session};
 use crate::shaping::patch::Patch;
 use crate::shaping::patch::controller::PatchController;
+use crate::shaping::patch::trace::Trace;
 use crate::shaping::patch::validation::{validate_source, Diagnostic as PatchDiagnostic, DiagnosticKind, Severity};
 use crate::shaping::project::Project;
 use crate::target::File;
@@ -181,7 +182,27 @@ impl Operation {
         Ok(matches)
     }
 
-    fn matching_files(&self, registry: &Registry, name: &str, patch: &Patch) -> Result<(PathBuf, Vec<File>)> {
+    pub fn trace(&self, registry: &Registry, name: &str, patch: &Patch, limit: usize) -> Result<Trace> {
+        let (directory, files) = self.matching_files(registry, name, patch)?;
+        let patch = Rc::new(patch.clone());
+        let mut trace = Trace::new(limit);
+
+        for file in &files {
+            let Ok(source) = fs::read_to_string(directory.join(&file.path)) else { continue };
+            let Ok(backend) = self.backend(registry, &patch, file) else { continue };
+
+            let mut controller = PatchController::traced(patch.clone(), limit);
+            if controller.apply(backend, &source).is_err() { continue }
+
+            if let Some(traced) = controller.trace.take() {
+                trace.merge(traced.into_inner(), &file.path);
+            }
+        }
+
+        Ok(trace)
+    }
+
+    pub fn matching_files(&self, registry: &Registry, name: &str, patch: &Patch) -> Result<(PathBuf, Vec<File>)> {
         let pattern = file_pattern(name, patch)?;
         let target = self.directory.join(&self.configuration.target);
         let solution = registry.load_target(&self.project.settings.target, &target)?;

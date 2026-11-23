@@ -5,6 +5,7 @@ use crate::shaping::patch::replacer::Replacer;
 use crate::shaping::patch::controller::PatchController;
 use crate::shaping::operation::actions::{Action, LocalsMap};
 use crate::shaping::operation::actions::composer::Composer;
+use crate::shaping::patch::trace::Sample;
 use crate::expressions::visitor;
 
 // External Uses
@@ -36,6 +37,7 @@ impl ReplacerAction {
 
         let mut result = String::with_capacity(input.len());
         let mut last = 0;
+        let mut matches = 0;
 
         for captures in from.captures_iter(input) {
             let found = captures.get(0)?;
@@ -52,12 +54,25 @@ impl ReplacerAction {
                 composer, controller, &self.replacer.to, &[]
             ).ok()?;
 
+            matches += 1;
+            if controller.tracing() {
+                let sample = Sample {
+                    input: found.as_str().to_string(),
+                    groups: captures.iter().skip(1).map(|group| group.map(|group| group.as_str().to_string())).collect(),
+                    output: replacement.clone(),
+                    ..Sample::default()
+                };
+                controller.record(*self.self_id(), |trace, limit| trace.sample(limit, sample));
+            }
+
             result.push_str(&input[last..found.start()]);
             result.push_str(&replacement);
             last = found.end();
         }
 
         result.push_str(&input[last..]);
+        controller.record(*self.self_id(), |trace, _| trace.input(matches));
+
         Some(result)
     }
 }
