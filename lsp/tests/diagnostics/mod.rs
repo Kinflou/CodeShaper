@@ -3,10 +3,49 @@ use std::fs;
 
 // Crate Uses
 use crate::{project, BROKEN};
+use crate::preview::operation;
 
 // External Uses
-use codeshaper_lsp::diagnostics::diagnostics;
+use codeshaper_lsp::diagnostics::{coverage, diagnostics};
+use codeshaper_lsp::trace::Traces;
 use lsp_types::{DiagnosticSeverity, NumberOrString, Position, Range};
+
+
+pub const UNCOVERED: &str = r##"enabled false
+alias "cpp"
+file "*.cpp"
+
+actions {
+    makers {
+        maker "unused_here" {
+            make "x"
+        }
+    }
+    switchers {
+        switch "kind" {
+            cases old="legacy" gone="removed"
+            index "@[0]"
+        }
+    }
+    replacers {
+        replacer {
+            location "ClassSpecifier"
+            from r"x"
+            to "y"
+        }
+        replacer {
+            location "FunctionDefinition"
+            from r"nothing"
+            to "#[unused_here]"
+        }
+        replacer {
+            location "FunctionDefinition"
+            from r"void (old)"
+            to "#[kind]($[0])"
+        }
+    }
+}
+"##;
 
 
 fn codes(found: &[lsp_types::Diagnostic]) -> Vec<String> {
@@ -62,4 +101,23 @@ fn files_outside_a_project_are_ignored() {
     let found = diagnostics(&codeshaper::registry(), &directory.path().join("notes.kdl"), BROKEN);
 
     assert_eq!(found, vec![]);
+}
+
+#[test]
+fn coverage_reports_what_matches_nothing() {
+    let (_directory, project) = operation();
+    let trace = Traces::default().get(&codeshaper::registry(), &project, UNCOVERED).unwrap();
+
+    let found = coverage(UNCOVERED, &trace);
+    let summary: Vec<(String, Option<DiagnosticSeverity>, &str)> = codes(&found).into_iter().zip(&found)
+        .map(|(code, diagnostic)| (code, diagnostic.severity, diagnostic.message.as_str()))
+        .collect();
+
+    assert_eq!(summary, vec![
+        ("never-called".to_string(), Some(DiagnosticSeverity::HINT), "unused_here: never called in 2 target file(s)"),
+        ("case-unused".to_string(), Some(DiagnosticSeverity::HINT), "kind › cases: 'gone' is never used in 2 target file(s)"),
+        ("location-unmatched".to_string(), Some(DiagnosticSeverity::WARNING), "replacer #1 › location: matches nothing in 2 target file(s)"),
+        ("from-unmatched".to_string(), Some(DiagnosticSeverity::WARNING), "replacer #2 › from: never matches in the 2 located content(s)"),
+    ]);
+    assert_eq!(found[1].range, Range::new(Position::new(12, 36), Position::new(12, 45)));
 }

@@ -4,24 +4,25 @@ use std::path::PathBuf;
 
 // Crate Uses
 use crate::completion::completion;
-use crate::diagnostics::diagnostics;
+use crate::diagnostics::{coverage, diagnostics};
 use crate::document::{kind, DocumentKind};
 use crate::hover::hover;
 use crate::navigation::{definition, references};
 use crate::position::LineIndex;
-use crate::preview::preview;
+use crate::preview::{preview, replacement_counts};
 use crate::syntax::Outline;
 use crate::tokens::tokens;
+use crate::trace::{Limits, Traces};
 
 // External Uses
 use codeshaper::core::registry::Registry;
-use lsp_server::{Connection, ErrorCode, Message, Notification, Request, Response};
+use lsp_server::{Connection, ErrorCode, Message, Notification, Request, RequestId, Response};
 use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
     Notification as _, PublishDiagnostics
 };
 use lsp_types::request::{
-    CodeLensRequest, Completion, GotoDefinition, HoverRequest, References, Request as _, SemanticTokensFullRequest
+    CodeLensRefresh, CodeLensRequest, Completion, GotoDefinition, HoverRequest, References, Request as _, SemanticTokensFullRequest
 };
 use lsp_types::{
     CodeLens, CodeLensParams, Command, CompletionParams, CompletionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
@@ -38,15 +39,32 @@ const PREVIEW_COMMAND: &str = "codeshaper.preview";
 const PREVIEW_REQUEST: &str = "codeshaper/preview";
 
 
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Options {
+    pub limits: Limits,
+    pub refresh_lenses: bool
+}
+
 pub struct Server<'c> {
     connection: &'c Connection,
     registry: Registry,
-    documents: HashMap<Uri, String>
+    documents: HashMap<Uri, String>,
+    traces: Traces,
+    coverage: HashMap<Uri, Vec<lsp_types::Diagnostic>>,
+    refresh_lenses: bool,
+    next: i32
 }
 
 impl<'c> Server<'c> {
-    pub fn new(connection: &'c Connection, registry: Registry) -> Self {
-        Self { connection, registry, documents: HashMap::new() }
+    pub fn new(connection: &'c Connection, registry: Registry, options: Options) -> Self {
+        Self {
+            connection, registry,
+            documents: HashMap::new(),
+            traces: Traces::new(options.limits),
+            coverage: HashMap::new(),
+            refresh_lenses: options.refresh_lenses,
+            next: 0
+        }
     }
 
     pub fn serve(&mut self) -> Result<()> {
@@ -80,11 +98,13 @@ impl<'c> Server<'c> {
             HoverRequest::METHOD => {
                 let params: HoverParams = serde_json::from_value(request.params).into_diagnostic()?;
                 let position = params.text_document_position_params;
-                let found = self.patch_at(&position.text_document.uri, position.position).and_then(|(project, text, offset)| {
-                    let (value, range) = hover(&self.registry, &project, text, offset)?;
+                let patch = self.patch_at(&position.text_document.uri, position.position)
+                    .map(|(project, text, offset)| (project, text.to_string(), offset));
+                let found = patch.and_then(|(project, text, offset)| {
+                    let (value, range) = hover(&self.registry, &project, &mut self.traces, &text, offset)?;
                     Some(Hover {
                         contents: HoverContents::Markup(MarkupContent { kind: MarkupKind::Markdown, value }),
-                        range: Some(LineIndex::new(text).range(range))
+                        range: Some(LineIndex::new(&text).range(range))
                     })
                 });
 
@@ -120,13 +140,21 @@ impl<'c> Server<'c> {
             CodeLensRequest::METHOD => {
                 let params: CodeLensParams = serde_json::from_value(request.params).into_diagnostic()?;
                 let uri = params.text_document.uri;
-                let lenses: Vec<CodeLens> = self.patch_at(&uri, Position::default()).map(|_| CodeLens {
-                    range: Range::default(),
-                    command: Some(Command::new(
-                        "Preview result".to_string(), PREVIEW_COMMAND.to_string(), Some(vec![json!(uri.as_str())])
-                    )),
+                let lens = |range, title: String| CodeLens {
+                    range,
+                    command: Some(Command::new(title, PREVIEW_COMMAND.to_string(), Some(vec![json!(uri.as_str())]))),
                     data: None
-                }).into_iter().collect();
+                };
+
+                let mut lenses = vec![];
+                if let Some((project, text, _)) = self.patch_at(&uri, Position::default()) {
+                    lenses.push(lens(Range::default(), "Preview result".to_string()));
+
+                    if let Some(trace) = self.traces.cached(&project, text) {
+                        let index = LineIndex::new(text);
+                        lenses.extend(replacement_counts(text, &trace).into_iter().map(|(range, title)| lens(index.range(range), title)));
+                    }
+                }
 
                 Response::new_ok(request.id, lenses)
             }
@@ -191,23 +219,28 @@ impl<'c> Server<'c> {
         match notification.method.as_str() {
             DidOpenTextDocument::METHOD => {
                 let params: DidOpenTextDocumentParams = serde_json::from_value(notification.params).into_diagnostic()?;
-                self.update(params.text_document.uri, params.text_document.text)
+                self.documents.insert(params.text_document.uri.clone(), params.text_document.text);
+                self.trace(&params.text_document.uri)?;
+                self.publish(&params.text_document.uri)
             }
             DidChangeTextDocument::METHOD => {
                 let params: DidChangeTextDocumentParams = serde_json::from_value(notification.params).into_diagnostic()?;
                 let Some(change) = params.content_changes.into_iter().last() else { return Ok(()) };
+                self.coverage.remove(&params.text_document.uri);
                 self.update(params.text_document.uri, change.text)
             }
             DidSaveTextDocument::METHOD => {
                 let params: DidSaveTextDocumentParams = serde_json::from_value(notification.params).into_diagnostic()?;
-                match params.text {
-                    Some(text) => self.update(params.text_document.uri, text),
-                    None => self.publish(&params.text_document.uri)
+                if let Some(text) = params.text {
+                    self.documents.insert(params.text_document.uri.clone(), text);
                 }
+                self.trace(&params.text_document.uri)?;
+                self.publish(&params.text_document.uri)
             }
             DidCloseTextDocument::METHOD => {
                 let params: DidCloseTextDocumentParams = serde_json::from_value(notification.params).into_diagnostic()?;
                 self.documents.remove(&params.text_document.uri);
+                self.coverage.remove(&params.text_document.uri);
                 self.send(params.text_document.uri, vec![])
             }
             _ => Ok(())
@@ -219,11 +252,31 @@ impl<'c> Server<'c> {
         self.publish(&uri)
     }
 
+    fn trace(&mut self, uri: &Uri) -> Result<()> {
+        let Some((project, text, _)) = self.patch_at(uri, Position::default()) else { return Ok(()) };
+        let text = text.to_string();
+
+        let Some(trace) = self.traces.get(&self.registry, &project, &text) else {
+            self.coverage.remove(uri);
+            return Ok(())
+        };
+        self.coverage.insert(uri.clone(), coverage(&text, &trace));
+
+        if !self.refresh_lenses { return Ok(()) }
+        self.next += 1;
+        let request = Request::new(RequestId::from(format!("refresh-{}", self.next)), CodeLensRefresh::METHOD.to_string(), ());
+
+        self.connection.sender.send(request.into()).into_diagnostic()
+    }
+
     fn publish(&self, uri: &Uri) -> Result<()> {
         let Some(text) = self.documents.get(uri) else { return Ok(()) };
         let Some(path) = path(uri) else { return Ok(()) };
 
-        self.send(uri.clone(), diagnostics(&self.registry, &path, text))
+        let mut found = diagnostics(&self.registry, &path, text);
+        found.extend(self.coverage.get(uri).into_iter().flatten().cloned());
+
+        self.send(uri.clone(), found)
     }
 
     fn send(&self, uri: Uri, diagnostics: Vec<lsp_types::Diagnostic>) -> Result<()> {

@@ -7,6 +7,7 @@ use std::ops::Range;
 
 
 pub const ACTIONS: [&str; 4] = ["builder", "maker", "switch", "list"];
+pub const ACTION_NODES: [&str; 5] = ["builder", "replacer", "maker", "switch", "list"];
 
 
 #[derive(Debug, Clone, PartialEq)]
@@ -64,6 +65,34 @@ impl Outline {
                 .chain(node.properties.iter().map(|(_, literal)| literal))
                 .map(move |literal| (index, literal))
         })
+    }
+
+    pub fn field(&self, action: usize, name: &str) -> Option<&Literal> {
+        self.nodes.iter()
+            .find(|node| node.parent == Some(action) && node.name == name)
+            .and_then(|node| node.arguments.first())
+    }
+
+    pub fn action_path(&self, index: usize) -> Option<String> {
+        let node = &self.nodes[index];
+        let segment = match node.name.as_str() {
+            "replacer" => {
+                let earlier = self.nodes[..index].iter().filter(|other| other.parent == node.parent && other.name == "replacer").count();
+                format!("replacer #{}", earlier + 1)
+            }
+            _ => node.arguments.first()?.value.clone()
+        };
+
+        match self.owner(index) {
+            Some(owner) => Some(format!("{}/{segment}", self.action_path(owner)?)),
+            None => Some(segment)
+        }
+    }
+
+    pub fn owner(&self, index: usize) -> Option<usize> {
+        self.nodes[index].parent
+            .and_then(|container| self.nodes[container].parent)
+            .and_then(|actions| self.nodes[actions].parent)
     }
 
     pub fn enclosing(&self, offset: usize) -> Option<usize> {

@@ -8,6 +8,15 @@
 pub const LOCATIONS: [&str; 2] = ["location", "reference-location"];
 
 
+pub fn regex_field(action: &str) -> Option<&'static str> {
+    match action {
+        "replacer" => Some("from"),
+        "builder" => Some("match"),
+        "maker" => Some("prepare"),
+        _ => None
+    }
+}
+
 pub fn children(parent: Option<&str>) -> &'static [&'static str] {
     match parent {
         None => &["enabled", "alias", "file", "actions"],

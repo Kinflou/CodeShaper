@@ -25,7 +25,7 @@ fn replacers_record_each_match() {
     let replacer = trace.action("replacer #1").unwrap();
 
     assert_eq!(trace.files, 2);
-    assert_eq!((replacer.inputs, replacer.matched, replacer.matches), (3, 1, 1));
+    assert_eq!((replacer.inputs, replacer.matched, replacer.matches, replacer.matched_files), (3, 1, 1, 1));
     assert_eq!(replacer.samples, vec![Sample {
         file: PathBuf::from("a.txt"),
         input: "old one".to_string(),

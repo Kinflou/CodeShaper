@@ -4,16 +4,18 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 // Crate Uses
+use crate::diagnostics::UNCOVERED;
 use crate::preview::{operation, RENAME};
 use crate::{project, BROKEN};
 
 // External Uses
 use lsp_server::{Connection, Message, Notification, Request, RequestId, Response};
-use lsp_types::notification::{DidOpenTextDocument, Exit, Initialized, Notification as _, PublishDiagnostics};
-use lsp_types::request::{CodeLensRequest, Completion, GotoDefinition, HoverRequest, Initialize, References, Request as _, SemanticTokensFullRequest, Shutdown};
+use lsp_types::notification::{DidChangeTextDocument, DidOpenTextDocument, DidSaveTextDocument, Exit, Initialized, Notification as _, PublishDiagnostics};
+use lsp_types::request::{CodeLensRefresh, CodeLensRequest, Completion, GotoDefinition, HoverRequest, Initialize, References, Request as _, SemanticTokensFullRequest, Shutdown};
 use lsp_types::{
-    CodeLens, CodeLensParams, CompletionParams, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams, Location, ReferenceContext, ReferenceParams, CompletionResponse, DidOpenTextDocumentParams, InitializeParams, InitializedParams, Position,
-    PublishDiagnosticsParams, SemanticTokensParams, SemanticTokensResult, TextDocumentIdentifier, TextDocumentItem,
+    CodeLens, CodeLensParams, CodeLensWorkspaceClientCapabilities, WorkspaceClientCapabilities, CompletionParams, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams, Location, NumberOrString, ReferenceContext, ReferenceParams, CompletionResponse, DidOpenTextDocumentParams, InitializeParams, InitializedParams, Position,
+    DidChangeTextDocumentParams, DidSaveTextDocumentParams, PublishDiagnosticsParams, SemanticTokensParams,
+    TextDocumentContentChangeEvent, VersionedTextDocumentIdentifier, SemanticTokensResult, TextDocumentIdentifier, TextDocumentItem,
     TextDocumentPositionParams, Uri
 };
 use url::Url;
@@ -32,11 +34,15 @@ pub struct Client {
 
 impl Client {
     pub fn start() -> Self {
+        Self::start_with(InitializeParams::default())
+    }
+
+    pub fn start_with(params: InitializeParams) -> Self {
         let (server, connection) = Connection::memory();
         let handle = thread::spawn(move || codeshaper_lsp::serve(&server).map_err(|error| error.to_string()));
         let mut client = Self { connection, server: Some(handle), next: 0 };
 
-        client.request(Initialize::METHOD, to_json!(InitializeParams::default()));
+        client.request(Initialize::METHOD, to_json!(params));
         client.notify(Initialized::METHOD, to_json!(InitializedParams {}));
         client
     }
@@ -69,6 +75,18 @@ impl Client {
         self.connection.receiver.recv_timeout(Duration::from_secs(10)).unwrap()
     }
 
+    pub fn published(&self) -> Vec<String> {
+        let Message::Notification(published) = self.receive() else { panic!("expected a notification") };
+        let params: PublishDiagnosticsParams = serde_json::from_value(published.params).unwrap();
+
+        params.diagnostics.into_iter()
+            .filter_map(|diagnostic| match diagnostic.code {
+                Some(NumberOrString::String(code)) => Some(code),
+                _ => None
+            })
+            .collect()
+    }
+
     pub fn stop(mut self) {
         self.request(Shutdown::METHOD, serde_json::Value::Null);
         self.notify(Exit::METHOD, serde_json::Value::Null);
@@ -94,6 +112,49 @@ fn diagnostics_are_published_on_open() {
     let params: PublishDiagnosticsParams = serde_json::from_value(published.params).unwrap();
     assert_eq!(params.uri, uri);
     assert_eq!(params.diagnostics.len(), 3);
+
+    client.stop();
+}
+
+#[test]
+fn coverage_is_published_on_open_and_save_only() {
+    let (_directory, project) = operation();
+    let client = Client::start();
+    let uri = client.open(&project.join("patches/uncovered.kdl"), UNCOVERED);
+    let coverage = ["never-called", "case-unused", "location-unmatched", "from-unmatched"];
+
+    assert_eq!(client.published(), coverage);
+
+    let change = DidChangeTextDocumentParams {
+        text_document: VersionedTextDocumentIdentifier::new(uri.clone(), 2),
+        content_changes: vec![TextDocumentContentChangeEvent { range: None, range_length: None, text: UNCOVERED.to_string() }]
+    };
+    client.notify(DidChangeTextDocument::METHOD, to_json!(change));
+    assert_eq!(client.published(), Vec::<String>::new());
+
+    let save = DidSaveTextDocumentParams { text_document: TextDocumentIdentifier::new(uri), text: None };
+    client.notify(DidSaveTextDocument::METHOD, to_json!(save));
+    assert_eq!(client.published(), coverage);
+
+    client.stop();
+}
+
+#[test]
+fn lenses_are_refreshed_after_tracing() {
+    let (_directory, project) = operation();
+    let mut params = InitializeParams::default();
+    params.capabilities.workspace = Some(WorkspaceClientCapabilities {
+        code_lens: Some(CodeLensWorkspaceClientCapabilities { refresh_support: Some(true) }),
+        ..WorkspaceClientCapabilities::default()
+    });
+    let client = Client::start_with(params);
+
+    client.open(&project.join("patches/rename.kdl"), RENAME);
+
+    let Message::Request(refresh) = client.receive() else { panic!("expected a refresh request") };
+    assert_eq!(refresh.method, CodeLensRefresh::METHOD);
+    client.connection.sender.send(Response::new_ok(refresh.id, ()).into()).unwrap();
+    assert_eq!(client.published(), Vec::<String>::new());
 
     client.stop();
 }
@@ -214,6 +275,10 @@ fn preview_lens_and_request() {
     let command = lenses[0].command.clone().unwrap();
     assert_eq!((command.title.as_str(), command.command.as_str()), ("Preview result", "codeshaper.preview"));
     assert_eq!(command.arguments, Some(vec![serde_json::json!(uri.as_str())]));
+
+    let counted = lenses[1].command.clone().unwrap();
+    assert_eq!(counted.title, "1 replacement(s) in 1 file(s)");
+    assert_eq!(lenses[1].range.start, Position::new(6, 8));
 
     let response = client.request("codeshaper/preview", serde_json::json!({ "uri": uri.as_str() }));
     let result = response.response_result.unwrap();

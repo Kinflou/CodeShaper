@@ -10,12 +10,14 @@ pub mod schema;
 pub mod server;
 pub mod syntax;
 pub mod tokens;
+pub mod trace;
 
 // Standard Uses
 
 // Crate Uses
-use crate::server::Server;
+use crate::server::{Options, Server};
 use crate::tokens::LEGEND;
+use crate::trace::Limits;
 
 // External Uses
 use lsp_server::Connection;
@@ -57,7 +59,24 @@ pub fn run() -> Result<()> {
 
 pub fn serve(connection: &Connection) -> Result<()> {
     let capabilities = serde_json::to_value(capabilities()).into_diagnostic()?;
-    connection.initialize(capabilities).map_err(|error| miette!("{error}"))?;
+    let parameters = connection.initialize(capabilities).map_err(|error| miette!("{error}"))?;
 
-    Server::new(connection, codeshaper::registry()).serve()
+    let options = Options {
+        limits: limits(&parameters),
+        refresh_lenses: parameters["capabilities"]["workspace"]["codeLens"]["refreshSupport"].as_bool().unwrap_or(false)
+    };
+
+    Server::new(connection, codeshaper::registry(), options).serve()
+}
+
+fn limits(parameters: &serde_json::Value) -> Limits {
+    let hover = &parameters["initializationOptions"]["hover"];
+    let read = |name: &str, default: usize| hover[name].as_u64().map(|value| value as usize).unwrap_or(default);
+    let defaults = Limits::default();
+
+    Limits {
+        samples: read("samples", defaults.samples),
+        lines: read("lines", defaults.lines),
+        characters: read("characters", defaults.characters)
+    }
 }

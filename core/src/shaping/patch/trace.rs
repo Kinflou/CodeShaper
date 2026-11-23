@@ -21,6 +21,7 @@ pub struct ActionTrace {
     pub inputs: usize,
     pub matched: usize,
     pub matches: usize,
+    pub matched_files: usize,
     pub samples: Vec<Sample>,
     pub calls: usize,
     pub results: Vec<Sample>,
@@ -55,6 +56,7 @@ impl ActionTrace {
         self.inputs += other.inputs;
         self.matched += other.matched;
         self.matches += other.matches;
+        self.matched_files += usize::from(other.matches > 0);
         self.calls += other.calls;
         self.keys.extend(other.keys);
 

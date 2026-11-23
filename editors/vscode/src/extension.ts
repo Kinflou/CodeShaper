@@ -42,11 +42,19 @@ class PreviewProvider implements TextDocumentContentProvider {
 }
 
 export async function activate(context: ExtensionContext): Promise<void> {
-    const command = workspace.getConfiguration("codeshaper").get<string>("server.path", "codeshaper");
+    const configuration = workspace.getConfiguration("codeshaper");
+    const command = configuration.get<string>("server.path", "codeshaper");
 
     const serverOptions: ServerOptions = { command, args: ["lsp"] };
     const clientOptions: LanguageClientOptions = {
-        documentSelector: [{ scheme: "file", language: "kdl" }]
+        documentSelector: [{ scheme: "file", language: "kdl" }],
+        initializationOptions: {
+            hover: {
+                samples: configuration.get<number>("hover.samples", 3),
+                lines: configuration.get<number>("hover.lines", 8),
+                characters: configuration.get<number>("hover.characters", 400)
+            }
+        }
     };
 
     client = new LanguageClient("codeshaper", "CodeShaper", serverOptions, clientOptions);

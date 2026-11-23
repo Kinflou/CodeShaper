@@ -8,6 +8,7 @@ mod preview;
 mod protocol;
 mod syntax;
 mod tokens;
+mod trace;
 
 // Standard Uses
 use std::fs;

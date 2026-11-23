@@ -42,6 +42,16 @@ impl Registry {
         self.backend(self.extensions.get(extension)?)
     }
 
+    pub fn extensions(&self, backend: &str) -> Vec<&str> {
+        let mut found: Vec<&str> = self.extensions.iter()
+            .filter(|(_, name)| *name == backend)
+            .map(|(extension, _)| extension.as_str())
+            .collect();
+        found.sort();
+
+        found
+    }
+
     pub fn loader(&self, name: &str) -> Option<&dyn TargetLoader> {
         self.loaders.get(name).map(|loader| loader.as_ref())
     }

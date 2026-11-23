@@ -1,15 +1,20 @@
 // Standard Uses
+use std::collections::HashSet;
+use std::ops::Range;
 use std::path::Path;
 
 // Crate Uses
 use crate::document::{ast_set, kind, DocumentKind};
+use crate::navigation::calls;
 use crate::position::LineIndex;
+use crate::syntax::{Outline, ACTION_NODES};
 
 // External Uses
 use codeshaper::core::registry::Registry;
 use codeshaper::core::shaping::operation::configuration;
 use codeshaper::core::shaping::operation::patch_backend;
 use codeshaper::core::shaping::patch::Patch;
+use codeshaper::core::shaping::patch::trace::Trace;
 use codeshaper::core::shaping::patch::validation::{validate_source, Severity};
 use codeshaper::core::shaping::project::settings;
 use lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString};
@@ -64,6 +69,77 @@ fn patch(registry: &Registry, project: &Path, path: &Path, text: &str, index: &L
             }
         })
         .collect()
+}
+
+pub fn coverage(text: &str, trace: &Trace) -> Vec<Diagnostic> {
+    let outline = Outline::parse(text);
+    let index = LineIndex::new(text);
+    let called: HashSet<String> = calls(&outline, text).into_iter().map(|call| call.name).collect();
+    let files = trace.files;
+    let mut found = vec![];
+
+    let mut report = |range: Range<usize>, severity, code: &str, message: String| found.push(Diagnostic {
+        range: index.range(range),
+        severity: Some(severity),
+        code: Some(NumberOrString::String(code.to_string())),
+        source: Some(SOURCE.to_string()),
+        message,
+        ..Diagnostic::default()
+    });
+
+    for (position, node) in outline.nodes.iter().enumerate() {
+        if !ACTION_NODES.contains(&node.name.as_str()) { continue }
+        let Some(path) = outline.action_path(position) else { continue };
+        let action = trace.action(&path).cloned().unwrap_or_default();
+        let location = outline.field(position, "location").map(|literal| literal.range.clone());
+
+        if node.name == "replacer" {
+            match (action.inputs, location, outline.field(position, "from")) {
+                (0, Some(location), _) => report(
+                    location, DiagnosticSeverity::WARNING, "location-unmatched",
+                    format!("{path} › location: matches nothing in {files} target file(s)")
+                ),
+                (inputs, _, Some(from)) if inputs > 0 && action.matches == 0 => report(
+                    from.range.clone(), DiagnosticSeverity::WARNING, "from-unmatched",
+                    format!("{path} › from: never matches in the {inputs} located content(s)")
+                ),
+                _ => {}
+            }
+            continue
+        }
+
+        let Some(name) = node.arguments.first() else { continue };
+        if !called.contains(&name.value) { continue }
+
+        if let (true, 0, Some(location)) = (node.name == "builder", action.inputs, location) {
+            report(
+                location, DiagnosticSeverity::WARNING, "location-unmatched",
+                format!("{path} › location: matches nothing in {files} target file(s)")
+            );
+            continue
+        }
+
+        if action.calls == 0 {
+            report(
+                name.range.clone(), DiagnosticSeverity::HINT, "never-called",
+                format!("{path}: never called in {files} target file(s)")
+            );
+            continue
+        }
+
+        if node.name != "switch" { continue }
+        let cases = outline.nodes.iter().find(|child| child.parent == Some(position) && child.name == "cases");
+
+        for (key, value) in cases.into_iter().flat_map(|cases| &cases.properties) {
+            if action.keys.contains(key) { continue }
+            report(
+                value.range.clone(), DiagnosticSeverity::HINT, "case-unused",
+                format!("{path} › cases: '{key}' is never used in {files} target file(s)")
+            );
+        }
+    }
+
+    found
 }
 
 fn parse_errors(report: &Report, index: &LineIndex) -> Vec<Diagnostic> {

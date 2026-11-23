@@ -41,10 +41,7 @@ pub fn definitions(outline: &Outline) -> Vec<Symbol> {
 }
 
 pub fn name_at(outline: &Outline, text: &str, offset: usize) -> Option<String> {
-    calls(outline, text).into_iter()
-        .chain(definitions(outline))
-        .find(|symbol| symbol.range.start <= offset && offset <= symbol.range.end)
-        .map(|symbol| symbol.name)
+    symbol_at(outline, text, offset).map(|symbol| symbol.name)
 }
 
 pub fn definition(outline: &Outline, text: &str, offset: usize) -> Option<Range<usize>> {
@@ -64,3 +61,9 @@ pub fn references(outline: &Outline, text: &str, offset: usize, declaration: boo
         .collect()
 }
 
+
+pub fn symbol_at(outline: &Outline, text: &str, offset: usize) -> Option<Symbol> {
+    calls(outline, text).into_iter()
+        .chain(definitions(outline))
+        .find(|symbol| symbol.range.start <= offset && offset <= symbol.range.end)
+}
