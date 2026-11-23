@@ -210,12 +210,20 @@ impl Operation {
     }
 
     pub fn trace(&self, registry: &Registry, name: &str, patch: &Patch, limit: usize) -> Result<Trace> {
+        self.trace_while(registry, name, patch, limit, &|| true)
+    }
+
+    pub fn trace_while(
+        &self, registry: &Registry, name: &str, patch: &Patch, limit: usize, keep_going: &dyn Fn() -> bool
+    ) -> Result<Trace> {
         self.check_patch(registry, name, patch)?;
         let (directory, files) = self.matching_files(registry, name, patch)?;
         let patch = Rc::new(patch.clone());
         let mut trace = Trace::new(limit);
 
         for file in &files {
+            if !keep_going() { bail!("Tracing patch {} was stopped", name) }
+
             let Ok(source) = fs::read_to_string(directory.join(&file.path)) else { continue };
             let Ok(backend) = self.backend(registry, &patch, file) else { continue };
 

@@ -1,7 +1,7 @@
 // Standard Uses
 use std::ops::Range;
 use std::path::Path;
-use std::rc::Rc;
+use std::sync::Arc;
 
 // Crate Uses
 use crate::completion::backend;
@@ -256,7 +256,7 @@ fn query(backend: &dyn LanguageBackend, part: Part, word: &str, source: &str, co
 
 fn traced(
     registry: &Registry, project: &Path, traces: &mut Traces, text: &str, outline: &Outline, action: usize
-) -> Option<(Rc<Trace>, String)> {
+) -> Option<(Arc<Trace>, String)> {
     let path = outline.action_path(action)?;
 
     Some((traces.get(registry, project, text)?, path))

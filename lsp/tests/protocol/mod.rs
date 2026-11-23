@@ -9,6 +9,7 @@ use crate::preview::{operation, RENAME};
 use crate::{project, BROKEN};
 
 // External Uses
+use codeshaper::core::registry::Registry;
 use codeshaper_lsp::position::LineIndex;
 use lsp_server::{Connection, Message, Notification, Request, RequestId, Response};
 use lsp_types::notification::{DidChangeTextDocument, DidOpenTextDocument, DidSaveTextDocument, Exit, Initialized, Notification as _, PublishDiagnostics};
@@ -29,7 +30,7 @@ macro_rules! to_json {
 
 
 pub struct Client {
-    connection: Connection,
+    pub connection: Connection,
     server: Option<JoinHandle<Result<(), String>>>,
     next: i32
 }
@@ -40,8 +41,12 @@ impl Client {
     }
 
     pub fn start_with(params: InitializeParams) -> Self {
+        Self::start_on(params, codeshaper::registry)
+    }
+
+    pub fn start_on(params: InitializeParams, registry: impl Fn() -> Registry + Send + 'static) -> Self {
         let (server, connection) = Connection::memory();
-        let handle = thread::spawn(move || codeshaper_lsp::serve(&server).map_err(|error| error.to_string()));
+        let handle = thread::spawn(move || codeshaper_lsp::serve_with(&server, registry).map_err(|error| error.to_string()));
         let mut client = Self { connection, server: Some(handle), next: 0 };
 
         client.request(Initialize::METHOD, to_json!(params));
@@ -125,6 +130,7 @@ fn coverage_is_published_on_open_and_save_only() {
     let uri = client.open(&project.join("patches/uncovered.kdl"), UNCOVERED);
     let coverage = ["never-called", "case-unused", "location-unmatched", "from-unmatched"];
 
+    assert_eq!(client.published(), Vec::<String>::new());
     assert_eq!(client.published(), coverage);
 
     let change = DidChangeTextDocumentParams {
@@ -136,6 +142,7 @@ fn coverage_is_published_on_open_and_save_only() {
 
     let save = DidSaveTextDocumentParams { text_document: TextDocumentIdentifier::new(uri), text: None };
     client.notify(DidSaveTextDocument::METHOD, to_json!(save));
+    assert_eq!(client.published(), Vec::<String>::new());
     assert_eq!(client.published(), coverage);
 
     client.stop();
@@ -152,11 +159,11 @@ fn lenses_are_refreshed_after_tracing() {
     let client = Client::start_with(params);
 
     client.open(&project.join("patches/rename.kdl"), RENAME);
+    assert_eq!(client.published(), Vec::<String>::new());
 
     let Message::Request(refresh) = client.receive() else { panic!("expected a refresh request") };
     assert_eq!(refresh.method, CodeLensRefresh::METHOD);
     client.connection.sender.send(Response::new_ok(refresh.id, ()).into()).unwrap();
-    assert_eq!(client.published(), Vec::<String>::new());
 
     client.stop();
 }
@@ -295,6 +302,11 @@ fn preview_lens_and_request() {
     let (_directory, project) = operation();
     let mut client = Client::start();
     let uri = client.open(&project.join("patches/rename.kdl"), RENAME);
+
+    client.request(HoverRequest::METHOD, to_json!(HoverParams {
+        text_document_position_params: at(&uri, Position::new(0, 0)),
+        work_done_progress_params: Default::default()
+    }));
 
     let params = CodeLensParams {
         text_document: TextDocumentIdentifier::new(uri.clone()),

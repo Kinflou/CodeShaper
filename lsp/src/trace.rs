@@ -1,7 +1,7 @@
 // Standard Uses
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 // Crate Uses
@@ -34,28 +34,26 @@ struct Entry {
     project: PathBuf,
     text: String,
     stamps: Vec<(PathBuf, Option<SystemTime>)>,
-    trace: Rc<Trace>
+    trace: Arc<Trace>
 }
 
 #[derive(Default)]
 pub struct Traces {
     pub limits: Limits,
-    entries: Vec<Entry>
+    entries: Vec<Entry>,
+    guard: Option<Box<dyn Fn() -> bool>>
 }
 
 impl Traces {
     pub fn new(limits: Limits) -> Self {
-        Self { limits, entries: vec![] }
+        Self { limits, ..Self::default() }
     }
 
-    pub fn cached(&self, project: &Path, text: &str) -> Option<Rc<Trace>> {
-        self.entries.iter()
-            .rev()
-            .find(|entry| entry.project == project && entry.text == text)
-            .map(|entry| entry.trace.clone())
+    pub fn guard(&mut self, keep_going: impl Fn() -> bool + 'static) {
+        self.guard = Some(Box::new(keep_going));
     }
 
-    pub fn get(&mut self, registry: &Registry, project: &Path, text: &str) -> Option<Rc<Trace>> {
+    pub fn get(&mut self, registry: &Registry, project: &Path, text: &str) -> Option<Arc<Trace>> {
         let patch = Patch::from_kdl("", text).ok()?;
         let operation = Operation::from_file(&configuration(project).ok()?).ok()?;
         let (directory, files) = operation.matching_files(registry, "", &patch).ok()?;
@@ -70,7 +68,8 @@ impl Traces {
             return Some(entry.trace.clone())
         }
 
-        let trace = Rc::new(operation.trace(registry, "", &patch, self.limits.samples).ok()?);
+        let keep_going = || self.guard.as_ref().is_none_or(|guard| guard());
+        let trace = Arc::new(operation.trace_while(registry, "", &patch, self.limits.samples, &keep_going).ok()?);
 
         self.entries.retain(|entry| entry.project != project || entry.text != text);
         if self.entries.len() >= KEPT { self.entries.remove(0); }

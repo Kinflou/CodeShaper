@@ -1,5 +1,5 @@
 // Standard Uses
-use std::rc::Rc;
+use std::sync::Arc;
 
 // Crate Uses
 use crate::preview::{operation, RENAME};
@@ -40,7 +40,7 @@ fn traces_keep_the_sample_limit_and_are_reused() {
     let first = traces.get(&codeshaper::registry(), &project, RENAME).unwrap();
     let again = traces.get(&codeshaper::registry(), &project, RENAME).unwrap();
 
-    assert!(Rc::ptr_eq(&first, &again));
+    assert!(Arc::ptr_eq(&first, &again));
     assert_eq!(first.action("replacer #1").unwrap().samples.len(), 1);
     assert_eq!(first.files, 2);
 }

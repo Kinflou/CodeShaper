@@ -12,6 +12,7 @@ mod symbols;
 mod syntax;
 mod tokens;
 mod trace;
+mod worker;
 
 // Standard Uses
 use std::fs;

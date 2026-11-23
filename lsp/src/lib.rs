@@ -16,6 +16,7 @@ pub mod target;
 pub mod toggle;
 pub mod tokens;
 pub mod trace;
+pub mod worker;
 
 // Standard Uses
 
@@ -25,6 +26,7 @@ use crate::tokens::LEGEND;
 use crate::trace::Limits;
 
 // External Uses
+use codeshaper::core::registry::Registry;
 use lsp_server::Connection;
 use lsp_types::{
     CodeActionProviderCapability, CodeLensOptions, CompletionOptions, ExecuteCommandOptions, FoldingRangeProviderCapability, HoverProviderCapability, OneOf, RenameOptions, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
@@ -69,6 +71,10 @@ pub fn run() -> Result<()> {
 }
 
 pub fn serve(connection: &Connection) -> Result<()> {
+    serve_with(connection, codeshaper::registry)
+}
+
+pub fn serve_with(connection: &Connection, registry: impl Fn() -> Registry + Send + 'static) -> Result<()> {
     let capabilities = serde_json::to_value(capabilities()).into_diagnostic()?;
     let parameters = connection.initialize(capabilities).map_err(|error| miette!("{error}"))?;
 
@@ -78,7 +84,7 @@ pub fn serve(connection: &Connection) -> Result<()> {
         definition_links: parameters["capabilities"]["textDocument"]["definition"]["linkSupport"].as_bool().unwrap_or(false)
     };
 
-    Server::new(connection, codeshaper::registry(), options).serve()
+    Server::new(connection, registry, options).serve()
 }
 
 fn limits(parameters: &serde_json::Value) -> Limits {
