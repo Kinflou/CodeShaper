@@ -154,3 +154,52 @@ fn missing_configuration_fails_cleanly() {
     assert!(error.contains("Could not load operation configuration"));
     assert!(!error.contains("panicked"));
 }
+
+#[test]
+fn apply_uses_the_projects_language() {
+    let directory = example(CPP14);
+    let patch = directory.path().join("shaping_project/patches/function_return_creation.kdl");
+    let file = directory.path().join("target/ReturnModule.cpp");
+    let renamed = directory.path().join("target/ReturnModule.unknown");
+    fs::copy(&file, &renamed).unwrap();
+    let apply = |patch: &Path, file: &Path, extra: &[&str]| {
+        let output = codeshaper(&[&["apply", &patch.display().to_string(), &file.display().to_string()], extra].concat());
+        (output.status.success(), stdout(&output), String::from_utf8_lossy(&output.stderr).to_string())
+    };
+
+    assert!(apply(&patch, &renamed, &[]).1.contains("+++ b/"));
+    assert!(apply(&patch, &file, &["--language", "cpp"]).0);
+    assert!(apply(&patch, &file, &["--language", "cobol"]).2.contains("'cobol' is not a known language"));
+
+    let alone = directory.path().join("alone.kdl");
+    fs::copy(&patch, &alone).unwrap();
+    assert!(apply(&alone, &file, &[]).2.contains("use --language"));
+    assert!(apply(&alone, &file, &["--language", "cpp"]).1.contains("+++ b/"));
+
+    let settings = directory.path().join("shaping_project/settings.kdl");
+    let content = fs::read_to_string(&settings).unwrap();
+    fs::write(&settings, content.replace("ast-set \"cpp\"", "ast-set { cpp \"Return*.cpp\"; }")).unwrap();
+    assert!(apply(&patch, &file, &[]).1.contains("+++ b/"));
+    assert!(apply(&patch, &directory.path().join("target/Module.cpp"), &[]).2.contains("has no language"));
+    assert!(apply(&patch, &directory.path().join("expected_result/ReturnModule.cpp"), &[]).2.contains("is not in the project's target"));
+
+    fs::write(&alone, format!("alias \"cpp\"\n{}", fs::read_to_string(&alone).unwrap())).unwrap();
+    assert!(apply(&alone, &file, &[]).1.contains("+++ b/"));
+    assert!(apply(&alone, &file, &["--language", "gdscript"]).2.contains("names the language 'cpp', not 'gdscript'"));
+}
+
+#[test]
+fn check_says_when_locations_were_not_checked() {
+    let directory = tempfile::tempdir().unwrap();
+    let patch = directory.path().join("alone.kdl");
+    fs::write(&patch, "enabled true\nfile \"a\"\nactions {\n    replacers {\n        replacer {\n            location \"Nothing\"\n            from \"a\"\n            to \"b\"\n        }\n    }\n}\n").unwrap();
+    let path = patch.display().to_string();
+
+    let output = codeshaper(&["check", "--patch", &path]);
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("weren't checked"));
+
+    let output = codeshaper(&["check", "--patch", &path, "--language", "cpp"]);
+    assert!(!output.status.success());
+    assert!(stdout(&output).contains("error[location-not-found]"));
+}

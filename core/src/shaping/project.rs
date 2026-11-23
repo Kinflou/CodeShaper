@@ -1,10 +1,11 @@
 // Relative Modules
+pub mod ast_set;
 pub mod settings;
 
 // Standard Uses
 use std::collections::BTreeMap;
 use std::{fs, io};
-use std::path::{Path, MAIN_SEPARATOR};
+use std::path::{Path, PathBuf, MAIN_SEPARATOR};
 
 // Crate Uses
 use crate::shaping::patch::Patch;
@@ -24,6 +25,14 @@ pub struct Project {
 }
 
 impl Project {
+    pub fn containing(patch: &Path) -> Option<PathBuf> {
+        patch.ancestors().skip(1)
+            .filter(|ancestor| ancestor.file_name().is_some_and(|name| name == "patches"))
+            .filter_map(Path::parent)
+            .find(|project| project.join("settings.kdl").is_file())
+            .map(Path::to_path_buf)
+    }
+
     pub fn from_directory(path: &Path) -> Result<Self> {
         Self::from_directory_with(path, &|path| fs::read_to_string(path))
     }

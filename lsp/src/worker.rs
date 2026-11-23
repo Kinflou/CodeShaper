@@ -9,7 +9,7 @@ use std::thread::{self, JoinHandle};
 
 // Crate Uses
 use crate::diagnostics::{coverage, file};
-use crate::hover::hover;
+use crate::hover::{hover, settings};
 use crate::inlay::{places, Counts, Hints};
 use crate::position::LineIndex;
 use crate::preview::{configuration, operation_preview, preview};
@@ -41,6 +41,7 @@ pub struct Snapshot {
 pub enum Work {
     Hover(usize),
     Places(String),
+    Languages(usize),
     Preview,
     Operation { configuration: Option<PathBuf>, open: HashMap<PathBuf, String> }
 }
@@ -272,7 +273,7 @@ fn trace(shared: &Arc<Shared>, registry: &Registry, traces: &mut Traces, snapsho
     let (guard, current) = (shared.clone(), snapshot.clone());
     traces.guard(move || guard.is_current(&current));
 
-    let mut found: Vec<Diagnostic> = file(registry, project, text).into_iter().collect();
+    let mut found = file(registry, project, text);
     let trace = traces.get(registry, project, text);
     found.extend(trace.iter().flat_map(|trace| coverage(text, trace)));
 
@@ -299,13 +300,9 @@ fn answer(
 
     match work {
         Work::Hover(offset) => {
-            let found = hover(registry, project, traces, text, offset).map(|(value, range)| Hover {
-                contents: HoverContents::Markup(MarkupContent { kind: MarkupKind::Markdown, value }),
-                range: Some(LineIndex::new(text).range(range))
-            });
-
-            Response::new_ok(id.clone(), found)
+            hover_response(id, text, hover(registry, project, traces, text, offset))
         }
+        Work::Languages(offset) => hover_response(id, text, settings(registry, project, text, offset)),
         Work::Places(location) => Response::new_ok(id.clone(), target_places(registry, project, text, &location)),
         Work::Preview => preview_response(registry, id, uri, project, text),
         Work::Operation { configuration: path, open } => {
@@ -332,6 +329,15 @@ fn target_places(registry: &Registry, project: &Path, text: &str, location: &str
     }
 
     found
+}
+
+fn hover_response(id: &RequestId, text: &str, found: Option<(String, std::ops::Range<usize>)>) -> Response {
+    let found = found.map(|(value, range)| Hover {
+        contents: HoverContents::Markup(MarkupContent { kind: MarkupKind::Markdown, value }),
+        range: Some(LineIndex::new(text).range(range))
+    });
+
+    Response::new_ok(id.clone(), found)
 }
 
 fn preview_response(registry: &Registry, id: &RequestId, uri: &Uri, project: &Path, text: &str) -> Response {

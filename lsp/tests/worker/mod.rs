@@ -62,7 +62,7 @@ fn start(gate: &Arc<Gate>) -> Client {
 
     Client::start_on(InitializeParams::default(), move || {
         let mut registry = Registry::default();
-        registry.add_backend(Box::new(SlowBackend(gate.clone())), &["cpp"]);
+        registry.add_backend(Box::new(SlowBackend(gate.clone())));
         codeshaper_target_text::register(&mut registry);
         registry
     })

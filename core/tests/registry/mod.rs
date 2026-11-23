@@ -33,7 +33,7 @@ impl TargetLoader for StubLoader {
 
 fn registry() -> Registry {
     let mut registry = Registry::default();
-    registry.add_backend(Box::new(StubBackend), &["stub", "st"]);
+    registry.add_backend(Box::new(StubBackend));
     registry.add_loader(Box::new(StubLoader));
 
     registry
@@ -41,16 +41,12 @@ fn registry() -> Registry {
 
 
 #[test]
-fn backend_by_name_and_extension() {
+fn backends_are_named() {
     let registry = registry();
 
     assert_eq!(registry.backend("stub").unwrap().name(), "stub");
-    assert_eq!(registry.backend_for(Path::new("src/main.st")).unwrap().name(), "stub");
     assert!(registry.backend("other").is_none());
-    assert!(registry.backend_for(Path::new("main.cpp")).is_none());
-    assert!(registry.backend_for(Path::new("Makefile")).is_none());
-    assert_eq!(registry.extensions("stub"), vec!["st", "stub"]);
-    assert!(registry.extensions("other").is_empty());
+    assert_eq!(registry.languages(), vec!["stub"]);
 }
 
 #[test]

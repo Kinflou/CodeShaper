@@ -1,5 +1,4 @@
 enabled false
-alias "cpp"
 file "Module.*"
 
 actions {

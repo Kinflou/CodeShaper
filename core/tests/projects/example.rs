@@ -35,6 +35,6 @@ fn load_example_project() {
 
     assert_eq!(project.settings.name, "Function Name Correction");
     assert_eq!(project.settings.target, "text");
-    assert_eq!(project.settings.ast_set, "cpp");
+    assert_eq!(project.settings.ast_set.fixed(), Some("cpp"));
 }
 

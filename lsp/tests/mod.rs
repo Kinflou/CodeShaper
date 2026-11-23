@@ -4,6 +4,7 @@ mod diagnostics;
 mod groups;
 mod hover;
 mod inlay;
+mod languages;
 mod navigation;
 mod position;
 mod preview;
@@ -28,7 +29,7 @@ use tempfile::TempDir;
 pub const SETTINGS: &str = "name \"Test\"\ntarget \"text\"\nast-set \"cpp\"\ndescription \"Test\"\n";
 
 pub const BROKEN: &str = r##"enabled true
-alias "cpp"
+alias ""
 file "*.cpp"
 
 actions {

@@ -2,6 +2,7 @@
 mod actions;
 mod broken;
 mod check;
+mod languages;
 mod lines;
 mod preview;
 mod run;
@@ -70,7 +71,7 @@ impl TargetLoader for ListLoader {
 
 pub fn registry() -> Registry {
     let mut registry = Registry::default();
-    registry.add_backend(Box::new(LineBackend), &["txt"]);
+    registry.add_backend(Box::new(LineBackend));
     registry.add_loader(Box::new(ListLoader));
 
     registry
@@ -105,7 +106,7 @@ pub fn workspace(result: &str, patches: &[(&str, String)]) -> TempDir {
         ("configuration.kdl", format!(
             "name \"Run\"\nproject \"shaping/\"\ntarget \"target/\"\noutput \"output/\"\nbackup \"backup/\"\nresult \"{result}\"\n"
         )),
-        ("shaping/settings.kdl", "name \"Run\"\ntarget \"list\"\nast-set \"\"\ndescription \"\"\n".to_string()),
+        ("shaping/settings.kdl", "name \"Run\"\ntarget \"list\"\nast-set \"lines\"\ndescription \"\"\n".to_string()),
         ("target/a.txt", "old one\nkeep\n".to_string()),
         ("target/nested/b.txt", "keep\n".to_string()),
         ("target/c.md", "old three\n".to_string()),

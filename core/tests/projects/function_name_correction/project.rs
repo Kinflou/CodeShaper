@@ -5,6 +5,7 @@ use std::path::Path;
 use crate::projects::function_name_correction::PROJECT_SETTINGS_PATH;
 
 // External Uses
+use codeshaper_core::shaping::project::ast_set::AstSet;
 use codeshaper_core::shaping::project::settings::ProjectSettings;
 use codeshaper_core::shaping::project::Project;
 
@@ -20,7 +21,7 @@ fn load_project_settings() {
     let expected_settings = ProjectSettings {
         name: "Function Name Correction".to_string(),
         target: "text".to_string(),
-        ast_set: "cpp".to_string(),
+        ast_set: AstSet::Language("cpp".to_string()),
         description: "Function Name Correction\n\
             ========================\n\
             \n\

@@ -247,6 +247,7 @@ dependencies = [
 name = "codeshaper-core"
 version = "0.1.0"
 dependencies = [
+ "dunce",
  "enum_dispatch",
  "glob",
  "indextree",

@@ -10,7 +10,7 @@ use codeshaper_lsp::hover::hover;
 use codeshaper_lsp::trace::Traces;
 
 
-const PATCH: &str = r##"alias "cpp"
+const PATCH: &str = r##"alias ""
 actions {
     makers {
         maker "pair" {
@@ -28,7 +28,7 @@ actions {
 "##;
 
 const TRACED: &str = r##"enabled false
-alias "cpp"
+alias ""
 file "*.cpp"
 
 actions {
@@ -53,7 +53,7 @@ actions {
 "##;
 
 const INDEXED: &str = r##"enabled false
-alias "cpp"
+alias ""
 file "*.cpp"
 
 actions {
@@ -235,11 +235,11 @@ fn patch_fields_show_files_and_backend() {
     assert!(text.starts_with("Matches 2 target file(s)\n\n- [`a.cpp`](<file:///"), "{text}");
     assert!(text.contains("/target/a.cpp>)\n- [`b.cpp`](<file:///"), "{text}");
 
-    let (text, _) = hovered(INDEXED, "\"cpp\"", 1);
-    assert!(text.starts_with("Language backend `cpp`, chosen by default for ") && text.contains("`.cpp`"), "{text}");
+    let (text, _) = hovered(&INDEXED.replace("alias \"\"", "alias \"cpp\""), "\"cpp\"", 1);
+    assert_eq!(text, "Language backend `cpp`, used instead of the project's `ast-set`");
 
-    let (text, _) = hovered(&INDEXED.replace("\"cpp\"", "\"cobol\""), "cobol", 1);
-    assert_eq!(text, "No language backend named `cobol` is registered");
+    let (text, _) = hovered(&INDEXED.replace("alias \"\"", "alias \"cobol\""), "cobol", 1);
+    assert!(text.starts_with("No language backend named `cobol` is registered, known languages are `cpp`"), "{text}");
 }
 
 #[test]

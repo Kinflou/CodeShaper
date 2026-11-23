@@ -1,5 +1,4 @@
 enabled true
-alias "cpp"
 file "CallerModule.cpp"
 
 actions {

@@ -1,16 +1,16 @@
 // Standard Uses
+use std::collections::BTreeMap;
 use std::ops::Range;
 use std::path::Path;
 use std::sync::Arc;
 
 // Crate Uses
-use crate::completion::backend;
 use crate::groups::{arguments, group_number, groups, locals};
 use crate::navigation::{calls, symbol_at, Symbol};
 use crate::query::{is_query, part_at, Part, PREDICATES};
 use crate::schema::{regex_field, LOCATIONS};
 use crate::syntax::{Literal, Outline, ACTIONS};
-use crate::target::{self, matches};
+use crate::target::{self, backends, matches};
 use crate::trace::{diff, fenced, inline, truncate, Limits, Traces};
 
 // External Uses
@@ -19,6 +19,8 @@ use codeshaper::core::registry::Registry;
 use codeshaper::core::shaping::operation::LocationMatches;
 use codeshaper::core::shaping::patch::pattern::{Group, FLAGS};
 use codeshaper::core::shaping::patch::trace::{ActionTrace, Trace};
+use codeshaper::core::shaping::project::ast_set::AstSet;
+use codeshaper::core::shaping::project::settings::from_kdl;
 use url::Url;
 
 
@@ -29,7 +31,7 @@ pub fn hover(
     registry: &Registry, project: &Path, traces: &mut Traces, text: &str, offset: usize
 ) -> Option<(String, Range<usize>)> {
     let outline = Outline::parse(text);
-    let language = outline.argument("alias").unwrap_or_default().to_string();
+    let language = backends(registry, project, &outline).first().map(|backend| backend.name().to_string()).unwrap_or_default();
 
     if let Some(Symbol { name, range }) = symbol_at(&outline, text, offset) {
         let index = outline.nodes.iter().position(|node| {
@@ -149,16 +151,50 @@ fn files(registry: &Registry, project: &Path, outline: &Outline) -> Option<Strin
     Some(value)
 }
 
-fn alias(registry: &Registry, name: &str) -> String {
-    if registry.backend(name).is_none() {
-        return format!("No language backend named `{name}` is registered")
+fn listed(registry: &Registry) -> String {
+    registry.languages().iter().map(|name| format!("`{name}`")).collect::<Vec<_>>().join(", ")
+}
+
+pub fn settings(registry: &Registry, project: &Path, text: &str, offset: usize) -> Option<(String, Range<usize>)> {
+    let outline = Outline::parse(text);
+    let node = outline.nodes.iter().enumerate()
+        .find(|(index, node)| {
+            let end = node.arguments.last().map(|literal| literal.range.end).unwrap_or(node.name_range.end);
+            let parent = node.parent.unwrap_or(*index);
+
+            outline.is_top(parent, "ast-set") && node.name_range.start <= offset && offset <= end
+        })
+        .map(|(_, node)| node)?;
+    let end = node.arguments.last().map(|literal| literal.range.end).unwrap_or(node.name_range.end);
+
+    let ast_set = from_kdl(text).ok()?.ast_set;
+    let solution = target::operation(project).and_then(|operation| operation.target(registry).ok());
+    let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
+    for file in solution.iter().flat_map(|solution| solution.files()) {
+        *counts.entry(ast_set.language(file).unwrap_or_default()).or_default() += 1;
     }
 
-    let extensions: Vec<String> = registry.extensions(name).iter().map(|extension| format!("`.{extension}`")).collect();
-    match extensions.is_empty() {
-        true => format!("Language backend `{name}`"),
-        false => format!("Language backend `{name}`, chosen by default for {} files", extensions.join(", "))
+    let title = match &ast_set {
+        AstSet::Language(name) => format!("Every file is `{name}`"),
+        AstSet::Target => "The target names each file's language".to_string(),
+        AstSet::Files(_) => "Files get the language of the last line they match".to_string()
+    };
+    let lines: Vec<String> = counts.into_iter()
+        .map(|(name, count)| match name {
+            "" => format!("- {count} file(s) without a language"),
+            name => format!("- `{name}`: {count} file(s)")
+        })
+        .collect();
+
+    Some((format!("{title}\n\n{}\n\nKnown languages are {}", lines.join("\n"), listed(registry)), node.name_range.start..end))
+}
+
+fn alias(registry: &Registry, name: &str) -> String {
+    if registry.backend(name).is_none() {
+        return format!("No language backend named `{name}` is registered, known languages are {}", listed(registry))
     }
+
+    format!("Language backend `{name}`, used instead of the project's `ast-set`")
 }
 
 fn choices(outline: &Outline, action: usize, kind: &str) -> Vec<(String, String)> {
@@ -207,7 +243,8 @@ fn results(action: Option<&ActionTrace>, trace: &Trace, language: &str, limits: 
 fn location(
     registry: &Registry, project: &Path, outline: &Outline, text: &str, literal: Literal, offset: usize
 ) -> Option<(String, Range<usize>)> {
-    let backend = backend(registry, project, outline)?;
+    let backends = backends(registry, project, outline);
+    let backend = *backends.first()?;
 
     if is_query(&literal) && literal.content.start <= offset && offset <= literal.content.end {
         let source = &text[literal.content.clone()];
@@ -221,10 +258,14 @@ fn location(
         }
     }
 
-    let description = match backend.describe_location(&literal.value) {
-        Ok(description) => description,
-        Err(error) => return Some((format!("Not a {} location: {error}", backend.name()), literal.range))
-    };
+    let mut described = vec![];
+    for backend in &backends {
+        match backend.describe_location(&literal.value) {
+            Ok(description) => described.push(description),
+            Err(error) => return Some((format!("Not a {} location: {error}", backend.name()), literal.range))
+        }
+    }
+    let description = described.join("\n\n");
 
     let found = matches(registry, project, outline, &literal.value).map(summary);
 

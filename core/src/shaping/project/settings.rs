@@ -5,6 +5,7 @@ use std::path::Path;
 
 // Crate Uses
 use crate::shaping::lines::unix;
+use crate::shaping::project::ast_set::AstSet;
 
 // External Uses
 use miette::{miette, bail, Context, IntoDiagnostic, Report, Result};
@@ -19,8 +20,8 @@ pub struct ProjectSettings {
     pub name: String,
     #[knus(child, unwrap(argument))]
     pub target: String,
-    #[knus(child, unwrap(argument))]
-    pub ast_set: String,
+    #[knus(child)]
+    pub ast_set: AstSet,
     #[knus(child, unwrap(argument))]
     pub description: String
 }

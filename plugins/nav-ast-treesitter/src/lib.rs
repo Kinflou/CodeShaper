@@ -13,13 +13,13 @@ use tree_sitter::{Language, Node, Parser, Query, QueryCursor, QueryError, QueryE
 #[allow(unused_variables)]
 pub fn register(registry: &mut Registry) {
     #[cfg(feature = "cpp")]
-    registry.add_backend(Box::new(TreeSitterBackend::cpp()), &["cpp", "cc", "cxx", "c", "h", "hpp", "inc"]);
+    registry.add_backend(Box::new(TreeSitterBackend::cpp()));
 
     #[cfg(feature = "gdscript")]
-    registry.add_backend(Box::new(TreeSitterBackend::gdscript()), &["gd"]);
+    registry.add_backend(Box::new(TreeSitterBackend::gdscript()));
 
     #[cfg(feature = "godot-resource")]
-    registry.add_backend(Box::new(TreeSitterBackend::godot_resource()), &["tscn", "tres", "godot"]);
+    registry.add_backend(Box::new(TreeSitterBackend::godot_resource()));
 }
 
 

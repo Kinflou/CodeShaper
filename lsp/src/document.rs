@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 // Crate Uses
 
 // External Uses
-use codeshaper::core::shaping::project::settings;
+use codeshaper::core::shaping::project::ast_set::AstSet;
+use codeshaper::core::shaping::project::{settings, Project};
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,12 +23,8 @@ pub fn kind(path: &Path) -> DocumentKind {
         return DocumentKind::Other
     }
 
-    for ancestor in path.ancestors().skip(1) {
-        if ancestor.file_name().and_then(|name| name.to_str()) != Some("patches") { continue }
-
-        if let Some(project) = ancestor.parent().filter(|project| project.join("settings.kdl").is_file()) {
-            return DocumentKind::Patch { project: project.to_path_buf() }
-        }
+    if let Some(project) = Project::containing(path) {
+        return DocumentKind::Patch { project }
     }
 
     match path.file_name().and_then(|name| name.to_str()) {
@@ -38,9 +35,8 @@ pub fn kind(path: &Path) -> DocumentKind {
     }
 }
 
-pub fn ast_set(project: &Path) -> String {
-    fs::read_to_string(project.join("settings.kdl")).ok()
-        .and_then(|content| settings::from_kdl(&content).ok())
-        .map(|settings| settings.ast_set)
-        .unwrap_or_default()
+pub fn ast_set(project: &Path) -> Option<AstSet> {
+    let content = fs::read_to_string(project.join("settings.kdl")).ok()?;
+
+    settings::from_kdl(&content).ok().map(|settings| settings.ast_set)
 }

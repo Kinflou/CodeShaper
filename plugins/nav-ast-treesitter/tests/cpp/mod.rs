@@ -123,14 +123,11 @@ fn example_patches_load() {
 }
 
 #[test]
-fn registers_cpp_extensions() {
+fn registers_cpp() {
     let mut registry = Registry::default();
     register(&mut registry);
 
     assert_eq!(registry.backend("cpp").unwrap().name(), "cpp");
-    assert_eq!(registry.backend_for(Path::new("Module.cpp")).unwrap().name(), "cpp");
-    assert_eq!(registry.backend_for(Path::new("core/object/object.inc")).unwrap().name(), "cpp");
-    assert!(registry.backend_for(Path::new("main.rs")).is_none());
 }
 
 #[test]
@@ -154,7 +151,7 @@ fn example_patches_validate() {
         let path = entry.unwrap().path();
         let patch = Patch::from_path(&path).unwrap();
 
-        let errors: Vec<_> = validate(&patch, Some(&backend)).into_iter()
+        let errors: Vec<_> = validate(&patch, [&backend as &dyn LanguageBackend]).into_iter()
             .filter(|diagnostic| diagnostic.severity == Severity::Error)
             .collect();
 

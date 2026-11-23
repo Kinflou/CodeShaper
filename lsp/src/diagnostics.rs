@@ -10,16 +10,15 @@ use crate::navigation::calls;
 use crate::position::LineIndex;
 use crate::schema::regex_field;
 use crate::syntax::{Outline, ACTION_NODES};
-use crate::target::operation;
+use crate::target::{backends, operation};
 
 // External Uses
 use codeshaper::core::registry::Registry;
 use codeshaper::core::shaping::operation::configuration;
-use codeshaper::core::shaping::operation::patch_backend;
 use codeshaper::core::shaping::patch::{pattern, Patch};
 use codeshaper::core::shaping::patch::trace::Trace;
 use codeshaper::core::shaping::patch::validation::{validate_source, Diagnostic as PatchDiagnostic, Severity};
-use codeshaper::core::shaping::project::settings;
+use codeshaper::core::shaping::project::settings::{self, ProjectSettings};
 use lsp_types::{Diagnostic, DiagnosticSeverity, DiagnosticTag, NumberOrString};
 use miette::Report;
 
@@ -32,7 +31,10 @@ pub fn diagnostics(registry: &Registry, path: &Path, text: &str) -> Vec<Diagnost
 
     let result = match kind(path) {
         DocumentKind::Patch { project } => return patch(registry, &project, path, text, &index),
-        DocumentKind::Settings => settings::from_kdl(text).map(|_| ()),
+        DocumentKind::Settings => match settings::from_kdl(text) {
+            Ok(settings) => return unknown_languages(registry, &settings, text, &index),
+            Err(report) => Err(report)
+        },
         DocumentKind::Configuration => configuration::from_kdl(text).map(|_| ()),
         DocumentKind::TargetProject => codeshaper_target_text::project::from_kdl(text).map(|_| ()),
         DocumentKind::Other => Ok(())
@@ -49,14 +51,52 @@ fn patch(registry: &Registry, project: &Path, path: &Path, text: &str, index: &L
         Err(report) => return parse_errors(&report, index)
     };
 
-    let backend = patch_backend(registry, &patch, &ast_set(project));
+    let backends = backends(registry, project, &Outline::parse(text));
 
-    let mut found: Vec<Diagnostic> = validate_source(&patch, &source, backend).into_iter()
+    let mut found: Vec<Diagnostic> = validate_source(&patch, &source, backends).into_iter()
         .map(|diagnostic| convert(diagnostic, index))
         .collect();
     found.extend(regex_hints(text, index));
+    found.extend(redundant_alias(project, text).map(|alias| Diagnostic {
+        range: index.range(alias),
+        severity: Some(DiagnosticSeverity::HINT),
+        code: Some(NumberOrString::String("redundant-alias".to_string())),
+        source: Some(SOURCE.to_string()),
+        message: "alias: the project's 'ast-set' already names this language".to_string(),
+        tags: Some(vec![DiagnosticTag::UNNECESSARY]),
+        ..Diagnostic::default()
+    }));
 
     found
+}
+
+pub fn redundant_alias(project: &Path, text: &str) -> Option<Range<usize>> {
+    let outline = Outline::parse(text);
+    let node = outline.top("alias")?;
+    let alias = node.arguments.first()?;
+    let ast_set = ast_set(project)?;
+
+    (ast_set.fixed() == Some(alias.value.as_str())).then_some(node.name_range.start..alias.range.end)
+}
+
+fn unknown_languages(registry: &Registry, settings: &ProjectSettings, text: &str, index: &LineIndex) -> Vec<Diagnostic> {
+    let outline = Outline::parse(text);
+    let Some(position) = outline.nodes.iter().position(|node| node.parent.is_none() && node.name == "ast-set") else { return vec![] };
+    let arguments = outline.nodes[position].arguments.iter().map(|literal| (literal.value.as_str(), literal.range.clone()));
+    let lines = outline.nodes.iter().filter(|node| node.parent == Some(position)).map(|node| (node.name.as_str(), node.name_range.clone()));
+    let names = settings.ast_set.names();
+
+    arguments.chain(lines)
+        .filter(|(name, _)| names.contains(name) && registry.backend(name).is_none())
+        .map(|(name, range)| Diagnostic {
+            range: index.range(range),
+            severity: Some(DiagnosticSeverity::ERROR),
+            code: Some(NumberOrString::String("language-not-found".to_string())),
+            source: Some(SOURCE.to_string()),
+            message: format!("ast-set: '{name}' is not a known language, known languages are: {}", registry.languages().join(", ")),
+            ..Diagnostic::default()
+        })
+        .collect()
 }
 
 fn regex_hints(text: &str, index: &LineIndex) -> Vec<Diagnostic> {
@@ -119,11 +159,12 @@ fn convert(diagnostic: PatchDiagnostic, index: &LineIndex) -> Diagnostic {
     }
 }
 
-pub fn file(registry: &Registry, project: &Path, text: &str) -> Option<Diagnostic> {
-    let (patch, source) = Patch::parse("", text).ok()?;
-    let diagnostic = operation(project)?.check_file(registry, &patch, &source).ok()??;
+pub fn file(registry: &Registry, project: &Path, text: &str) -> Vec<Diagnostic> {
+    let Ok((patch, source)) = Patch::parse("", text) else { return vec![] };
+    let found = operation(project).and_then(|operation| operation.check_file(registry, &patch, &source).ok());
+    let index = LineIndex::new(text);
 
-    Some(convert(diagnostic, &LineIndex::new(text)))
+    found.into_iter().flatten().map(|diagnostic| convert(diagnostic, &index)).collect()
 }
 
 pub fn coverage(text: &str, trace: &Trace) -> Vec<Diagnostic> {

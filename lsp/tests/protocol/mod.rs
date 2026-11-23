@@ -278,7 +278,7 @@ fn rename_edits_every_use() {
 
 #[test]
 fn hover_describes_locations() {
-    let text = "alias \"cpp\"\nactions {\n    replacers {\n        replacer {\n            location \"FunctionDefinition\"\n        }\n    }\n}\n";
+    let text = "alias \"\"\nactions {\n    replacers {\n        replacer {\n            location \"FunctionDefinition\"\n        }\n    }\n}\n";
     let (_directory, project) = project(&[("hover.kdl", "")]);
     let mut client = Client::start();
     let uri = client.open(&project.join("patches/hover.kdl"), text);
@@ -460,7 +460,7 @@ fn operations_are_previewed_from_unsaved_text() {
     let (directory, project) = operation();
     let mut client = Client::start();
     let broken = project.join("patches/second.kdl");
-    fs::write(&broken, "enabled true\nalias \"cpp\"\nfile \"*.cpp\"\nactions {").unwrap();
+    fs::write(&broken, "enabled true\nalias \"\"\nfile \"*.cpp\"\nactions {").unwrap();
 
     let enabled = RENAME.replace("enabled false", "enabled true");
     let patch = client.open(&project.join("patches/rename.kdl"), &enabled);
@@ -502,6 +502,49 @@ fn refused_operations_say_why() {
     let other = client.open(&directory.path().join("shaping_project/settings.kdl"), &settings);
     let response = client.request("codeshaper/previewOperation", serde_json::json!({ "uri": other.as_str() }));
     assert_eq!(response.response_result.unwrap_err().message, "Not an open patch or configuration");
+
+    client.stop();
+}
+
+#[test]
+fn redundant_aliases_are_removed() {
+    let (_directory, project) = operation();
+    let text = RENAME.replace("alias \"\"", "alias \"cpp\"");
+    let mut client = Client::start();
+    let uri = client.open(&project.join("patches/rename.kdl"), &text);
+    assert_eq!(client.published(), vec!["redundant-alias"]);
+
+    let params = serde_json::json!({
+        "textDocument": { "uri": uri.as_str() },
+        "range": { "start": { "line": 1, "character": 2 }, "end": { "line": 1, "character": 2 } },
+        "context": { "diagnostics": [] }
+    });
+    let actions = client.request("textDocument/codeAction", params).response_result.unwrap();
+    assert_eq!(actions.as_array().unwrap().len(), 1);
+    assert_eq!(actions[0]["title"], "Remove alias");
+    let edit = &actions[0]["edit"]["changes"][uri.as_str()][0];
+    assert_eq!(edit["newText"], "");
+    assert_eq!(edit["range"], serde_json::json!({ "start": { "line": 1, "character": 0 }, "end": { "line": 2, "character": 0 } }));
+
+    client.stop();
+}
+
+#[test]
+fn saved_settings_recheck_open_patches() {
+    let (_directory, project) = operation();
+    let client = Client::start();
+    client.open(&project.join("patches/rename.kdl"), RENAME);
+    assert_eq!(client.published(), Vec::<String>::new());
+
+    let path = project.join("settings.kdl");
+    let text = fs::read_to_string(&path).unwrap().replace("ast-set \"cpp\"", "ast-set \"target\"");
+    fs::write(&path, &text).unwrap();
+    let uri = client.open(&path, &text);
+    let save = DidSaveTextDocumentParams { text_document: TextDocumentIdentifier::new(uri), text: None };
+    client.notify(DidSaveTextDocument::METHOD, to_json!(save));
+
+    let mut seen = vec![];
+    while !seen.contains(&"language-not-found".to_string()) { seen.extend(client.published()); }
 
     client.stop();
 }

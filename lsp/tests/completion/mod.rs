@@ -21,7 +21,7 @@ fn labels(text: &str, offset: usize) -> Vec<String> {
 #[test]
 fn schema_matches_the_models() {
     let text = r##"enabled true
-alias "cpp"
+alias ""
 file "*.cpp"
 actions {
     builders {
@@ -102,7 +102,7 @@ fn field_names_follow_the_enclosing_node() {
 
 #[test]
 fn locations_come_from_the_backend() {
-    let text = "alias \"cpp\"\nactions {\n    replacers {\n        replacer {\n            location \"Function";
+    let text = "alias \"\"\nactions {\n    replacers {\n        replacer {\n            location \"Function";
     let kinds = labels(text, text.len());
 
     assert!(kinds.contains(&"FunctionDefinition".to_string()));
@@ -136,7 +136,7 @@ fn locals_offer_the_regex_groups() {
 #[test]
 fn file_offers_target_paths() {
     let (_directory, project) = crate::preview::operation();
-    let text = "alias \"cpp\"\nfile \"a.c\"\n";
+    let text = "alias \"\"\nfile \"a.c\"\n";
 
     let items = completion(&codeshaper::registry(), &project, text, text.find("a.c").unwrap() + 3);
 

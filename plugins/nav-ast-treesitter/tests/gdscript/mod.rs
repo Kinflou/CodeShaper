@@ -1,5 +1,4 @@
 // Standard Uses
-use std::path::Path;
 
 // Crate Uses
 
@@ -57,11 +56,11 @@ fn locate_exported_variables() {
 }
 
 #[test]
-fn registers_gdscript_extension() {
+fn registers_gdscript() {
     let mut registry = Registry::default();
     register(&mut registry);
 
-    assert_eq!(registry.backend_for(Path::new("player.gd")).unwrap().name(), "gdscript");
+    assert_eq!(registry.backend("gdscript").unwrap().name(), "gdscript");
 }
 
 #[test]

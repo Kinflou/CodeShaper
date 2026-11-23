@@ -31,7 +31,8 @@ pub enum DiagnosticKind {
     RecursiveAction,
     UnusedAction,
     IncorrectFilePattern,
-    FileNotMatched
+    FileNotMatched,
+    LanguageNotFound
 }
 
 impl DiagnosticKind {
@@ -46,7 +47,8 @@ impl DiagnosticKind {
             Self::RecursiveAction => "recursive-action",
             Self::UnusedAction => "unused-action",
             Self::IncorrectFilePattern => "incorrect-file-pattern",
-            Self::FileNotMatched => "file-not-matched"
+            Self::FileNotMatched => "file-not-matched",
+            Self::LanguageNotFound => "language-not-found"
         }
     }
 }
@@ -78,16 +80,18 @@ impl Diagnostic {
 }
 
 
-pub fn validate(patch: &Patch, backend: Option<&dyn LanguageBackend>) -> Vec<Diagnostic> {
-    check(patch, None, backend)
+pub fn validate<'a>(patch: &'a Patch, backends: impl IntoIterator<Item = &'a dyn LanguageBackend>) -> Vec<Diagnostic> {
+    check(patch, None, backends.into_iter().collect())
 }
 
-pub fn validate_source(patch: &Patch, source: &PatchSource, backend: Option<&dyn LanguageBackend>) -> Vec<Diagnostic> {
-    check(patch, Some(source), backend)
+pub fn validate_source<'a>(
+    patch: &'a Patch, source: &'a PatchSource, backends: impl IntoIterator<Item = &'a dyn LanguageBackend>
+) -> Vec<Diagnostic> {
+    check(patch, Some(source), backends.into_iter().collect())
 }
 
-fn check(patch: &Patch, source: Option<&PatchSource>, backend: Option<&dyn LanguageBackend>) -> Vec<Diagnostic> {
-    let mut validator = Validator { backend, source, ..Validator::default() };
+fn check(patch: &Patch, source: Option<&PatchSource>, backends: Vec<&dyn LanguageBackend>) -> Vec<Diagnostic> {
+    let mut validator = Validator { backends, source, ..Validator::default() };
     validator.actions(&patch.actions, "", source.map(|source| &source.spans.actions));
 
     let calls = std::mem::take(&mut validator.calls);
@@ -169,7 +173,7 @@ type Call = (String, &'static str, String, usize, Option<SourceSpan>);
 
 #[derive(Default)]
 struct Validator<'a> {
-    backend: Option<&'a dyn LanguageBackend>,
+    backends: Vec<&'a dyn LanguageBackend>,
     source: Option<&'a PatchSource>,
     diagnostics: Vec<Diagnostic>,
     names: HashMap<String, (String, Option<SourceSpan>)>,
@@ -288,11 +292,12 @@ impl<'a> Validator<'a> {
     }
 
     fn location(&mut self, action: &str, field: &'static str, location: &str) {
-        let Some(backend) = self.backend else { return };
-
-        if let Err(error) = backend.check_location(location) {
+        for backend in self.backends.clone() {
+            let Err(error) = backend.check_location(location) else { continue };
             let range = error.downcast_ref::<LocationError>().and_then(|error| error.range.clone());
-            self.report_at(DiagnosticKind::LocationNotFound, action, field, error.to_string(), range);
+            let message = if self.backends.len() > 1 { format!("{}: {error}", backend.name()) } else { error.to_string() };
+
+            self.report_at(DiagnosticKind::LocationNotFound, action, field, message, range);
         }
     }
 

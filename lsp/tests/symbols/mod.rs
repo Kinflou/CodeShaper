@@ -9,7 +9,7 @@ use lsp_types::{DocumentSymbol, SymbolKind};
 
 
 const PATCH: &str = r##"enabled true
-alias "cpp"
+alias ""
 
 actions {
     builders {

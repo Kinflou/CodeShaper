@@ -1,5 +1,5 @@
 // Standard Uses
-use std::{fs, slice};
+use std::fs;
 
 // Crate Uses
 use crate::{project, BROKEN};
@@ -12,7 +12,7 @@ use lsp_types::{DiagnosticSeverity, NumberOrString, Position, Range};
 
 
 pub const UNCOVERED: &str = r##"enabled false
-alias "cpp"
+alias ""
 file "*.cpp"
 
 actions {
@@ -73,7 +73,7 @@ fn patch_diagnostics_point_at_values() {
 
 #[test]
 fn parse_errors_use_the_label() {
-    let text = "enabled \"yes\"\nalias \"cpp\"\nfile \"*.cpp\"\nactions {\n}\n";
+    let text = "enabled \"yes\"\nalias \"\"\nfile \"*.cpp\"\nactions {\n}\n";
     let (_directory, project) = project(&[("broken.kdl", text)]);
 
     let found = diagnostics(&codeshaper::registry(), &project.join("patches/broken.kdl"), text);
@@ -128,17 +128,17 @@ fn unmatched_files_are_reported_once() {
     let text = UNCOVERED.replace("enabled false", "enabled true").replace("*.cpp", "*.missing");
     let trace = Traces::default().get(&codeshaper::registry(), &project, &text).unwrap();
 
-    let found = file(&codeshaper::registry(), &project, &text).unwrap();
-    assert_eq!(codes(slice::from_ref(&found)), vec!["file-not-matched"]);
-    assert_eq!(found.range, Range::new(Position::new(2, 5), Position::new(2, 16)));
+    let found = file(&codeshaper::registry(), &project, &text);
+    assert_eq!(codes(&found), vec!["file-not-matched"]);
+    assert_eq!(found[0].range, Range::new(Position::new(2, 5), Position::new(2, 16)));
     assert_eq!(coverage(&text, &trace), vec![]);
 
-    assert_eq!(file(&codeshaper::registry(), &project, UNCOVERED), None);
+    assert_eq!(file(&codeshaper::registry(), &project, UNCOVERED), vec![]);
 }
 
 fn hints(kind: &str, fields: &str) -> Vec<(String, String)> {
     let (_directory, project) = project(&[]);
-    let text = format!("enabled true\nalias \"cpp\"\nfile \"*.cpp\"\nactions {{\n{kind}s {{\n{kind} {fields}\n}}\n}}\n");
+    let text = format!("enabled true\nalias \"\"\nfile \"*.cpp\"\nactions {{\n{kind}s {{\n{kind} {fields}\n}}\n}}\n");
 
     let found = diagnostics(&codeshaper::registry(), &project.join("patches/hints.kdl"), &text);
 

@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 // Crate Uses
-use crate::completion::completion;
-use crate::diagnostics::diagnostics;
+use crate::completion::{completion, settings};
+use crate::diagnostics::{diagnostics, redundant_alias};
 use crate::document::{kind, DocumentKind};
 use crate::groups::link_at;
 use crate::inlay::{inlay_hints, Hints};
@@ -15,7 +15,7 @@ use crate::preview::replacement_counts;
 use crate::schema::LOCATIONS;
 use crate::symbols::{folding, symbols};
 use crate::syntax::Outline;
-use crate::target;
+use crate::target::{self, forget_languages};
 use crate::toggle::toggle;
 use crate::tokens::tokens;
 use crate::trace::Limits;
@@ -110,20 +110,28 @@ impl<'c> Server<'c> {
             Completion::METHOD => {
                 let params: CompletionParams = serde_json::from_value(request.params).into_diagnostic()?;
                 let position = params.text_document_position;
-                let items = self.patch_at(&position.text_document.uri, position.position)
-                    .map(|(project, text, offset)| completion(&self.registry, &project, text, offset))
-                    .unwrap_or_default();
+                let uri = position.text_document.uri;
+                let items = match self.patch_at(&uri, position.position) {
+                    Some((project, text, offset)) => completion(&self.registry, &project, text, offset),
+                    None => self.documents.get(&uri).zip(path(&uri))
+                        .filter(|(_, path)| kind(path) == DocumentKind::Settings)
+                        .map(|(text, _)| settings(&self.registry, text, LineIndex::new(text).offset(position.position)))
+                        .unwrap_or_default()
+                };
 
                 Response::new_ok(request.id, CompletionResponse::Array(items))
             }
             HoverRequest::METHOD => {
                 let params: HoverParams = serde_json::from_value(request.params).into_diagnostic()?;
                 let position = params.text_document_position_params;
-                let offset = self.patch_at(&position.text_document.uri, position.position).map(|(_, _, offset)| offset);
+                let uri = position.text_document.uri;
+                let offset = self.documents.get(&uri).map(|text| LineIndex::new(text).offset(position.position)).unwrap_or_default();
+                let work = self.snapshot(&uri).map(|snapshot| (snapshot, Work::Hover(offset)))
+                    .or_else(|| Some((self.document(&uri, DocumentKind::Settings)?, Work::Languages(offset))));
 
-                match self.snapshot(&position.text_document.uri).zip(offset) {
-                    Some((snapshot, offset)) => {
-                        self.worker.request(request.id, snapshot, Work::Hover(offset));
+                match work {
+                    Some((snapshot, work)) => {
+                        self.worker.request(request.id, snapshot, work);
                         return Ok(())
                     }
                     None => Response::new_ok(request.id, json!(null))
@@ -283,7 +291,8 @@ impl<'c> Server<'c> {
             CodeActionRequest::METHOD => {
                 let params: CodeActionParams = serde_json::from_value(request.params).into_diagnostic()?;
                 let uri = params.text_document.uri;
-                let found: Vec<CodeActionOrCommand> = self.toggle(&uri)
+                let found: Vec<CodeActionOrCommand> = self.toggle(&uri).into_iter()
+                    .chain(self.remove_alias(&uri))
                     .filter(|(node, _, _)| node.start.line <= params.range.end.line && params.range.start.line <= node.end.line)
                     .map(|(_, title, edit)| CodeActionOrCommand::CodeAction(CodeAction {
                         title: title.to_string(),
@@ -291,7 +300,7 @@ impl<'c> Server<'c> {
                         edit: Some(edit),
                         ..CodeAction::default()
                     }))
-                    .into_iter().collect();
+                    .collect();
 
                 Response::new_ok(request.id, found)
             }
@@ -374,12 +383,24 @@ impl<'c> Server<'c> {
         Some(Snapshot { uri: uri.clone(), project, text: text.to_string(), revision: self.shared.revision(uri)? })
     }
 
+    fn document(&self, uri: &Uri, wanted: DocumentKind) -> Option<Snapshot> {
+        let path = path(uri).filter(|path| kind(path) == wanted)?;
+
+        Some(Snapshot {
+            uri: uri.clone(),
+            project: path.parent()?.to_path_buf(),
+            text: self.documents.get(uri)?.clone(),
+            revision: self.shared.revision(uri)?
+        })
+    }
+
     fn notification(&mut self, notification: Notification) -> Result<()> {
         match notification.method.as_str() {
             DidOpenTextDocument::METHOD => {
                 let params: DidOpenTextDocumentParams = serde_json::from_value(notification.params).into_diagnostic()?;
                 let uri = params.text_document.uri;
                 self.documents.insert(uri.clone(), params.text_document.text);
+                forget_languages();
                 self.update(&uri, true);
                 self.trace(&uri);
             }
@@ -393,9 +414,22 @@ impl<'c> Server<'c> {
             DidSaveTextDocument::METHOD => {
                 let params: DidSaveTextDocumentParams = serde_json::from_value(notification.params).into_diagnostic()?;
                 let uri = params.text_document.uri;
+                forget_languages();
                 let changed = params.text.is_some_and(|text| self.documents.insert(uri.clone(), text.clone()) != Some(text));
                 self.update(&uri, changed);
                 self.trace(&uri);
+
+                let project = path(&uri).filter(|path| kind(path) == DocumentKind::Settings).and_then(|path| path.parent().map(PathBuf::from));
+                if let Some(project) = project {
+                    let patches: Vec<Uri> = self.documents.keys()
+                        .filter(|uri| self.patch_at(uri, Position::default()).is_some_and(|(found, _, _)| found == project))
+                        .cloned().collect();
+
+                    for uri in patches {
+                        self.update(&uri, false);
+                        self.trace(&uri);
+                    }
+                }
             }
             DidCloseTextDocument::METHOD => {
                 let params: DidCloseTextDocumentParams = serde_json::from_value(notification.params).into_diagnostic()?;
@@ -445,6 +479,20 @@ impl<'c> Server<'c> {
                 target_selection_range: location.range
             })
             .collect())
+    }
+
+    fn remove_alias(&self, uri: &Uri) -> Option<(Range, &'static str, WorkspaceEdit)> {
+        let (project, text, _) = self.patch_at(uri, Position::default())?;
+        let alias = redundant_alias(&project, text)?;
+        let index = LineIndex::new(text);
+        let start = text[..alias.start].rfind('\n').map(|line| line + 1).unwrap_or(0);
+        let end = text[alias.end..].find('\n').map(|line| alias.end + line + 1).unwrap_or(text.len());
+        let whole = text[start..alias.start].trim().is_empty() && text[alias.end..end].trim().is_empty();
+        let separator = text[alias.end..].len() - text[alias.end..].trim_start_matches([' ', '\t']).trim_start_matches(';').len();
+        let removed = if whole { start..end } else { alias.start..alias.end + separator };
+        let edit = TextEdit::new(index.range(removed), String::new());
+
+        Some((index.range(alias), "Remove alias", WorkspaceEdit::new(HashMap::from([(uri.clone(), vec![edit])]))))
     }
 
     fn target_files(&self, uri: &Uri, outline: &Outline) -> Vec<Location> {

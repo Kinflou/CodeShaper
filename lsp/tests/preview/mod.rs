@@ -10,7 +10,7 @@ use tempfile::TempDir;
 
 
 pub const RENAME: &str = r#"enabled false
-alias "cpp"
+alias ""
 file "*.cpp"
 
 actions {

@@ -23,9 +23,11 @@ use crate::shaping::patch::source::PatchSource;
 use crate::shaping::patch::trace::Trace;
 use crate::shaping::patch::validation::{validate, validate_source, Diagnostic as PatchDiagnostic, DiagnosticKind, Severity};
 use crate::shaping::project::Project;
-use crate::target::File;
+use crate::shaping::project::ast_set::AstSet;
+use crate::target::{File, Solution};
 
 // External Uses
+use dunce::canonicalize;
 use glob::Pattern;
 use miette::{bail, miette, Context, Diagnostic, IntoDiagnostic, Result};
 
@@ -58,6 +60,30 @@ impl Operation {
         Self::from_configuration(configuration, path.parent().unwrap_or(Path::new("")))
     }
 
+    pub fn for_project(project: &Path) -> Result<Self> {
+        Self::from_file(&Self::configuration_for(project)?)
+    }
+
+    pub fn configuration_for(project: &Path) -> Result<PathBuf> {
+        let project = canonicalize(project).into_diagnostic()?;
+        let parent = project.parent().ok_or_else(|| miette!("{} has no parent directory", project.display()))?;
+
+        let mut candidates: Vec<PathBuf> = fs::read_dir(parent).into_diagnostic()?
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|path| path.is_file() && path.extension().is_some_and(|extension| extension == "kdl"))
+            .collect();
+        candidates.sort();
+
+        candidates.into_iter()
+            .find(|path| {
+                let Some(found) = fs::read_to_string(path).ok().and_then(|content| configuration::from_kdl(&content).ok()) else {
+                    return false
+                };
+                canonicalize(parent.join(found.project)).is_ok_and(|directory| directory == project)
+            })
+            .ok_or_else(|| miette!("No operation configuration next to {} points at it", project.display()))
+    }
+
     pub fn from_configuration(configuration: OperationConfiguration, directory: &Path) -> Result<Self> {
         Self::from_configuration_with(configuration, directory, &|path| fs::read_to_string(path))
     }
@@ -72,10 +98,8 @@ impl Operation {
 
     pub fn session<'a>(&'a self, registry: &'a Registry) -> Result<Session<'a>> {
         self.check_destinations()?;
-        self.check_patches(registry)?;
-
-        let target = self.directory.join(&self.configuration.target);
-        let solution = registry.load_target(&self.project.settings.target, &target)?;
+        let solution = self.target(registry)?;
+        self.check_patches(registry, &solution.files())?;
 
         Session::new(self, registry, solution)
     }
@@ -95,18 +119,18 @@ impl Operation {
     }
 
     pub fn check(&self, registry: &Registry) -> Result<Vec<(String, PatchDiagnostic)>> {
-        let ast_set = &self.project.settings.ast_set;
+        self.project.settings.ast_set.check(registry)?;
+        let solution = self.target(registry)?;
+        let files = solution.files();
         let mut found = vec![];
 
         for (name, patch) in &self.project.patches {
-            let backend = patch_backend(registry, patch, ast_set);
-            let diagnostics = validate_source(patch, &self.project.sources[name], backend);
-            found.extend(diagnostics.into_iter().map(|diagnostic| (name.clone(), diagnostic)));
-        }
+            let source = &self.project.sources[name];
+            let (backends, diagnostics) = self.languages(registry, patch, &files);
 
-        let target = self.directory.join(&self.configuration.target);
-        let solution = registry.load_target(&self.project.settings.target, &target)?;
-        let files = solution.files();
+            found.extend(validate_source(patch, source, backends).into_iter().map(|diagnostic| (name.clone(), diagnostic)));
+            found.extend(diagnostics.into_iter().map(|diagnostic| (name.clone(), spanned(diagnostic, source))));
+        }
 
         for (name, patch) in &self.project.patches {
             let diagnostic = file_diagnostic(patch, &self.project.sources[name], &files);
@@ -116,16 +140,18 @@ impl Operation {
         Ok(found)
     }
 
-    fn check_patches(&self, registry: &Registry) -> Result<()> {
+    fn check_patches(&self, registry: &Registry, files: &[&File]) -> Result<()> {
+        self.project.settings.ast_set.check(registry)?;
         let mut errors = vec![];
 
         for (name, patch) in &self.project.patches {
             if !patch.enabled { continue }
 
-            let backend = patch_backend(registry, patch, &self.project.settings.ast_set);
             let source = &self.project.sources[name];
+            let (backends, diagnostics) = self.languages(registry, patch, files);
+            let diagnostics = diagnostics.into_iter().map(|diagnostic| spanned(diagnostic, source));
 
-            for diagnostic in validate_source(patch, source, backend) {
+            for diagnostic in validate_source(patch, source, backends).into_iter().chain(diagnostics) {
                 if diagnostic.severity != Severity::Error { continue }
 
                 let title = format!(
@@ -142,9 +168,10 @@ impl Operation {
         Ok(())
     }
 
-    fn check_patch(&self, registry: &Registry, name: &str, patch: &Patch) -> Result<()> {
-        let backend = patch_backend(registry, patch, &self.project.settings.ast_set);
-        let errors: Vec<String> = validate(patch, backend).into_iter()
+    fn check_patch(&self, registry: &Registry, name: &str, patch: &Patch, files: &[File]) -> Result<()> {
+        self.project.settings.ast_set.check(registry)?;
+        let (backends, diagnostics) = self.languages(registry, patch, &files.iter().collect::<Vec<_>>());
+        let errors: Vec<String> = validate(patch, backends).into_iter().chain(diagnostics)
             .filter(|diagnostic| diagnostic.severity == Severity::Error)
             .map(|diagnostic| format!("{} '{}': {}", diagnostic.action, diagnostic.field, diagnostic.message))
             .collect();
@@ -156,9 +183,54 @@ impl Operation {
         Ok(())
     }
 
+    pub fn target(&self, registry: &Registry) -> Result<Solution> {
+        registry.load_target(&self.project.settings.target, &self.directory.join(&self.configuration.target))
+    }
+
+    pub fn languages<'r>(
+        &self, registry: &'r Registry, patch: &Patch, files: &[&File]
+    ) -> (Vec<&'r dyn LanguageBackend>, Vec<PatchDiagnostic>) {
+        let ast_set = &self.project.settings.ast_set;
+        let unknown = |field, message| PatchDiagnostic::new(DiagnosticKind::LanguageNotFound, "patch", field, message);
+
+        if !patch.alias.is_empty() {
+            return match registry.backend(&patch.alias) {
+                Some(backend) => (vec![backend], vec![]),
+                None => (vec![], vec![unknown("alias", format!("'{}' is not a known language, known languages are: {}", patch.alias, registry.languages().join(", ")))])
+            }
+        }
+        if let Some(name) = ast_set.fixed() {
+            return (registry.backend(name).into_iter().collect(), vec![])
+        }
+
+        let Ok(pattern) = Pattern::new(&patch.file) else { return (vec![], vec![]) };
+        let mut names: Vec<&str> = vec![];
+        let mut without: Vec<&File> = vec![];
+
+        for file in files.iter().filter(|file| pattern.matches_path(&file.path)) {
+            match ast_set.language(file) {
+                Some(name) if !names.contains(&name) => names.push(name),
+                Some(_) => {}
+                None => without.push(file)
+            }
+        }
+
+        let mut diagnostics = vec![];
+        if let Some(file) = without.first() {
+            let others = match without.len() - 1 { 0 => String::new(), others => format!(" and {others} more file(s)") };
+            let reason = if *ast_set == AstSet::Target { "the target gives none" } else { "no line of 'ast-set' matches" };
+            diagnostics.push(unknown("file", format!("'{}'{others} has no language, {reason}", file.path.display())));
+        }
+        for name in names.iter().filter(|name| registry.backend(name).is_none()) {
+            diagnostics.push(unknown("file", format!("matches files in '{name}', which is not a known language")));
+        }
+
+        (names.into_iter().filter_map(|name| registry.backend(name)).collect(), diagnostics)
+    }
+
     pub fn preview(&self, registry: &Registry, name: &str, patch: &Patch) -> Result<Vec<Change>> {
-        self.check_patch(registry, name, patch)?;
         let (directory, files) = self.matching_files(registry, name, patch)?;
+        self.check_patch(registry, name, patch, &files)?;
 
         let changes = files.iter()
             .map(|file| {
@@ -208,11 +280,15 @@ impl Operation {
         Ok(places)
     }
 
-    pub fn check_file(&self, registry: &Registry, patch: &Patch, source: &PatchSource) -> Result<Option<PatchDiagnostic>> {
-        let target = self.directory.join(&self.configuration.target);
-        let solution = registry.load_target(&self.project.settings.target, &target)?;
+    pub fn check_file(&self, registry: &Registry, patch: &Patch, source: &PatchSource) -> Result<Vec<PatchDiagnostic>> {
+        let solution = self.target(registry)?;
+        let files = solution.files();
+        let (_, diagnostics) = self.languages(registry, patch, &files);
 
-        Ok(file_diagnostic(patch, source, &solution.files()))
+        Ok(diagnostics.into_iter()
+            .map(|diagnostic| spanned(diagnostic, source))
+            .chain(file_diagnostic(patch, source, &files))
+            .collect())
     }
 
     pub fn trace(&self, registry: &Registry, name: &str, patch: &Patch, limit: usize) -> Result<Trace> {
@@ -222,8 +298,8 @@ impl Operation {
     pub fn trace_while(
         &self, registry: &Registry, name: &str, patch: &Patch, limit: usize, keep_going: &dyn Fn() -> bool
     ) -> Result<Trace> {
-        self.check_patch(registry, name, patch)?;
         let (directory, files) = self.matching_files(registry, name, patch)?;
+        self.check_patch(registry, name, patch, &files)?;
         let patch = Rc::new(patch.clone());
         let mut trace = Trace::new(limit);
 
@@ -246,8 +322,7 @@ impl Operation {
 
     pub fn matching_files(&self, registry: &Registry, name: &str, patch: &Patch) -> Result<(PathBuf, Vec<File>)> {
         let pattern = file_pattern(name, patch)?;
-        let target = self.directory.join(&self.configuration.target);
-        let solution = registry.load_target(&self.project.settings.target, &target)?;
+        let solution = self.target(registry)?;
 
         let files = solution.files().into_iter()
             .filter(|file| pattern.matches_path(&file.path))
@@ -277,17 +352,13 @@ impl Operation {
             .wrap_err_with(|| format!("Patch {} could not shape {}", name, file.path.display()))
     }
 
-    fn backend<'r>(&self, registry: &'r Registry, patch: &Patch, file: &File) -> Result<&'r dyn LanguageBackend> {
-        let named = [patch.alias.as_str(), self.project.settings.ast_set.as_str()].into_iter()
-            .chain(file.language.as_deref())
-            .find(|name| !name.is_empty());
+    pub fn backend<'r>(&self, registry: &'r Registry, patch: &Patch, file: &File) -> Result<&'r dyn LanguageBackend> {
+        let name = match patch.alias.as_str() {
+            "" => self.project.settings.ast_set.language(file),
+            alias => Some(alias)
+        }.ok_or_else(|| miette!("{} has no language", file.path.display()))?;
 
-        match named {
-            Some(name) => registry.backend(name)
-                .ok_or_else(|| miette!("No language backend named '{}' is registered", name)),
-            None => registry.backend_for(&file.path)
-                .ok_or_else(|| miette!("No language backend handles {}", file.path.display()))
-        }
+        registry.backend(name).ok_or_else(|| miette!("No language backend named '{}' is registered", name))
     }
 
     fn back_up(&self, directory: &Path, path: &Path) -> Result<()> {
@@ -314,11 +385,10 @@ impl Operation {
 }
 
 
-pub fn patch_backend<'r>(registry: &'r Registry, patch: &Patch, ast_set: &str) -> Option<&'r dyn LanguageBackend> {
-    match [patch.alias.as_str(), ast_set].into_iter().find(|name| !name.is_empty()) {
-        Some(name) => registry.backend(name),
-        None => registry.backend_for(Path::new(&patch.file))
-    }
+fn spanned(diagnostic: PatchDiagnostic, source: &PatchSource) -> PatchDiagnostic {
+    let span = source.spans.fields.get(diagnostic.field).copied();
+
+    PatchDiagnostic { span, ..diagnostic }
 }
 
 fn file_diagnostic(patch: &Patch, source: &PatchSource, files: &[&File]) -> Option<PatchDiagnostic> {
@@ -334,9 +404,8 @@ fn file_diagnostic(patch: &Patch, source: &PatchSource, files: &[&File]) -> Opti
         ),
         Ok(_) => return None
     };
-    let span = source.spans.fields.get("file").copied();
 
-    Some(PatchDiagnostic { span, ..diagnostic })
+    Some(spanned(diagnostic, source))
 }
 
 fn file_pattern(name: &str, patch: &Patch) -> Result<Pattern> {

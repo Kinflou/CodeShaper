@@ -1,5 +1,4 @@
 // Standard Uses
-use std::path::Path;
 
 // Crate Uses
 
@@ -47,11 +46,9 @@ fn locate_query() {
 }
 
 #[test]
-fn registers_godot_resource_extensions() {
+fn registers_godot_resource() {
     let mut registry = Registry::default();
     register(&mut registry);
 
-    for path in ["player.tscn", "theme.tres", "project.godot"] {
-        assert_eq!(registry.backend_for(Path::new(path)).unwrap().name(), "godot_resource");
-    }
+    assert_eq!(registry.backend("godot_resource").unwrap().name(), "godot_resource");
 }

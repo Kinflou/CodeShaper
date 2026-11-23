@@ -31,7 +31,7 @@ use crate::shaping::patch::resolver::{List, Switch};
 pub struct Patch {
     #[knus(child, unwrap(argument))]
     pub enabled: bool,
-    #[knus(child, unwrap(argument))]
+    #[knus(child, unwrap(argument), default)]
     pub alias: String,
     #[knus(child, unwrap(argument))]
     pub file: String,

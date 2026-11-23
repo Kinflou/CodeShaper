@@ -13,19 +13,12 @@ use miette::{miette, Result};
 #[derive(Default)]
 pub struct Registry {
     backends: HashMap<String, Box<dyn LanguageBackend>>,
-    extensions: HashMap<String, String>,
     loaders: HashMap<String, Box<dyn TargetLoader>>
 }
 
 impl Registry {
-    pub fn add_backend(&mut self, backend: Box<dyn LanguageBackend>, extensions: &[&str]) {
-        let name = backend.name().to_string();
-
-        for extension in extensions {
-            self.extensions.insert(extension.to_string(), name.clone());
-        }
-
-        self.backends.insert(name, backend);
+    pub fn add_backend(&mut self, backend: Box<dyn LanguageBackend>) {
+        self.backends.insert(backend.name().to_string(), backend);
     }
 
     pub fn add_loader(&mut self, loader: Box<dyn TargetLoader>) {
@@ -36,17 +29,8 @@ impl Registry {
         self.backends.get(name).map(|backend| backend.as_ref())
     }
 
-    pub fn backend_for(&self, path: &Path) -> Option<&dyn LanguageBackend> {
-        let extension = path.extension()?.to_str()?;
-
-        self.backend(self.extensions.get(extension)?)
-    }
-
-    pub fn extensions(&self, backend: &str) -> Vec<&str> {
-        let mut found: Vec<&str> = self.extensions.iter()
-            .filter(|(_, name)| *name == backend)
-            .map(|(extension, _)| extension.as_str())
-            .collect();
+    pub fn languages(&self) -> Vec<&str> {
+        let mut found: Vec<&str> = self.backends.keys().map(String::as_str).collect();
         found.sort();
 
         found

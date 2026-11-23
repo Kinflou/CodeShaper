@@ -35,7 +35,7 @@ fn load_test_workspace_project() {
     let project = Project::from_directory(Path::new(&path)).unwrap();
 
     assert_eq!(project.settings.name, "Test Shaping Project");
-    assert_eq!(project.settings.ast_set, "cpp");
+    assert_eq!(project.settings.ast_set.fixed(), Some("cpp"));
     assert_eq!(project.settings.description, "A little test with some cases");
     assert_eq!(project.patches.keys().collect::<Vec<_>>(), vec!["simple.kdl"]);
 }

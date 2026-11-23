@@ -16,16 +16,15 @@ const EXAMPLE_TARGET: &str = "examples/CPP14/Function Name Correction/target/";
 
 
 #[test]
-fn target_files_have_backends() {
+fn target_files_have_a_language() {
     let registry = registry();
-    let solution = registry.load_target("text", Path::new(EXAMPLE_TARGET)).unwrap();
+    let operation = Operation::from_file(&Path::new(EXAMPLE).join("configuration.kdl")).unwrap();
+    let solution = operation.target(&registry).unwrap();
 
     assert_eq!(solution.files().len(), 4);
 
     for file in solution.files() {
-        let backend = registry.backend_for(&file.path).unwrap();
-
-        assert_eq!(backend.name(), "cpp", "{} has no cpp backend", file.path.display());
+        assert_eq!(operation.project.settings.ast_set.language(file), Some("cpp"), "{}", file.path.display());
     }
 }
 

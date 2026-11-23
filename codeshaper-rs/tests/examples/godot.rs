@@ -9,8 +9,6 @@ use crate::examples::{copy_directory, read};
 use codeshaper::registry;
 use codeshaper::core::shaping::operation::Operation;
 use codeshaper::core::shaping::operation::report::Outcome;
-use codeshaper::core::shaping::patch::Patch;
-use codeshaper::core::shaping::patch::validation::{validate, Severity};
 
 
 const EXAMPLE: &str = "examples/Godot/Godot 3 to 4 Migration/";
@@ -50,24 +48,17 @@ fn runs_end_to_end() {
 #[test]
 fn patches_validate() {
     let registry = registry();
-    let patches = Path::new(EXAMPLE).join("shaping_project/patches");
+    let operation = Operation::from_file(&Path::new(EXAMPLE).join("configuration.kdl")).unwrap();
+    let solution = operation.target(&registry).unwrap();
 
-    for entry in fs::read_dir(patches).unwrap() {
-        let path = entry.unwrap().path();
-        let patch = Patch::from_path(&path).unwrap();
+    for (name, patch) in &operation.project.patches {
+        let (backends, diagnostics) = operation.languages(&registry, patch, &solution.files());
 
-        let backend = match patch.alias.as_str() {
-            "" => registry.backend_for(Path::new(&patch.file)),
-            alias => registry.backend(alias)
-        };
-
-        let errors: Vec<_> = validate(&patch, backend).into_iter()
-            .filter(|diagnostic| diagnostic.severity == Severity::Error)
-            .collect();
-
-        assert!(backend.is_some(), "{} has no backend", path.display());
-        assert!(errors.is_empty(), "{}: {errors:#?}", path.display());
+        assert_eq!(backends.len(), 1, "{name} has no language");
+        assert_eq!(diagnostics, vec![], "{name}");
     }
+
+    assert_eq!(operation.check(&registry).unwrap(), vec![]);
 }
 
 #[test]

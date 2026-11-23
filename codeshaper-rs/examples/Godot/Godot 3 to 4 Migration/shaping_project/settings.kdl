@@ -1,11 +1,11 @@
 name "Godot 3 to 4 Migration"
 
 target "godot"
-ast-set ""
+ast-set "target"
 
 description r#"Godot 3 to 4 Migration
 ======================
 
-This example migrates a small Godot 3 project to Godot 4 syntax, using the file
-extension to pick the language: exported variables become @export annotations
+This example migrates a small Godot 3 project to Godot 4 syntax, letting the target
+name each file's language: exported variables become @export annotations
 and KinematicBody2D becomes CharacterBody2D, both in scripts and in scenes"#

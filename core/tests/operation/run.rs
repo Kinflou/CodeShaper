@@ -120,7 +120,7 @@ fn unregistered_alias_fails() {
     let error = run(&directory).unwrap_err();
     let related: Vec<String> = error.related().unwrap().map(|error| format!("{error:?}")).collect();
 
-    assert_eq!(related.len(), 2);
+    assert_eq!(related.len(), 1);
     assert!(related[0].contains("'cobol'"));
     assert_eq!(read(&directory, "target/a.txt"), "old one\nkeep\n");
 }

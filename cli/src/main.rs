@@ -9,14 +9,18 @@ use std::rc::Rc;
 
 // External Uses
 use clap::{Parser, Subcommand};
-use codeshaper::core::shaping::operation::{patch_backend, Operation};
+use codeshaper::core::ast::backend::LanguageBackend;
+use codeshaper::core::registry::Registry;
+use codeshaper::core::shaping::operation::Operation;
 use codeshaper::core::shaping::operation::report::Outcome;
 use codeshaper::core::shaping::patch::Patch;
 use codeshaper::core::shaping::patch::controller::PatchController;
 use codeshaper::core::shaping::patch::source::PatchSource;
-use codeshaper::core::shaping::patch::validation::{validate_source, Diagnostic, Severity};
+use codeshaper::core::shaping::patch::validation::{validate_source, Diagnostic, DiagnosticKind, Severity};
+use codeshaper::core::shaping::project::settings::ProjectSettings;
+use codeshaper::core::shaping::project::Project;
 use codeshaper::registry;
-use miette::{miette, Context, IntoDiagnostic, MietteHandlerOpts, Result};
+use miette::{bail, miette, Context, IntoDiagnostic, MietteHandlerOpts, Result};
 use similar::TextDiff;
 
 
@@ -47,7 +51,9 @@ enum Command {
         #[arg(help = "The operation's configuration.kdl, or patch files with --patch")]
         paths: Vec<PathBuf>,
         #[arg(long, help = "Check the given paths as patch files")]
-        patch: bool
+        patch: bool,
+        #[arg(long, requires = "patch", help = "The language of patches that don't name one")]
+        language: Option<String>
     },
     #[command(about = "Apply one patch to one file")]
     Apply {
@@ -56,7 +62,9 @@ enum Command {
         #[arg(help = "The file to shape")]
         file: PathBuf,
         #[arg(long, help = "Write the result into the file instead of showing a diff")]
-        in_place: bool
+        in_place: bool,
+        #[arg(long, help = "The file's language, when the patch doesn't name one")]
+        language: Option<String>
     },
     #[command(about = "Start the language server over stdio")]
     Lsp
@@ -69,9 +77,9 @@ fn main() -> Result<ExitCode> {
     match Cli::parse().command {
         Command::Run { configuration, dry_run: false } => run(&configuration),
         Command::Run { configuration, dry_run: true } => dry_run(&configuration),
-        Command::Check { paths, patch: false } => check_operation(&paths),
-        Command::Check { paths, patch: true } => check_patches(&paths),
-        Command::Apply { patch, file, in_place } => apply(&patch, &file, in_place),
+        Command::Check { paths, patch: false, .. } => check_operation(&paths),
+        Command::Check { paths, patch: true, language } => check_patches(&paths, language.as_deref()),
+        Command::Apply { patch, file, in_place, language } => apply(&patch, &file, in_place, language.as_deref()),
         Command::Lsp => codeshaper_lsp::run().map(|_| ExitCode::SUCCESS)
     }
 }
@@ -123,34 +131,91 @@ fn check_operation(paths: &[PathBuf]) -> Result<ExitCode> {
     Ok(report_diagnostics(found, &operation.project.sources))
 }
 
-fn check_patches(paths: &[PathBuf]) -> Result<ExitCode> {
+fn check_patches(paths: &[PathBuf], language: Option<&str>) -> Result<ExitCode> {
     let registry = registry();
     let mut found = vec![];
     let mut sources = BTreeMap::new();
 
     for path in paths {
         let (patch, source) = Patch::load(path)?;
-        let backend = patch_backend(&registry, &patch, "");
         let name = path.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_default();
 
-        found.extend(validate_source(&patch, &source, backend).into_iter().map(|diagnostic| (name.clone(), diagnostic)));
+        let (backends, mut diagnostics) = match languages(&registry, path, &patch, language)? {
+            Languages::Known(backend) => (vec![backend], vec![]),
+            Languages::Mixed(operation) => {
+                let solution = operation.target(&registry)?;
+                let diagnostics = operation.check_file(&registry, &patch, &source)?;
+
+                (operation.languages(&registry, &patch, &solution.files()).0, diagnostics)
+            }
+            Languages::Unknown => {
+                eprintln!("The locations of {} weren't checked: it is in no project and names no language, use --language", path.display());
+                (vec![], vec![])
+            }
+        };
+        diagnostics.retain(|diagnostic| diagnostic.kind == DiagnosticKind::LanguageNotFound);
+        diagnostics.extend(validate_source(&patch, &source, backends));
+
+        found.extend(diagnostics.into_iter().map(|diagnostic| (name.clone(), diagnostic)));
         sources.insert(name, source);
     }
 
     Ok(report_diagnostics(found, &sources))
 }
 
-fn apply(patch_path: &Path, file: &Path, in_place: bool) -> Result<ExitCode> {
+enum Languages<'r> {
+    Known(&'r dyn LanguageBackend),
+    Mixed(Box<Operation>),
+    Unknown
+}
+
+fn languages<'r>(registry: &'r Registry, path: &Path, patch: &Patch, given: Option<&str>) -> Result<Languages<'r>> {
+    let known = |name: &str| registry.backend(name).map(Languages::Known).ok_or_else(|| {
+        miette!("'{}' is not a known language, known languages are: {}", name, registry.languages().join(", "))
+    });
+
+    match (patch.alias.as_str(), given) {
+        ("", Some(given)) => return known(given),
+        ("", None) => {}
+        (alias, Some(given)) if alias != given => bail!("{} names the language '{}', not '{}'", path.display(), alias, given),
+        (alias, _) => return known(alias)
+    }
+
+    let path = fs::canonicalize(path).into_diagnostic()?;
+    let Some(project) = Project::containing(&path) else { return Ok(Languages::Unknown) };
+    let ast_set = ProjectSettings::from_path(&project.join(""))?.ast_set;
+
+    ast_set.check(registry)?;
+
+    match ast_set.fixed() {
+        Some(name) => known(name),
+        None => Operation::for_project(&project).map(|operation| Languages::Mixed(Box::new(operation)))
+    }
+}
+
+fn target_language<'r>(registry: &'r Registry, operation: &Operation, patch: &Patch, file: &Path) -> Result<&'r dyn LanguageBackend> {
+    let path = fs::canonicalize(file).into_diagnostic().wrap_err_with(|| format!("Could not read {}", file.display()))?;
+    let solution = operation.target(registry)?;
+
+    let found = solution.files().into_iter()
+        .find(|file| fs::canonicalize(solution.directory.join(&file.path)).is_ok_and(|found| found == path))
+        .ok_or_else(|| miette!("{} is not in the project's target, name its language with --language", file.display()))?;
+
+    operation.backend(registry, patch, found)
+}
+
+fn apply(patch_path: &Path, file: &Path, in_place: bool, language: Option<&str>) -> Result<ExitCode> {
     let registry = registry();
     let (patch, source) = Patch::load(patch_path)?;
 
-    let backend = match patch.alias.as_str() {
-        "" => registry.backend_for(file),
-        alias => registry.backend(alias)
-    }.ok_or_else(|| miette!("No language backend for {} with patch alias '{}'", file.display(), patch.alias))?;
+    let backend = match languages(&registry, patch_path, &patch, language)? {
+        Languages::Known(backend) => backend,
+        Languages::Mixed(operation) => target_language(&registry, &operation, &patch, file)?,
+        Languages::Unknown => bail!("{} is in no project and names no language, use --language", patch_path.display())
+    };
 
     let name = patch_path.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_default();
-    let diagnostics: Vec<_> = validate_source(&patch, &source, Some(backend)).into_iter()
+    let diagnostics: Vec<_> = validate_source(&patch, &source, [backend]).into_iter()
         .map(|diagnostic| (name.clone(), diagnostic))
         .collect();
     if diagnostics.iter().any(|(_, diagnostic)| diagnostic.severity == Severity::Error) {

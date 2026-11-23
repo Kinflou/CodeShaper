@@ -1,22 +1,20 @@
 // Standard Uses
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::ops::Range;
 use std::path::Path;
 
 // Crate Uses
-use crate::document::ast_set;
 use crate::groups::groups;
 use crate::position::LineIndex;
 use crate::query::{captures, is_query, part_at, Part, PREDICATES};
 use crate::schema::{self, regex_field, LOCATIONS};
 use crate::syntax::{Context, Outline};
-use crate::target::every_file;
+use crate::target::{backends, every_file};
 
 // External Uses
 use codeshaper::core::ast::backend::LanguageBackend;
 use codeshaper::core::registry::Registry;
-use codeshaper::core::shaping::operation::patch_backend;
-use codeshaper::core::shaping::patch::Patch;
+use codeshaper::core::shaping::project::ast_set::TARGET;
 use lsp_types::{CompletionItem, CompletionItemKind, CompletionTextEdit, TextEdit};
 
 
@@ -34,6 +32,10 @@ pub fn completion(registry: &Registry, project: &Path, text: &str, offset: usize
         Context::Value { node, literal, before } => {
             if outline.is_top(node, "file") {
                 return paths(registry, project, text, literal.content)
+            }
+
+            if outline.is_top(node, "alias") {
+                return registry.languages().into_iter().map(|name| item(name, CompletionItemKind::VALUE, None)).collect()
             }
 
             if before.rfind("#[").is_some_and(|open| !before[open..].contains(']')) {
@@ -58,14 +60,19 @@ pub fn completion(registry: &Registry, project: &Path, text: &str, offset: usize
             let location = LOCATIONS.contains(&outline.nodes[node].name.as_str());
             if !location { return vec![] }
 
-            let Some(backend) = backend(registry, project, &outline) else { return vec![] };
-            if is_query(&literal) {
-                return query(backend, text, literal.content, offset)
-            }
+            let mut found: Vec<CompletionItem> = vec![];
+            for backend in backends(registry, project, &outline) {
+                let items = match is_query(&literal) {
+                    true => query(backend, text, literal.content.clone(), offset),
+                    false => backend.location_names(before.matches('.').count()).iter()
+                        .map(|name| item(name, CompletionItemKind::CLASS, Some(backend.name())))
+                        .collect()
+                };
 
-            backend.location_names(before.matches('.').count()).iter()
-                .map(|name| item(name, CompletionItemKind::CLASS, Some(backend.name())))
-                .collect()
+                let known: HashSet<String> = found.iter().map(|item| item.label.clone()).collect();
+                found.extend(items.into_iter().filter(|item| !known.contains(&item.label)));
+            }
+            found
         }
         Context::None => vec![]
     }
@@ -119,14 +126,15 @@ fn paths(registry: &Registry, project: &Path, text: &str, content: Range<usize>)
         .collect()
 }
 
-pub fn backend<'r>(registry: &'r Registry, project: &Path, outline: &Outline) -> Option<&'r dyn LanguageBackend> {
-    let patch = Patch {
-        alias: outline.argument("alias").unwrap_or_default().to_string(),
-        file: outline.argument("file").unwrap_or_default().to_string(),
-        ..Patch::default()
-    };
+pub fn settings(registry: &Registry, text: &str, offset: usize) -> Vec<CompletionItem> {
+    let outline = Outline::parse(text);
+    let names = registry.languages().into_iter().map(|name| item(name, CompletionItemKind::VALUE, None));
 
-    patch_backend(registry, &patch, &ast_set(project))
+    match outline.context(text, offset) {
+        Context::Value { node, .. } if outline.is_top(node, "ast-set") => names.chain([item(TARGET, CompletionItemKind::KEYWORD, None)]).collect(),
+        Context::Name { parent: Some(node), .. } if outline.is_top(node, "ast-set") => names.collect(),
+        _ => vec![]
+    }
 }
 
 fn item(label: &str, kind: CompletionItemKind, detail: Option<&str>) -> CompletionItem {
