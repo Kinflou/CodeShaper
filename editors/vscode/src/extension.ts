@@ -25,6 +25,11 @@ interface PreviewResult {
     errors: PreviewError[];
 }
 
+interface OperationResult {
+    files: PreviewFile[];
+    errors: PreviewError[];
+}
+
 let client: LanguageClient | undefined;
 
 class PreviewProvider implements TextDocumentContentProvider {
@@ -71,7 +76,8 @@ export async function activate(context: ExtensionContext): Promise<void> {
     const previews = new PreviewProvider();
     context.subscriptions.push(
         workspace.registerTextDocumentContentProvider(PREVIEW_SCHEME, previews),
-        commands.registerCommand("codeshaper.preview", (resource?: Uri | string) => preview(previews, resource?.toString()))
+        commands.registerCommand("codeshaper.preview", (resource?: Uri | string) => preview(previews, resource?.toString())),
+        commands.registerCommand("codeshaper.previewOperation", (resource?: Uri | string) => previewOperation(previews, resource?.toString()))
     );
 
     await client.start();
@@ -116,6 +122,41 @@ async function preview(previews: PreviewProvider, uri?: string): Promise<void> {
 
     const title = `${path.basename(chosen.path)} ↔ ${patch} preview`;
     await commands.executeCommand("vscode.diff", Uri.parse(chosen.uri), previewUri, title);
+}
+
+async function previewOperation(previews: PreviewProvider, uri?: string): Promise<void> {
+    const target = uri ?? window.activeTextEditor?.document.uri.toString();
+    if (!client || !target) {
+        return;
+    }
+
+    let result: OperationResult;
+    try {
+        result = await client.sendRequest<OperationResult>("codeshaper/previewOperation", { uri: target });
+    } catch (error) {
+        window.showErrorMessage(`CodeShaper preview failed: ${error instanceof Error ? error.message : String(error)}`);
+        return;
+    }
+
+    if (result.errors.length > 0) {
+        const failed = result.errors.map(error => `${error.path}: ${error.message}`).join("; ");
+        window.showWarningMessage(`CodeShaper could not apply ${result.errors.length} patch(es), a run would write nothing: ${failed}`);
+    }
+
+    if (result.files.length === 0) {
+        window.showInformationMessage("Nothing would change");
+        return;
+    }
+
+    const changes = result.files.map(file => {
+        const original = Uri.parse(file.uri);
+        const previewUri = Uri.from({ scheme: PREVIEW_SCHEME, path: original.path, query: "operation" });
+        previews.set(previewUri, file.result);
+
+        return [original, original, previewUri];
+    });
+
+    await commands.executeCommand("vscode.changes", `Operation preview (${result.files.length} file(s))`, changes);
 }
 
 async function pick(files: PreviewFile[]): Promise<PreviewFile | undefined> {

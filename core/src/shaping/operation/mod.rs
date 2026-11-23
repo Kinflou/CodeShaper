@@ -6,7 +6,7 @@ pub mod session;
 
 // Standard Uses
 use std::fmt::{Display, Formatter};
-use std::fs;
+use std::{fs, io};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -59,7 +59,13 @@ impl Operation {
     }
 
     pub fn from_configuration(configuration: OperationConfiguration, directory: &Path) -> Result<Self> {
-        let project = Project::from_directory(&directory.join(&configuration.project))?;
+        Self::from_configuration_with(configuration, directory, &|path| fs::read_to_string(path))
+    }
+
+    pub fn from_configuration_with(
+        configuration: OperationConfiguration, directory: &Path, read: &dyn Fn(&Path) -> io::Result<String>
+    ) -> Result<Self> {
+        let project = Project::from_directory_with(&directory.join(&configuration.project), read)?;
 
         Ok(Self { configuration, directory: directory.to_path_buf(), project })
     }

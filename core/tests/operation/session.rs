@@ -138,3 +138,40 @@ fn stop_keeps_history_and_time() {
     assert!(session.elapsed() >= elapsed);
     assert_eq!(session.position(), 2);
 }
+
+#[test]
+fn previews_hold_the_final_contents() {
+    let directory = two_patches("replace", "Line");
+    let (operation, registry) = (operation(&directory), registry());
+
+    let preview = operation.session(&registry).unwrap().preview().unwrap();
+    let files: Vec<(&Path, &str, &str)> = preview.files.iter()
+        .map(|file| (file.path.as_path(), file.before.as_str(), file.result.as_str()))
+        .collect();
+
+    assert_eq!(files, vec![
+        (Path::new("a.txt"), "old one\nkeep\n", "new one\nkept\n"),
+        (Path::new("nested/b.txt"), "keep\n", "kept\n"),
+    ]);
+    assert!(preview.errors.is_empty());
+    assert_eq!(read(&directory, "target/a.txt"), "old one\nkeep\n");
+}
+
+#[test]
+fn previews_keep_failures_beside_the_files() {
+    let directory = two_patches("replace", "Missing");
+    let (operation, registry) = (operation(&directory), registry());
+
+    let preview = operation.session(&registry).unwrap().preview().unwrap();
+
+    assert_eq!(preview.files.iter().map(|file| file.result.as_str()).collect::<Vec<_>>(), vec!["new one\nkeep\n"]);
+    assert_eq!(preview.errors.iter().map(|(path, _)| path.as_path()).collect::<Vec<_>>(), vec![Path::new("a.txt"), Path::new("nested/b.txt")]);
+}
+
+#[test]
+fn previews_can_be_stopped() {
+    let directory = two_patches("replace", "Line");
+    let (operation, registry) = (operation(&directory), registry());
+
+    assert!(operation.session(&registry).unwrap().preview_while(&|| false).is_err());
+}

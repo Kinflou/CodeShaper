@@ -1,4 +1,5 @@
 // Standard Uses
+use std::fs;
 use std::path::Path;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -319,12 +320,15 @@ fn preview_lens_and_request() {
     assert_eq!((command.title.as_str(), command.command.as_str()), ("Preview result", "codeshaper.preview"));
     assert_eq!(command.arguments, Some(vec![serde_json::json!(uri.as_str())]));
 
-    let toggle = lenses[1].command.clone().unwrap();
+    let operation = lenses[1].command.clone().unwrap();
+    assert_eq!((operation.title.as_str(), operation.command.as_str()), ("Preview operation", "codeshaper.previewOperation"));
+
+    let toggle = lenses[2].command.clone().unwrap();
     assert_eq!((toggle.title.as_str(), toggle.command.as_str()), ("Enable patch", "codeshaper.toggle"));
 
-    let counted = lenses[2].command.clone().unwrap();
+    let counted = lenses[3].command.clone().unwrap();
     assert_eq!(counted.title, "1 replacement(s) in 1 file(s)");
-    assert_eq!(lenses[2].range.start, Position::new(6, 8));
+    assert_eq!(lenses[3].range.start, Position::new(6, 8));
 
     let response = client.request("codeshaper/preview", serde_json::json!({ "uri": uri.as_str() }));
     let result = response.response_result.unwrap();
@@ -447,6 +451,57 @@ fn definition_links_cover_the_whole_text() {
         assert_eq!(&text[index.offset(origin.start)..index.offset(origin.end)], covered);
         assert!(links[0].target_uri.as_str().ends_with(target));
     }
+
+    client.stop();
+}
+
+#[test]
+fn operations_are_previewed_from_unsaved_text() {
+    let (directory, project) = operation();
+    let mut client = Client::start();
+    let broken = project.join("patches/second.kdl");
+    fs::write(&broken, "enabled true\nalias \"cpp\"\nfile \"*.cpp\"\nactions {").unwrap();
+
+    let enabled = RENAME.replace("enabled false", "enabled true");
+    let patch = client.open(&project.join("patches/rename.kdl"), &enabled);
+    client.open(&broken, &enabled.replace("r\"old\"", "r\"keep\"").replace("\"new\"", "\"kept\""));
+    let text = fs::read_to_string(directory.path().join("configuration.kdl")).unwrap();
+    let configuration = client.open(&directory.path().join("configuration.kdl"), &text);
+
+    for uri in [&patch, &configuration] {
+        let response = client.request("codeshaper/previewOperation", serde_json::json!({ "uri": uri.as_str() }));
+        let result = response.response_result.unwrap();
+        let files: Vec<(&str, &str)> = result["files"].as_array().unwrap().iter()
+            .map(|file| (file["path"].as_str().unwrap(), file["result"].as_str().unwrap()))
+            .collect();
+
+        assert_eq!(files, vec![("a.cpp", "void new() {}\n"), ("b.cpp", "void kept() {}\n")]);
+        assert_eq!(result["errors"], serde_json::json!([]));
+        assert!(result["files"][0]["uri"].as_str().unwrap().ends_with("/target/a.cpp"));
+    }
+    assert_eq!(fs::read_to_string(directory.path().join("target/a.cpp")).unwrap(), "void old() {}\n");
+
+    let lenses = client.request("textDocument/codeLens", serde_json::json!({ "textDocument": { "uri": configuration.as_str() } }));
+    assert_eq!(lenses.response_result.unwrap()[0]["command"]["title"], "Preview operation");
+
+    client.stop();
+}
+
+#[test]
+fn refused_operations_say_why() {
+    let (directory, project) = operation();
+    let mut client = Client::start();
+    let text = RENAME.replace("enabled false", "enabled true").replace("\"new\"", "\"#[gone]\"");
+    let uri = client.open(&project.join("patches/rename.kdl"), &text);
+
+    let response = client.request("codeshaper/previewOperation", serde_json::json!({ "uri": uri.as_str() }));
+    let message = response.response_result.unwrap_err().message;
+    assert!(message.contains("No action named 'gone'"), "{message}");
+
+    let settings = fs::read_to_string(project.join("settings.kdl")).unwrap();
+    let other = client.open(&directory.path().join("shaping_project/settings.kdl"), &settings);
+    let response = client.request("codeshaper/previewOperation", serde_json::json!({ "uri": other.as_str() }));
+    assert_eq!(response.response_result.unwrap_err().message, "Not an open patch or configuration");
 
     client.stop();
 }

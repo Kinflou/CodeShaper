@@ -97,35 +97,19 @@ fn run(configuration: &Path) -> Result<ExitCode> {
 fn dry_run(configuration: &Path) -> Result<ExitCode> {
     let operation = Operation::from_file(configuration)?;
     let registry = registry();
-    let mut session = operation.session(&registry)?;
+    let preview = operation.session(&registry)?.preview()?;
 
-    let mut originals: BTreeMap<PathBuf, String> = BTreeMap::new();
-    let mut failures = vec![];
-
-    while let Some(change) = session.next() {
-        originals.entry(change.file.clone()).or_insert_with(|| change.before.clone());
-
-        if let Err(error) = &change.result {
-            failures.push(format!("{error:?}"));
-        }
+    for file in &preview.files {
+        print_diff(&file.path, &file.before, &file.result);
     }
 
-    let mut changed = 0;
-    for (index, (path, _)) in session.files().iter().enumerate() {
-        let (Some(original), Some(content)) = (originals.get(*path), session.content(index)) else { continue };
-        if original == content { continue }
-
-        changed += 1;
-        print_diff(path, original, content);
+    for (_, failure) in &preview.errors {
+        eprintln!("{failure:?}");
     }
 
-    for failure in &failures {
-        eprintln!("{failure}");
-    }
+    println!("{} file(s) would change, nothing was written", preview.files.len());
 
-    println!("{changed} file(s) would change, nothing was written");
-
-    Ok(if failures.is_empty() { ExitCode::SUCCESS } else { ExitCode::FAILURE })
+    Ok(if preview.errors.is_empty() { ExitCode::SUCCESS } else { ExitCode::FAILURE })
 }
 
 fn check_operation(paths: &[PathBuf]) -> Result<ExitCode> {

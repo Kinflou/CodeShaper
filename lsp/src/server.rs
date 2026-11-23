@@ -22,6 +22,7 @@ use crate::worker::{file_uri, path, Shared, Snapshot, Work, Worker};
 
 // External Uses
 use codeshaper::core::registry::Registry;
+use dunce::canonicalize;
 use lsp_server::{Connection, ErrorCode, Message, Notification, Request, RequestId, Response};
 use lsp_types::notification::{
     Cancel, DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
@@ -47,6 +48,8 @@ use miette::{miette, IntoDiagnostic, Result};
 const PREVIEW_COMMAND: &str = "codeshaper.preview";
 pub const TOGGLE_COMMAND: &str = "codeshaper.toggle";
 const PREVIEW_REQUEST: &str = "codeshaper/preview";
+const OPERATION_COMMAND: &str = "codeshaper.previewOperation";
+const OPERATION_REQUEST: &str = "codeshaper/previewOperation";
 
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -235,6 +238,7 @@ impl<'c> Server<'c> {
                 let lens = |range, title: String| command(range, title, PREVIEW_COMMAND);
 
                 let mut lenses = vec![];
+                let is_configuration = path(&uri).is_some_and(|path| kind(&path) == DocumentKind::Configuration);
                 if let Some((_, text, _)) = self.patch_at(&uri, Position::default()) {
                     lenses.push(lens(Range::default(), "Preview result".to_string()));
 
@@ -246,6 +250,10 @@ impl<'c> Server<'c> {
                         let index = LineIndex::new(text);
                         lenses.extend(replacement_counts(text, &trace).into_iter().map(|(range, title)| lens(index.range(range), title)));
                     }
+                }
+                if is_configuration || !lenses.is_empty() {
+                    let place = usize::from(!lenses.is_empty());
+                    lenses.insert(place, command(Range::default(), "Preview operation".to_string(), OPERATION_COMMAND));
                 }
 
                 Response::new_ok(request.id, lenses)
@@ -286,6 +294,34 @@ impl<'c> Server<'c> {
                         return Ok(())
                     }
                     None => Response::new_err(request.id, ErrorCode::InvalidParams as i32, "Not an open patch document".to_string())
+                }
+            }
+            OPERATION_REQUEST => {
+                let uri = request.params.get("uri").and_then(|uri| uri.as_str()?.parse::<Uri>().ok());
+                let found = uri.and_then(|uri| {
+                    let path = path(&uri)?;
+                    let configuration = (kind(&path) == DocumentKind::Configuration).then_some(path);
+
+                    match &configuration {
+                        Some(_) => Some((Snapshot {
+                            uri: uri.clone(),
+                            project: PathBuf::new(),
+                            text: self.documents.get(&uri)?.clone(),
+                            revision: self.shared.revision(&uri)?
+                        }, configuration)),
+                        None => Some((self.snapshot(&uri)?, None))
+                    }
+                });
+
+                match found {
+                    Some((snapshot, configuration)) => {
+                        let open = self.documents.iter()
+                            .filter_map(|(uri, text)| Some((canonicalize(path(uri)?).ok()?, text.clone())))
+                            .collect();
+                        self.worker.request(request.id, snapshot, Work::Operation { configuration, open });
+                        return Ok(())
+                    }
+                    None => Response::new_err(request.id, ErrorCode::InvalidParams as i32, "Not an open patch or configuration".to_string())
                 }
             }
             SemanticTokensFullRequest::METHOD => {

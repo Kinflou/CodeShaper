@@ -10,7 +10,10 @@
   "engines": {
     "vscode": "^1.91.0"
   },
-  "categories": ["Programming Languages", "Linters"],
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
   "activationEvents": [
     "onLanguage:kdl",
     "workspaceContains:**/settings.kdl"
@@ -59,6 +62,14 @@
           "light": "images/preview-light.png",
           "dark": "images/preview-dark.png"
         }
+      },
+      {
+        "command": "codeshaper.previewOperation",
+        "title": "CodeShaper: Preview Operation Result",
+        "icon": {
+          "light": "images/preview-light.png",
+          "dark": "images/preview-dark.png"
+        }
       }
     ],
     "menus": {
@@ -67,11 +78,20 @@
           "command": "codeshaper.preview",
           "when": "resourceLangId == kdl && resourcePath =~ /[\\\\/]patches[\\\\/]/",
           "group": "navigation"
+        },
+        {
+          "command": "codeshaper.previewOperation",
+          "when": "resourceLangId == kdl && resourceFilename == configuration.kdl",
+          "group": "navigation"
         }
       ],
       "commandPalette": [
         {
           "command": "codeshaper.preview",
+          "when": "editorLangId == kdl"
+        },
+        {
+          "command": "codeshaper.previewOperation",
           "when": "editorLangId == kdl"
         }
       ]

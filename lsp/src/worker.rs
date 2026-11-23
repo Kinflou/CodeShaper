@@ -11,13 +11,14 @@ use std::thread::{self, JoinHandle};
 use crate::diagnostics::{coverage, file};
 use crate::hover::hover;
 use crate::position::LineIndex;
-use crate::preview::preview;
+use crate::preview::{configuration, operation_preview, preview};
 use crate::syntax::Outline;
 use crate::target;
 use crate::trace::{Limits, Traces};
 
 // External Uses
 use codeshaper::core::registry::Registry;
+use codeshaper::core::shaping::operation::session::Preview;
 use codeshaper::core::shaping::patch::trace::Trace;
 use lsp_server::{ErrorCode, Message, Notification, Request, RequestId, Response};
 use lsp_types::notification::{Notification as _, PublishDiagnostics};
@@ -39,7 +40,8 @@ pub struct Snapshot {
 pub enum Work {
     Hover(usize),
     Places(String),
-    Preview
+    Preview,
+    Operation { configuration: Option<PathBuf>, open: HashMap<PathBuf, String> }
 }
 
 enum Task {
@@ -276,7 +278,17 @@ fn answer(
             Response::new_ok(id.clone(), found)
         }
         Work::Places(location) => Response::new_ok(id.clone(), places(registry, project, text, &location)),
-        Work::Preview => preview_response(registry, id, uri, project, text)
+        Work::Preview => preview_response(registry, id, uri, project, text),
+        Work::Operation { configuration: path, open } => {
+            let keep_going = || !shared.is_cancelled(id);
+            let found = path.map_or_else(|| configuration(project), Ok)
+                .and_then(|path| operation_preview(registry, &path, &open, &keep_going));
+
+            match found {
+                Ok(preview) => operation_response(id, preview),
+                Err(error) => Response::new_err(id.clone(), ErrorCode::RequestFailed as i32, message(&error))
+            }
+        }
     }
 }
 
@@ -323,6 +335,22 @@ fn preview_response(registry: &Registry, id: &RequestId, uri: &Uri, project: &Pa
     Response::new_ok(id.clone(), json!({ "matched": matched, "files": files, "errors": errors }))
 }
 
+fn operation_response(id: &RequestId, preview: Preview) -> Response {
+    let files: Vec<serde_json::Value> = preview.files.into_iter()
+        .map(|file| json!({
+            "uri": file_uri(&preview.directory.join(&file.path)).map(|uri| uri.to_string()).unwrap_or_default(),
+            "path": file.path.display().to_string(),
+            "before": file.before,
+            "result": file.result
+        }))
+        .collect();
+    let errors: Vec<serde_json::Value> = preview.errors.iter()
+        .map(|(path, error)| json!({ "path": path.display().to_string(), "message": message(error) }))
+        .collect();
+
+    Response::new_ok(id.clone(), json!({ "files": files, "errors": errors }))
+}
+
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
@@ -336,5 +364,8 @@ pub fn file_uri(path: &Path) -> Option<Uri> {
 }
 
 fn message(error: &miette::Report) -> String {
-    error.chain().map(|cause| cause.to_string()).collect::<Vec<_>>().join(": ")
+    let cause = error.chain().map(|cause| cause.to_string()).collect::<Vec<_>>().join(": ");
+    let related: Vec<String> = error.related().into_iter().flatten().map(|related| related.to_string()).collect();
+
+    if related.is_empty() { cause } else { format!("{cause}: {}", related.join("; ")) }
 }

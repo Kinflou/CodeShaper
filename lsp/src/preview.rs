@@ -1,4 +1,5 @@
 // Standard Uses
+use std::collections::HashMap;
 use std::fs;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -9,7 +10,7 @@ use crate::syntax::Outline;
 // External Uses
 use codeshaper::core::registry::Registry;
 use codeshaper::core::shaping::operation::configuration;
-use codeshaper::core::shaping::operation::session::Change;
+use codeshaper::core::shaping::operation::session::{Change, Preview};
 use codeshaper::core::shaping::operation::Operation;
 use codeshaper::core::shaping::patch::Patch;
 use codeshaper::core::shaping::patch::trace::Trace;
@@ -43,6 +44,20 @@ pub fn preview(registry: &Registry, project: &Path, name: &str, text: &str) -> R
     let target = operation.directory.join(&operation.configuration.target);
 
     Ok((target, operation.preview(registry, name, &patch)?))
+}
+
+pub fn operation_preview(
+    registry: &Registry, path: &Path, open: &HashMap<PathBuf, String>, keep_going: &dyn Fn() -> bool
+) -> Result<Preview> {
+    let read = |path: &Path| match canonicalize(path).ok().and_then(|path| open.get(&path)) {
+        Some(text) => Ok(text.clone()),
+        None => fs::read_to_string(path)
+    };
+
+    let configuration = configuration::from_kdl(&read(path).into_diagnostic()?)?;
+    let operation = Operation::from_configuration_with(configuration, path.parent().unwrap_or(Path::new("")), &read)?;
+
+    operation.session(registry)?.preview_while(keep_going)
 }
 
 pub fn replacement_counts(text: &str, trace: &Trace) -> Vec<(Range<usize>, String)> {
