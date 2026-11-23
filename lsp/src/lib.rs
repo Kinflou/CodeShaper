@@ -74,7 +74,8 @@ pub fn serve(connection: &Connection) -> Result<()> {
 
     let options = Options {
         limits: limits(&parameters),
-        refresh_lenses: parameters["capabilities"]["workspace"]["codeLens"]["refreshSupport"].as_bool().unwrap_or(false)
+        refresh_lenses: parameters["capabilities"]["workspace"]["codeLens"]["refreshSupport"].as_bool().unwrap_or(false),
+        definition_links: parameters["capabilities"]["textDocument"]["definition"]["linkSupport"].as_bool().unwrap_or(false)
     };
 
     Server::new(connection, codeshaper::registry(), options).serve()

@@ -34,7 +34,7 @@ use lsp_types::{
     ApplyWorkspaceEditParams, CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, DocumentHighlight, DocumentHighlightParams, ExecuteCommandParams,
     CodeLens, CodeLensParams, Command, CompletionParams, CompletionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, Hover,
-    HoverContents, HoverParams, Location, MarkupContent, MarkupKind, Position, PublishDiagnosticsParams,
+    HoverContents, HoverParams, Location, LocationLink, MarkupContent, MarkupKind, Position, PublishDiagnosticsParams,
     Range, ReferenceParams, SemanticTokens, SemanticTokensParams, SemanticTokensResult, Uri,
     DocumentSymbolParams, DocumentSymbolResponse, FoldingRangeParams, PrepareRenameResponse, RenameParams,
     TextDocumentPositionParams, TextEdit, WorkspaceEdit
@@ -52,7 +52,8 @@ const PREVIEW_REQUEST: &str = "codeshaper/preview";
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Options {
     pub limits: Limits,
-    pub refresh_lenses: bool
+    pub refresh_lenses: bool,
+    pub definition_links: bool
 }
 
 pub struct Server<'c> {
@@ -62,6 +63,7 @@ pub struct Server<'c> {
     traces: Traces,
     coverage: HashMap<Uri, Vec<lsp_types::Diagnostic>>,
     refresh_lenses: bool,
+    definition_links: bool,
     next: i32
 }
 
@@ -73,6 +75,7 @@ impl<'c> Server<'c> {
             traces: Traces::new(options.limits),
             coverage: HashMap::new(),
             refresh_lenses: options.refresh_lenses,
+            definition_links: options.definition_links,
             next: 0
         }
     }
@@ -129,16 +132,19 @@ impl<'c> Server<'c> {
                     let outline = Outline::parse(text);
                     let offset = index.offset(position.position);
 
-                    if let Some(range) = definition(&outline, text, offset) {
-                        return Some(GotoDefinitionResponse::Scalar(Location::new(uri.clone(), index.range(range))))
+                    let here = |range| vec![Location::new(uri.clone(), index.range(range))];
+
+                    if let Some((symbol, range)) = symbol_at(&outline, text, offset).zip(definition(&outline, text, offset)) {
+                        return Some(self.links(index.range(symbol.range), here(range)))
                     }
 
                     if let Some(link) = link_at(&outline, text, offset) {
-                        return Some(GotoDefinitionResponse::Scalar(Location::new(uri.clone(), index.range(link.group))))
+                        let origin = link.ranges().into_iter().find(|range| range.start <= offset && offset <= range.end)?;
+                        return Some(self.links(index.range(origin), here(link.group)))
                     }
 
-                    outline.literal_at(offset).filter(|(node, _)| outline.is_top(*node, "file"))?;
-                    Some(GotoDefinitionResponse::Array(self.target_files(&uri, &outline)))
+                    let (_, literal) = outline.literal_at(offset).filter(|(node, _)| outline.is_top(*node, "file"))?;
+                    Some(self.links(index.range(literal.content.clone()), self.target_files(&uri, &outline)))
                 });
 
                 Response::new_ok(request.id, found)
@@ -394,6 +400,19 @@ impl<'c> Server<'c> {
         let edit = TextEdit::new(index.range(toggle.value), toggle.text.to_string());
 
         Some((index.range(toggle.node), toggle.title, WorkspaceEdit::new(HashMap::from([(uri.clone(), vec![edit])]))))
+    }
+
+    fn links(&self, origin: Range, locations: Vec<Location>) -> GotoDefinitionResponse {
+        if !self.definition_links { return GotoDefinitionResponse::Array(locations) }
+
+        GotoDefinitionResponse::Link(locations.into_iter()
+            .map(|location| LocationLink {
+                origin_selection_range: Some(origin),
+                target_uri: location.uri,
+                target_range: location.range,
+                target_selection_range: location.range
+            })
+            .collect())
     }
 
     fn target_files(&self, uri: &Uri, outline: &Outline) -> Vec<Location> {

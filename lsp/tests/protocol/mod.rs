@@ -9,10 +9,12 @@ use crate::preview::{operation, RENAME};
 use crate::{project, BROKEN};
 
 // External Uses
+use codeshaper_lsp::position::LineIndex;
 use lsp_server::{Connection, Message, Notification, Request, RequestId, Response};
 use lsp_types::notification::{DidChangeTextDocument, DidOpenTextDocument, DidSaveTextDocument, Exit, Initialized, Notification as _, PublishDiagnostics};
 use lsp_types::request::{CodeLensRefresh, CodeLensRequest, PrepareRenameRequest, Rename, Completion, GotoDefinition, HoverRequest, Initialize, References, Request as _, SemanticTokensFullRequest, Shutdown};
 use lsp_types::{
+    GotoCapability, LocationLink, TextDocumentClientCapabilities,
     CodeLens, CodeLensParams, PrepareRenameResponse, RenameParams, WorkspaceEdit, CodeLensWorkspaceClientCapabilities, WorkspaceClientCapabilities, CompletionParams, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams, Location, NumberOrString, ReferenceContext, ReferenceParams, CompletionResponse, DidOpenTextDocumentParams, InitializeParams, InitializedParams, Position,
     DidChangeTextDocumentParams, DidSaveTextDocumentParams, PublishDiagnosticsParams, SemanticTokensParams,
     TextDocumentContentChangeEvent, VersionedTextDocumentIdentifier, SemanticTokensResult, TextDocumentIdentifier, TextDocumentItem,
@@ -217,9 +219,10 @@ fn definition_and_references_of_actions() {
         partial_result_params: Default::default()
     };
     let response = client.request(GotoDefinition::METHOD, to_json!(params));
-    let Some(GotoDefinitionResponse::Scalar(location)) = serde_json::from_value(response.response_result.unwrap()).unwrap() else {
+    let Some(GotoDefinitionResponse::Array(locations)) = serde_json::from_value(response.response_result.unwrap()).unwrap() else {
         panic!("expected a definition")
     };
+    let location = &locations[0];
     assert_eq!((location.range.start, location.range.end), (Position::new(2, 15), Position::new(2, 19)));
 
     let params = ReferenceParams {
@@ -400,7 +403,38 @@ fn groups_are_highlighted_and_reached() {
     assert_eq!(starts, vec![(3, 22), (4, 16), (4, 26)]);
 
     let definition = client.request("textDocument/definition", place).response_result.unwrap();
-    assert_eq!(definition["range"]["start"], serde_json::json!({ "line": 3, "character": 22 }));
+    assert_eq!(definition[0]["range"]["start"], serde_json::json!({ "line": 3, "character": 22 }));
+
+    client.stop();
+}
+
+#[test]
+fn definition_links_cover_the_whole_text() {
+    let text = RENAME
+        .replace("from r\"old\"", "from r\"(old)\"")
+        .replace("to \"new\"", "to \"$[0] #[to-upper]\"")
+        .replace("    replacers {", "    makers {\n        maker \"to-upper\" {\n            make \"x\"\n        }\n    }\n    replacers {")
+        .replace("*.cpp", "a.cpp");
+    let (_directory, project) = operation();
+    let mut params = InitializeParams::default();
+    params.capabilities.text_document = Some(TextDocumentClientCapabilities {
+        definition: Some(GotoCapability { link_support: Some(true), ..GotoCapability::default() }),
+        ..TextDocumentClientCapabilities::default()
+    });
+    let mut client = Client::start_with(params);
+    let uri = client.open(&project.join("patches/rename.kdl"), &text);
+    let index = LineIndex::new(&text);
+
+    for (needle, covered, target) in [("cpp\"\n\n", "a.cpp", "/a.cpp"), ("$[0]", "$[0]", "/rename.kdl"), ("upper]", "to-upper", "/rename.kdl")] {
+        let position = index.position(text.find(needle).unwrap() + 2);
+        let params = serde_json::json!({ "textDocument": { "uri": uri.as_str() }, "position": position });
+        let response = client.request(GotoDefinition::METHOD, params);
+        let links: Vec<LocationLink> = serde_json::from_value(response.response_result.unwrap()).unwrap();
+        let origin = links[0].origin_selection_range.unwrap();
+
+        assert_eq!(&text[index.offset(origin.start)..index.offset(origin.end)], covered);
+        assert!(links[0].target_uri.as_str().ends_with(target));
+    }
 
     client.stop();
 }
