@@ -144,6 +144,7 @@ impl BuilderAction {
                 groups: regex.map(|regex| groups(&regex, &input)).unwrap_or_default(),
                 input,
                 output: result.clone().unwrap_or_default(),
+                matched,
                 ..Sample::default()
             };
 

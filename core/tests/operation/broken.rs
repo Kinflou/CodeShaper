@@ -75,16 +75,32 @@ fn switches_without_a_matching_case_use_the_default() {
     assert_eq!(preview(&content).unwrap(), "new other\nkeep\n");
 }
 
-#[test]
-fn maker_locals_without_a_match_do_not_panic() {
-    let content = with_actions("new #[made](\\\"x\\\")", r#"    makers {
-        maker "made" {
-            prepare r"(\w+)"
-            make "$[0]"
+fn getter(to: &str) -> String {
+    with_actions(to, r#"    makers {
+        maker "getter" {
+            prepare r"(\w+) (\w+)"
+            make "$[0] get_$[1]()"
         }
-    }"#);
+    }"#)
+}
 
-    assert_eq!(preview(&content).unwrap(), "old one\nkeep\n");
+#[test]
+fn prepare_runs_on_the_first_argument() {
+    let one = getter("#[getter]($[0])").replace(r"old (\w+)", r"(old \w+)");
+    assert_eq!(preview(&one).unwrap(), "old get_one()\nkeep\n");
+
+    let twice = getter("#[getter]($[0]) #[getter](\\\"a b\\\")").replace(r"old (\w+)", r"(old \w+)");
+    assert_eq!(preview(&twice).unwrap(), "old get_one() a get_b()\nkeep\n");
+}
+
+#[test]
+fn arguments_prepare_does_not_match_leave_the_text_alone() {
+    assert_eq!(preview(&getter("#[getter]($[0])")).unwrap(), "old one\nkeep\n");
+}
+
+#[test]
+fn prepared_makers_need_an_argument() {
+    assert!(preview(&getter("#[getter]")).unwrap_err().to_string().contains("is called without arguments"));
 }
 
 #[test]

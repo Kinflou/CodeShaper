@@ -99,7 +99,11 @@ pub fn hover(
             let (trace, path) = traced(registry, project, traces, text, &outline, action)?;
             collected(collect, &separator, trace.action(&path), &language, &traces.limits)
         }
-        ("maker", "prepare") => pattern(&literal.value, &groups(&outline, action), "input(s)", None, 0),
+        ("maker", "prepare") => {
+            let traced = traced(registry, project, traces, text, &outline, action);
+            let (used, files) = traced.as_ref().map(|(trace, path)| (trace.action(path), trace.files)).unwrap_or_default();
+            pattern(&literal.value, &groups(&outline, action), "first argument(s)", used, files)
+        }
         ("maker", "make") => {
             let (trace, path) = traced(registry, project, traces, text, &outline, action)?;
             results(trace.action(&path), &trace, &language, &traces.limits)
@@ -320,7 +324,7 @@ fn pattern(pattern: &str, groups: &[Group], inputs: &str, action: Option<&Action
         action.matched, action.inputs, files, action.matches
     );
 
-    if let Some(sample) = action.samples.iter().find(|sample| !sample.input.is_empty() || !sample.groups.is_empty()) {
+    if let Some(sample) = action.samples.iter().find(|sample| sample.matched) {
         value += &format!("\n\nFirst match in `{}`: {}", sample.file.display(), inline(&sample.input));
         for (index, group) in sample.groups.iter().enumerate() {
             value += &format!("\n- `$[{index}]` = {}", group.as_deref().map(inline).unwrap_or_else(|| "unset".to_string()));

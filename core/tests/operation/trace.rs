@@ -29,6 +29,7 @@ fn replacers_record_each_match() {
     assert_eq!(replacer.samples, vec![Sample {
         file: PathBuf::from("a.txt"),
         input: "old one".to_string(),
+        matched: true,
         groups: vec![Some("one".to_string())],
         output: "new one".to_string()
     }]);
@@ -69,4 +70,21 @@ fn nested_actions_are_keyed_by_path() {
     let trace = trace(&content, 3);
 
     assert_eq!(trace.action("replacer #1/inner").unwrap().results[0].output, "made");
+}
+
+#[test]
+fn prepared_makers_record_their_input() {
+    let content = patch("lines", "Line", r"(old \w+)", "#[getter]($[0])").replace("    replacers {", r#"    makers {
+        maker "getter" {
+            prepare r"(\w+) (\w+)"
+            make "get_$[1]"
+        }
+    }
+    replacers {"#);
+    let trace = trace(&content, 3);
+    let maker = trace.action("getter").unwrap();
+
+    assert_eq!((maker.inputs, maker.matched, maker.calls), (1, 1, 1));
+    assert_eq!(maker.samples[0].groups, vec![Some("old".to_string()), Some("one".to_string())]);
+    assert_eq!(maker.samples[0].output, "get_one");
 }

@@ -6,9 +6,11 @@ use crate::shaping::operation::actions::composer::Composer;
 use crate::shaping::operation::actions::{Action, composer};
 use crate::shaping::patch::controller::PatchController;
 use crate::shaping::patch::maker::Maker;
+use crate::shaping::patch::trace::{groups, Sample};
 
 // External Uses
 use indextree::NodeId;
+use regex::Regex;
 
 
 pub struct MakerAction {
@@ -50,10 +52,33 @@ impl MakerAction {
     pub fn make_with_args(
         &self, args: &[String], controller: &PatchController
     ) -> Option<String> {
-        visitor::navigate_expression(
-            self.composer.as_ref().unwrap(), controller,
-            &self.maker.make, args
-        ).ok()
+        let composer = self.composer.as_ref()?;
+        let prepared = self.maker.prepare.as_deref().zip(args.first());
+
+        *composer.locals.borrow_mut() = prepared
+            .map(|(prepare, input)| composer::capture_locals(Some(prepare), input))
+            .unwrap_or_default();
+
+        let result = visitor::navigate_expression(composer, controller, &self.maker.make, args).ok();
+
+        if let (Some((prepare, input)), true) = (prepared, controller.tracing()) {
+            let regex = Regex::new(prepare).ok();
+            let matched = regex.as_ref().is_some_and(|regex| regex.is_match(input));
+            let sample = Sample {
+                groups: regex.map(|regex| groups(&regex, input)).unwrap_or_default(),
+                input: input.clone(),
+                output: result.clone().unwrap_or_default(),
+                matched,
+                ..Sample::default()
+            };
+
+            controller.record(*self.self_id(), |trace, limit| {
+                trace.input(usize::from(matched));
+                trace.sample(limit, sample);
+            });
+        }
+
+        result
     }
 }
 

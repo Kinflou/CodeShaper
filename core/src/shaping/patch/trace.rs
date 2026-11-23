@@ -12,6 +12,7 @@ use regex::Regex;
 pub struct Sample {
     pub file: PathBuf,
     pub input: String,
+    pub matched: bool,
     pub groups: Vec<Option<String>>,
     pub output: String
 }

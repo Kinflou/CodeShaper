@@ -54,6 +54,7 @@ impl ReplacerAction {
                     input: found.as_str().to_string(),
                     groups: captures.iter().skip(1).map(|group| group.map(|group| group.as_str().to_string())).collect(),
                     output: replacement.clone(),
+                    matched: true,
                     ..Sample::default()
                 };
                 controller.record(*self.self_id(), |trace, limit| trace.sample(limit, sample));

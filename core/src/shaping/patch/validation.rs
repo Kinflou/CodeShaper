@@ -108,6 +108,9 @@ fn check(patch: &Patch, source: Option<&PatchSource>, backend: Option<&dyn Langu
         if !validator.receivers.contains(name) && *count > 0 {
             let message = format!("'#[{name}]' takes no arguments, but is called with {count}");
             validator.report(DiagnosticKind::IncorrectArgs, action, field, message);
+        } else if *count == 0 && validator.prepared.contains(name) {
+            let message = format!("'#[{name}]' is called without arguments, but its 'prepare' regex runs on the first one");
+            validator.report(DiagnosticKind::IncorrectArgs, action, field, message);
         } else if *count < required {
             let message = format!(
                 "'#[{name}]' is called with {count} argument(s), but uses '@[{}]'", required - 1
@@ -172,6 +175,7 @@ struct Validator<'a> {
     names: HashMap<String, (String, Option<SourceSpan>)>,
     receivers: HashSet<String>,
     required: HashMap<String, usize>,
+    prepared: HashSet<String>,
     calls: Vec<Call>,
     current: Option<&'a NodeSpans>,
     current_span: Option<SourceSpan>
@@ -332,7 +336,13 @@ impl<'a> Validator<'a> {
                     self.walk(action, field, argument, locals, arguments);
                 }
             }
-            ExpressionAST::LocalCall { name, span } => self.local(action, field, name, span, locals),
+            ExpressionAST::LocalCall { name, span } => {
+                if let (Some(receiver), Locals::Groups { .. }) = (arguments, locals) {
+                    self.prepared.insert(receiver.to_string());
+                }
+
+                self.local(action, field, name, span, locals)
+            }
             ExpressionAST::ArgumentCall { name: variable, span } => match (arguments, variable.parse::<usize>()) {
                 (None, _) => {
                     let message = format!("'@[{variable}]' is used where no arguments exist");

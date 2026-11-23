@@ -214,7 +214,8 @@ fn makers_show_results_with_their_arguments() {
         `b.cpp`, with `keep`, `current`:\n```cpp\nkeep_current\n```");
 
     let (text, _) = hovered(INDEXED, "(\\w+)=", 1);
-    assert_eq!(text, "- `$[0]` = `(\\w+)`\n- `$[1]` = `(\\w+)`");
+    assert_eq!(text, "- `$[0]` = `(\\w+)`\n- `$[1]` = `(\\w+)`\n\n\
+        Matches in 0 of 2 first argument(s) across 2 target file(s), 0 match(es) in all");
 }
 
 #[test]
@@ -274,4 +275,12 @@ fn named_groups_are_shown() {
 
     assert!(hovered(&named, r"void (?P", 1).0.starts_with("- `$[0]`, `$[name]` = `(?P<name>\\w+)`"));
     assert_eq!(hovered(&named, "$[name]", 2).0, "`$[name]` is group 1 of `from`: `(?P<name>\\w+)`\n\nSeen as `old`, `keep`");
+}
+
+#[test]
+fn first_matches_are_shown_without_groups() {
+    let plain = TRACED.replace(r"void (\w+)\(\)", "void old").replace("int $[0]", "int x");
+    let (text, _) = hovered(&plain, "void old", 1);
+
+    assert!(text.ends_with("Matches in 1 of 2 located content(s) across 2 target file(s), 1 match(es) in all\n\nFirst match in `a.cpp`: `void old`"), "{text}");
 }
