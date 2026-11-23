@@ -6,12 +6,12 @@ use crate::shaping::patch::builder::Builder;
 use crate::shaping::patch::controller::PatchController;
 use crate::shaping::operation::actions::{Action, composer};
 use crate::shaping::operation::actions::composer::Composer;
+use crate::shaping::patch::pattern::regex_builder;
 use crate::shaping::patch::trace::{groups, Sample};
 use crate::expressions::visitor;
 
 // External Uses
 use indextree::NodeId;
-use regex::Regex;
 
 
 #[allow(unused)]
@@ -127,7 +127,7 @@ impl BuilderAction {
         &self, controller: &PatchController, input: String
     ) -> Option<String> {
         let locals = composer::capture_locals(
-            Some(&self.builder.r#match), &input
+            Some(&self.builder.r#match), &self.builder.flags, &input
         );
 
         *self.composer.as_ref().unwrap().locals.borrow_mut() = locals;
@@ -138,7 +138,7 @@ impl BuilderAction {
         ).ok();
 
         if controller.tracing() {
-            let regex = Regex::new(&self.builder.r#match).ok();
+            let regex = regex_builder(&self.builder.r#match, &self.builder.flags).build().ok();
             let matched = regex.as_ref().is_some_and(|regex| regex.is_match(&input));
             let sample = Sample {
                 groups: regex.map(|regex| groups(&regex, &input)).unwrap_or_default(),

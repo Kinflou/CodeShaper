@@ -29,6 +29,7 @@ actions {
             location "Identifier"
             reference-location "Identifier"
             match "x"
+            flags "i"
             build "x"
             collect true
             separator ","
@@ -51,6 +52,7 @@ actions {
     makers {
         maker "m" {
             prepare "x"
+            flags "i"
             make "x"
         }
     }
@@ -94,7 +96,7 @@ fn field_names_follow_the_enclosing_node() {
     let text = "actions {\n    makers {\n        maker \"m\" {\n            \n        }\n    }\n}\n";
     let offset = text.find("            \n").unwrap() + 12;
 
-    assert_eq!(labels(text, offset), vec!["prepare", "make"]);
+    assert_eq!(labels(text, offset), vec!["prepare", "flags", "make"]);
     assert_eq!(labels("", 0), vec!["enabled", "alias", "file", "actions"]);
 }
 

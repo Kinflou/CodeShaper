@@ -7,7 +7,7 @@ use crate::ast::backend::{LanguageBackend, LocationError};
 use crate::expressions::syntax::ExpressionAST;
 use crate::expressions::syntax::parser::parse_expression;
 use crate::shaping::patch::{pattern, Actions, Patch};
-use crate::shaping::patch::replacer::{check_flags, regex_builder};
+use crate::shaping::patch::pattern::{check_flags, regex_builder};
 use crate::shaping::patch::source::{ActionSpans, NodeSpans, PatchSource};
 
 // External Uses
@@ -221,7 +221,8 @@ impl<'a> Validator<'a> {
                 self.location(&path, "reference-location", reference_location);
             }
 
-            let locals = self.regex(&path, "match", &builder.r#match, "");
+            self.flags(&path, &builder.flags);
+            let locals = self.regex(&path, "match", &builder.r#match, &builder.flags);
             self.expression(&path, "build", &builder.build, &locals, None);
             self.actions(&builder.actions, &path, nested);
         }
@@ -236,10 +237,7 @@ impl<'a> Validator<'a> {
                 self.location(&path, "reference-location", &replacer.reference_location);
             }
 
-            if let Err(error) = check_flags(&replacer.flags) {
-                self.report(DiagnosticKind::IncorrectRegex, &path, "flags", error.to_string());
-            }
-
+            self.flags(&path, &replacer.flags);
             let locals = self.regex(&path, "from", &replacer.from, &replacer.flags);
             self.expression(&path, "to", &replacer.to, &locals, None);
             self.actions(&replacer.actions, &path, nested);
@@ -250,8 +248,9 @@ impl<'a> Validator<'a> {
             let path = self.name(parent, &maker.name);
             self.receivers.insert(maker.name.clone());
 
+            self.flags(&path, &maker.flags);
             let locals = match &maker.prepare {
-                Some(prepare) => self.regex(&path, "prepare", prepare, ""),
+                Some(prepare) => self.regex(&path, "prepare", prepare, &maker.flags),
                 None => Locals::Unavailable("the maker has no 'prepare' regex")
             };
             self.expression(&path, "make", &maker.make, &locals, Some(&maker.name));
@@ -294,6 +293,12 @@ impl<'a> Validator<'a> {
         if let Err(error) = backend.check_location(location) {
             let range = error.downcast_ref::<LocationError>().and_then(|error| error.range.clone());
             self.report_at(DiagnosticKind::LocationNotFound, action, field, error.to_string(), range);
+        }
+    }
+
+    fn flags(&mut self, action: &str, flags: &str) {
+        if let Err(error) = check_flags(flags) {
+            self.report(DiagnosticKind::IncorrectRegex, action, "flags", error.to_string());
         }
     }
 

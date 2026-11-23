@@ -4,9 +4,19 @@ use std::ops::Range;
 // Crate Uses
 
 // External Uses
+use miette::{bail, Result};
+use regex::RegexBuilder;
 use regex_syntax::ast::{self, Ast, GroupKind, Visitor};
 use regex_syntax::hir::Hir;
 use regex_syntax::{Error, ParserBuilder};
+
+
+pub const FLAGS: [(char, &str); 4] = [
+    ('i', "case insensitive"),
+    ('m', "'^' and '$' match at line breaks"),
+    ('s', "'.' also matches '\\n'"),
+    ('x', "whitespace and '#' comments are ignored")
+];
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,6 +25,26 @@ pub struct Group {
     pub name: Option<String>
 }
 
+
+pub fn check_flags(flags: &str) -> Result<()> {
+    if let Some(unknown) = flags.chars().find(|flag| !FLAGS.iter().any(|(known, _)| known == flag)) {
+        bail!("Unknown regex flag '{unknown}', expected any of 'i', 'm', 's' or 'x'")
+    }
+
+    Ok(())
+}
+
+pub fn regex_builder(pattern: &str, flags: &str) -> RegexBuilder {
+    let mut builder = RegexBuilder::new(pattern);
+
+    builder
+        .case_insensitive(flags.contains('i'))
+        .multi_line(flags.contains('m'))
+        .dot_matches_new_line(flags.contains('s'))
+        .ignore_whitespace(flags.contains('x'));
+
+    builder
+}
 
 pub fn groups(pattern: &str, flags: &str) -> Option<Vec<Group>> {
     let parsed = ast::parse::ParserBuilder::new()

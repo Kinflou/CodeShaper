@@ -137,3 +137,23 @@ fn named_groups_are_locals() {
     assert_eq!(preview(&content).unwrap(), "one old old\nkeep\n");
     assert!(preview(&content.replace("$[what]", "$[gone]")).unwrap_err().to_string().contains("'$[gone]' is not a capture group"));
 }
+
+#[test]
+fn flags_apply_to_match_and_prepare() {
+    let builder = with_actions("new #[names]", r#"    builders {
+        builder "names" {
+            location "Line"
+            match r"OLD (\w+)"
+            flags "i"
+            build "<$[0]>"
+            collect true
+        }
+    }"#);
+    assert_eq!(preview(&builder).unwrap(), "new <one>\nkeep\n");
+
+    let maker = getter("#[getter]($[0])").replace(r"old (\w+)", r"(old \w+)")
+        .replace(r#"prepare r"(\w+) (\w+)""#, "prepare r\"(OLD) (\\w+)\"\n            flags \"i\"");
+    assert_eq!(preview(&maker).unwrap(), "old get_one()\nkeep\n");
+
+    assert!(preview(&builder.replace("flags \"i\"", "flags \"q\"")).unwrap_err().to_string().contains("Unknown regex flag 'q'"));
+}

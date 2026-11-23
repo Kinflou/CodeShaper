@@ -17,8 +17,7 @@ use crate::trace::{diff, fenced, inline, truncate, Limits, Traces};
 use codeshaper::core::ast::backend::LanguageBackend;
 use codeshaper::core::registry::Registry;
 use codeshaper::core::shaping::operation::LocationMatches;
-use codeshaper::core::shaping::patch::pattern::Group;
-use codeshaper::core::shaping::patch::replacer::FLAGS;
+use codeshaper::core::shaping::patch::pattern::{Group, FLAGS};
 use codeshaper::core::shaping::patch::trace::{ActionTrace, Trace};
 use url::Url;
 
@@ -76,7 +75,7 @@ pub fn hover(
     }
 
     let value = match (kind, field) {
-        ("replacer", "flags") => flags(&literal.value),
+        (_, "flags") => flags(regex_field(kind)?, &literal.value),
         ("replacer", "to") => {
             let (trace, path) = traced(registry, project, traces, text, &outline, action)?;
             replacements(trace.action(&path), &trace, &traces.limits)
@@ -276,7 +275,7 @@ fn local(variable: &str, field: &str, pattern: &str, groups: &[Group], samples: 
     value
 }
 
-fn flags(flags: &str) -> String {
+fn flags(field: &str, flags: &str) -> String {
     let mut lines: Vec<String> = FLAGS.iter()
         .map(|(flag, meaning)| {
             let mark = if flags.contains(*flag) { "✓" } else { "·" };
@@ -289,7 +288,7 @@ fn flags(flags: &str) -> String {
         lines.push(format!("\nUnknown: {}", inline(&unknown)));
     }
 
-    format!("Regex flags for `from`\n\n{}", lines.join("\n"))
+    format!("Regex flags for `{field}`\n\n{}", lines.join("\n"))
 }
 
 fn replacements(action: Option<&ActionTrace>, trace: &Trace, limits: &Limits) -> String {

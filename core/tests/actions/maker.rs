@@ -25,6 +25,7 @@ fn maker_call() {
                 Maker {
                     name: "hello_maker".to_owned(),
                     prepare: Some("Lets reverse the name (.+) and (.+)\\?".to_owned()),
+                    flags: String::new(),
                     make: "We reversed to $[1] and $[0]".to_owned(),
                 }
             ]),

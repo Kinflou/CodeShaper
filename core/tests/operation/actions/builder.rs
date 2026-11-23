@@ -19,6 +19,7 @@ fn builder_expression() {
         separator: String::new(),
         reference_location: None,
         r#match: "".to_string(),
+        flags: String::new(),
         actions: Default::default(),
     };
 

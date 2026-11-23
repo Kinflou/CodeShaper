@@ -178,7 +178,7 @@ fn completion_offers_fields() {
         panic!("expected completion items")
     };
 
-    assert_eq!(items.iter().map(|item| item.label.as_str()).collect::<Vec<_>>(), vec!["prepare", "make"]);
+    assert_eq!(items.iter().map(|item| item.label.as_str()).collect::<Vec<_>>(), vec!["prepare", "flags", "make"]);
 
     client.stop();
 }

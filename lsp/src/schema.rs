@@ -35,9 +35,9 @@ pub fn children(parent: Option<&str>) -> &'static [&'static str] {
         Some("makers") => &["maker"],
         Some("switchers") => &["switch"],
         Some("lists") => &["list"],
-        Some("builder") => &["location", "reference-location", "match", "build", "collect", "separator", "actions"],
+        Some("builder") => &["location", "reference-location", "match", "flags", "build", "collect", "separator", "actions"],
         Some("replacer") => &["location", "from", "to", "flags", "reference-location", "reference", "actions"],
-        Some("maker") => &["prepare", "make"],
+        Some("maker") => &["prepare", "flags", "make"],
         Some("switch") => &["cases", "index", "default"],
         Some("list") => &["values", "index", "default"],
         Some(_) => &[]

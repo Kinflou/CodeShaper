@@ -2,19 +2,12 @@
 
 // Crate Uses
 use crate::shaping::patch::Actions;
+use crate::shaping::patch::pattern::{check_flags, regex_builder};
 
 // External Uses
 use knus::Decode;
-use miette::{bail, IntoDiagnostic, Result};
-use regex::{Regex, RegexBuilder};
-
-
-pub const FLAGS: [(char, &str); 4] = [
-    ('i', "case insensitive"),
-    ('m', "'^' and '$' match at line breaks"),
-    ('s', "'.' also matches '\\n'"),
-    ('x', "whitespace and '#' comments are ignored")
-];
+use miette::{IntoDiagnostic, Result};
+use regex::Regex;
 
 
 #[derive(Default, Clone, Debug, PartialEq)]
@@ -46,25 +39,4 @@ impl Replacer {
 
         regex_builder(&self.from, &self.flags).build().into_diagnostic()
     }
-}
-
-
-pub fn check_flags(flags: &str) -> Result<()> {
-    if let Some(unknown) = flags.chars().find(|flag| !FLAGS.iter().any(|(known, _)| known == flag)) {
-        bail!("Unknown regex flag '{unknown}', expected any of 'i', 'm', 's' or 'x'")
-    }
-
-    Ok(())
-}
-
-pub fn regex_builder(pattern: &str, flags: &str) -> RegexBuilder {
-    let mut builder = RegexBuilder::new(pattern);
-
-    builder
-        .case_insensitive(flags.contains('i'))
-        .multi_line(flags.contains('m'))
-        .dot_matches_new_line(flags.contains('s'))
-        .ignore_whitespace(flags.contains('x'));
-
-    builder
 }

@@ -31,6 +31,7 @@ fn composition_builder_with_undefined_action() {
                     location: "Any".to_string(),
                     reference_location: None,
                     r#match: "Hello (.*) attempt".to_string(),
+                    flags: String::new(),
                     build: "Goodbye $[0] #[undefined_action] World".to_string(),
                     collect: false,
                     separator: String::new(),
@@ -75,6 +76,7 @@ fn simple_composition_with_build_action_expression() {
                     location: "Any".to_owned(),
                     reference_location: None,
                     r#match: "Hello (.+) attempt".to_owned(),
+                    flags: String::new(),
                     build: "Goodbye #[greet_maker]($[0]) World".to_owned(),
                     collect: false,
                     separator: String::new(),
@@ -85,6 +87,7 @@ fn simple_composition_with_build_action_expression() {
                             patch::maker::Maker {
                                 name: "greet_maker".to_owned(),
                                 prepare: None,
+                                flags: String::new(),
                                 make: "Maker @[0]".to_owned(),
                             }
                         ]),

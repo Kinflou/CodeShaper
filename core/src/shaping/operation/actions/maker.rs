@@ -6,11 +6,11 @@ use crate::shaping::operation::actions::composer::Composer;
 use crate::shaping::operation::actions::{Action, composer};
 use crate::shaping::patch::controller::PatchController;
 use crate::shaping::patch::maker::Maker;
+use crate::shaping::patch::pattern::regex_builder;
 use crate::shaping::patch::trace::{groups, Sample};
 
 // External Uses
 use indextree::NodeId;
-use regex::Regex;
 
 
 pub struct MakerAction {
@@ -38,7 +38,7 @@ impl MakerAction {
 
     pub fn make(&self, input: &str, controller: &PatchController) -> Option<String> {
         let locals = composer::capture_locals(
-            self.maker.prepare.as_deref(), input
+            self.maker.prepare.as_deref(), &self.maker.flags, input
         );
 
         *self.composer.as_ref().unwrap().locals.borrow_mut() = locals;
@@ -56,13 +56,13 @@ impl MakerAction {
         let prepared = self.maker.prepare.as_deref().zip(args.first());
 
         *composer.locals.borrow_mut() = prepared
-            .map(|(prepare, input)| composer::capture_locals(Some(prepare), input))
+            .map(|(prepare, input)| composer::capture_locals(Some(prepare), &self.maker.flags, input))
             .unwrap_or_default();
 
         let result = visitor::navigate_expression(composer, controller, &self.maker.make, args).ok();
 
         if let (Some((prepare, input)), true) = (prepared, controller.tracing()) {
-            let regex = Regex::new(prepare).ok();
+            let regex = regex_builder(prepare, &self.maker.flags).build().ok();
             let matched = regex.as_ref().is_some_and(|regex| regex.is_match(input));
             let sample = Sample {
                 groups: regex.map(|regex| groups(&regex, input)).unwrap_or_default(),
