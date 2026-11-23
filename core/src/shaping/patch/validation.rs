@@ -6,11 +6,11 @@ use crate::ast::backend::LanguageBackend;
 use crate::expressions::syntax::ExpressionAST;
 use crate::expressions::syntax::parser::parse_expression;
 use crate::shaping::patch::{Actions, Patch};
+use crate::shaping::patch::replacer::{check_flags, regex_builder};
 use crate::shaping::patch::source::{ActionSpans, NodeSpans, PatchSource};
 
 // External Uses
 use miette::SourceSpan;
-use regex::Regex;
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -177,7 +177,7 @@ impl<'a> Validator<'a> {
                 self.location(&path, "reference-location", reference_location);
             }
 
-            let locals = self.regex(&path, "match", &builder.r#match);
+            let locals = self.regex(&path, "match", &builder.r#match, "");
             self.expression(&path, "build", &builder.build, locals, None);
             self.actions(&builder.actions, &path, nested);
         }
@@ -192,7 +192,11 @@ impl<'a> Validator<'a> {
                 self.location(&path, "reference-location", &replacer.reference_location);
             }
 
-            let locals = self.regex(&path, "from", &replacer.from);
+            if let Err(error) = check_flags(&replacer.flags) {
+                self.report(DiagnosticKind::IncorrectRegex, &path, "flags", error.to_string());
+            }
+
+            let locals = self.regex(&path, "from", &replacer.from, &replacer.flags);
             self.expression(&path, "to", &replacer.to, locals, None);
             self.actions(&replacer.actions, &path, nested);
         }
@@ -203,7 +207,7 @@ impl<'a> Validator<'a> {
             self.receivers.insert(maker.name.clone());
 
             let locals = match &maker.prepare {
-                Some(prepare) => self.regex(&path, "prepare", prepare),
+                Some(prepare) => self.regex(&path, "prepare", prepare, ""),
                 None => Locals::Unavailable("the maker has no 'prepare' regex")
             };
             self.expression(&path, "make", &maker.make, locals, Some(&maker.name));
@@ -248,8 +252,8 @@ impl<'a> Validator<'a> {
         }
     }
 
-    fn regex(&mut self, action: &str, field: &'static str, regex: &str) -> Locals {
-        match Regex::new(regex) {
+    fn regex(&mut self, action: &str, field: &'static str, regex: &str, flags: &str) -> Locals {
+        match regex_builder(regex, flags).build() {
             Ok(regex) => Locals::Groups(regex.captures_len() - 1),
             Err(error) => {
                 self.report(DiagnosticKind::IncorrectRegex, action, field, error.to_string());

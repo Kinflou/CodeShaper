@@ -9,7 +9,6 @@ use crate::expressions::visitor;
 
 // External Uses
 use indextree::NodeId;
-use regex::Regex;
 
 
 pub struct ReplacerAction {
@@ -32,7 +31,7 @@ impl ReplacerAction {
     pub fn replacer(&self) -> &Replacer { &self.replacer }
 
     pub fn replace_input(&self, controller: &PatchController, input: &str) -> Option<String> {
-        let from = Regex::new(&self.replacer.from).ok()?;
+        let from = self.replacer.from_regex().ok()?;
         let composer = self.composer.as_ref()?;
 
         let mut result = String::with_capacity(input.len());

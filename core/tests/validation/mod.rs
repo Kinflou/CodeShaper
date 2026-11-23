@@ -95,6 +95,15 @@ fn incorrect_regex() {
 }
 
 #[test]
+fn unknown_flags() {
+    let actions = replacer("Line", "old (\\w+)", "new $[0]").replace("to \"", "flags \"iq\"\n            to \"");
+    let (content, diagnostics) = check_source(&actions);
+
+    assert_eq!(kinds(&diagnostics), vec![(DiagnosticKind::IncorrectRegex, "replacer #1", "flags")]);
+    assert_eq!(spanned(&content, &diagnostics[0]).1, r#""iq""#);
+}
+
+#[test]
 fn unclosed_call() {
     let diagnostics = check(&replacer("Line", "old (\\w+)", "new $[0] #[names"));
 
