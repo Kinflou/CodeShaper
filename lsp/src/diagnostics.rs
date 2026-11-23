@@ -5,8 +5,10 @@ use std::path::Path;
 
 // Crate Uses
 use crate::document::{ast_set, kind, DocumentKind};
+use crate::groups::links;
 use crate::navigation::calls;
 use crate::position::LineIndex;
+use crate::schema::regex_field;
 use crate::syntax::{Outline, ACTION_NODES};
 use crate::target::operation;
 
@@ -14,11 +16,11 @@ use crate::target::operation;
 use codeshaper::core::registry::Registry;
 use codeshaper::core::shaping::operation::configuration;
 use codeshaper::core::shaping::operation::patch_backend;
-use codeshaper::core::shaping::patch::Patch;
+use codeshaper::core::shaping::patch::{pattern, Patch};
 use codeshaper::core::shaping::patch::trace::Trace;
 use codeshaper::core::shaping::patch::validation::{validate_source, Diagnostic as PatchDiagnostic, Severity};
 use codeshaper::core::shaping::project::settings;
-use lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString};
+use lsp_types::{Diagnostic, DiagnosticSeverity, DiagnosticTag, NumberOrString};
 use miette::Report;
 
 
@@ -49,7 +51,52 @@ fn patch(registry: &Registry, project: &Path, path: &Path, text: &str, index: &L
 
     let backend = patch_backend(registry, &patch, &ast_set(project));
 
-    validate_source(&patch, &source, backend).into_iter().map(|diagnostic| convert(diagnostic, index)).collect()
+    let mut found: Vec<Diagnostic> = validate_source(&patch, &source, backend).into_iter()
+        .map(|diagnostic| convert(diagnostic, index))
+        .collect();
+    found.extend(regex_hints(text, index));
+
+    found
+}
+
+fn regex_hints(text: &str, index: &LineIndex) -> Vec<Diagnostic> {
+    let outline = Outline::parse(text);
+    let mut found = vec![];
+
+    for (action, node) in outline.nodes.iter().enumerate() {
+        let Some(field) = regex_field(&node.name) else { continue };
+        let Some(regex) = outline.field(action, field) else { continue };
+        let Some(path) = outline.action_path(action) else { continue };
+        let links = links(&outline, text, action).unwrap_or_default();
+
+        for (number, link) in links.iter().enumerate().filter(|(_, link)| link.uses.is_empty()) {
+            found.push(Diagnostic {
+                range: index.range(link.group.clone()),
+                severity: Some(DiagnosticSeverity::HINT),
+                code: Some(NumberOrString::String("unused-group".to_string())),
+                source: Some(SOURCE.to_string()),
+                message: format!("{path} › {field}: '$[{number}]' is never used, '(?:…)' groups without capturing"),
+                tags: Some(vec![DiagnosticTag::UNNECESSARY]),
+                ..Diagnostic::default()
+            });
+        }
+
+        let flags = outline.field(action, "flags").map(|flags| flags.value.as_str()).unwrap_or_default();
+        let placeholder = regex.value.is_empty() && node.name == "builder";
+
+        if !placeholder && pattern::matches_empty(&regex.value, flags) {
+            found.push(Diagnostic {
+                range: index.range(regex.range.clone()),
+                severity: Some(DiagnosticSeverity::HINT),
+                code: Some(NumberOrString::String("matches-empty".to_string())),
+                source: Some(SOURCE.to_string()),
+                message: format!("{path} › {field}: can match empty text"),
+                ..Diagnostic::default()
+            });
+        }
+    }
+
+    found
 }
 
 fn convert(diagnostic: PatchDiagnostic, index: &LineIndex) -> Diagnostic {

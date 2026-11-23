@@ -135,3 +135,40 @@ fn unmatched_files_are_reported_once() {
 
     assert_eq!(file(&codeshaper::registry(), &project, UNCOVERED), None);
 }
+
+fn hints(kind: &str, fields: &str) -> Vec<(String, String)> {
+    let (_directory, project) = project(&[]);
+    let text = format!("enabled true\nalias \"cpp\"\nfile \"*.cpp\"\nactions {{\n{kind}s {{\n{kind} {fields}\n}}\n}}\n");
+
+    let found = diagnostics(&codeshaper::registry(), &project.join("patches/hints.kdl"), &text);
+
+    found.iter().zip(codes(&found))
+        .filter(|(diagnostic, _)| diagnostic.severity == Some(DiagnosticSeverity::HINT))
+        .map(|(diagnostic, code)| {
+            let line = text.lines().nth(diagnostic.range.start.line as usize).unwrap();
+            (code, line[diagnostic.range.start.character as usize..diagnostic.range.end.character as usize].to_string())
+        })
+        .collect()
+}
+
+#[test]
+fn unused_groups_are_hinted() {
+    let found = hints("replacer", r#"{
+location "FunctionDefinition"
+from r"(a)(?P<n>b)((?:c)d)"
+to "$[n] $[0]"
+}"#);
+
+    assert_eq!(found, vec![("unused-group".to_string(), "((?:c)d)".to_string())]);
+}
+
+#[test]
+fn patterns_matching_nothing_are_hinted() {
+    let replacer = |from: &str| hints("replacer", &format!("{{\nlocation \"FunctionDefinition\"\nfrom r\"{from}\"\nto \"x\"\n}}"));
+    let builder = |regex: &str| hints("builder", &format!("\"b\" {{\nlocation \"FunctionDefinition\"\nmatch r\"{regex}\"\nbuild \"x\"\n}}"));
+
+    assert_eq!(replacer("a*"), vec![("matches-empty".to_string(), "r\"a*\"".to_string())]);
+    assert_eq!(replacer(""), vec![("matches-empty".to_string(), "r\"\"".to_string())]);
+    assert_eq!((replacer("a+"), replacer("^"), builder("")), (vec![], vec![], vec![]));
+    assert_eq!(builder("a?"), vec![("matches-empty".to_string(), "r\"a?\"".to_string())]);
+}

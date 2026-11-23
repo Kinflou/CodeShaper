@@ -5,6 +5,7 @@ use std::ops::Range;
 
 // External Uses
 use regex_syntax::ast::{self, Ast, GroupKind, Visitor};
+use regex_syntax::hir::Hir;
 use regex_syntax::{Error, ParserBuilder};
 
 
@@ -25,17 +26,29 @@ pub fn groups(pattern: &str, flags: &str) -> Option<Vec<Group>> {
     ast::visit(&parsed, Groups::default()).ok()
 }
 
-pub fn error(pattern: &str, flags: &str) -> Option<(String, Range<usize>)> {
-    let error = ParserBuilder::new()
+pub fn matches_empty(pattern: &str, flags: &str) -> bool {
+    parse(pattern, flags).is_ok_and(|parsed| {
+        let properties = parsed.properties();
+
+        properties.minimum_len() == Some(0) && properties.look_set().is_empty()
+    })
+}
+
+fn parse(pattern: &str, flags: &str) -> Result<Hir, Box<Error>> {
+    ParserBuilder::new()
         .case_insensitive(flags.contains('i'))
         .multi_line(flags.contains('m'))
         .dot_matches_new_line(flags.contains('s'))
         .ignore_whitespace(flags.contains('x'))
         .build()
         .parse(pattern)
-        .err()?;
+        .map_err(Box::new)
+}
 
-    let (message, span) = match &error {
+pub fn error(pattern: &str, flags: &str) -> Option<(String, Range<usize>)> {
+    let error = parse(pattern, flags).err()?;
+
+    let (message, span) = match &*error {
         Error::Parse(error) => (error.kind().to_string(), error.span()),
         Error::Translate(error) => (error.kind().to_string(), error.span()),
         _ => return None

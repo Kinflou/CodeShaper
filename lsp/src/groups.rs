@@ -55,37 +55,45 @@ pub fn locals(text: &str, literal: &Literal) -> Vec<(String, Range<usize>)> {
         .collect()
 }
 
+pub fn links(outline: &Outline, text: &str, action: usize) -> Option<Vec<Link>> {
+    let kind = outline.nodes[action].name.as_str();
+    let regex = outline.field(action, regex_field(kind)?)?;
+    let template = template_field(kind)
+        .and_then(|field| outline.field(action, field))
+        .map(|literal| locals(text, literal))
+        .unwrap_or_default();
+
+    let groups = groups(outline, action);
+    let offsets = literal_offsets(&text[regex.range.clone()]);
+
+    groups.iter().enumerate()
+        .map(|(number, group)| {
+            let start = regex.range.start + offsets.get(group.range.start)?;
+            let end = regex.range.start + offsets.get(group.range.end)?;
+            let uses = template.iter()
+                .filter(|(variable, _)| group_number(&groups, variable) == Some(number))
+                .map(|(_, range)| range.clone())
+                .collect();
+
+            Some(Link { group: start..end, uses })
+        })
+        .collect()
+}
+
 pub fn link_at(outline: &Outline, text: &str, offset: usize) -> Option<Link> {
     let (node, literal) = outline.literal_at(offset)?;
     let action = outline.nodes[node].parent?;
     let kind = outline.nodes[action].name.as_str();
-    let field = outline.nodes[node].name.as_str();
+    let links = links(outline, text, action)?;
 
-    let regex = outline.field(action, regex_field(kind)?)?;
-    let groups = groups(outline, action);
-    let offsets = literal_offsets(&text[regex.range.clone()]);
-    let ranges: Vec<Range<usize>> = groups.iter()
-        .filter_map(|group| Some(regex.range.start + offsets.get(group.range.start)?..regex.range.start + offsets.get(group.range.end)?))
-        .collect();
+    if regex_field(kind) == Some(outline.nodes[node].name.as_str()) {
+        return links.into_iter()
+            .filter(|link| link.group.start <= offset && offset <= link.group.end)
+            .min_by_key(|link| link.group.len())
+    }
 
-    let number = if regex_field(kind) == Some(field) {
-        ranges.iter().enumerate()
-            .filter(|(_, range)| range.start <= offset && offset <= range.end)
-            .min_by_key(|(_, range)| range.len())
-            .map(|(number, _)| number)?
-    } else {
-        let (variable, _) = locals(text, literal).into_iter().find(|(_, range)| range.start <= offset && offset <= range.end)?;
-        group_number(&groups, &variable)?
-    };
+    let (variable, _) = locals(text, literal).into_iter().find(|(_, range)| range.start <= offset && offset <= range.end)?;
+    let number = group_number(&groups(outline, action), &variable)?;
 
-    let uses = template_field(kind)
-        .and_then(|field| outline.field(action, field))
-        .map(|literal| locals(text, literal))
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|(variable, _)| group_number(&groups, variable) == Some(number))
-        .map(|(_, range)| range)
-        .collect();
-
-    Some(Link { group: ranges.get(number)?.clone(), uses })
+    links.into_iter().nth(number)
 }
