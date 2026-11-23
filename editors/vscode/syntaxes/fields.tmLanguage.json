@@ -1,0 +1,280 @@
+{
+    "scopeName": "codeshaper.fields.injection",
+    "injectionSelector": "L:source.kdl.codeshaper -string -comment",
+    "patterns": [
+        {
+            "include": "#raw-query"
+        },
+        {
+            "include": "#quoted-query"
+        },
+        {
+            "include": "#raw-regex"
+        },
+        {
+            "include": "#quoted-regex"
+        }
+    ],
+    "repository": {
+        "raw-query": {
+            "begin": "(?<![\\w-])((?:reference-)?location)([ \\t]+)(r(#*)\")",
+            "beginCaptures": {
+                "1": {
+                    "name": "entity.name.tag"
+                },
+                "3": {
+                    "name": "punctuation.definition.string.begin.kdl"
+                }
+            },
+            "end": "\"\\4",
+            "endCaptures": {
+                "0": {
+                    "name": "punctuation.definition.string.end.kdl"
+                }
+            },
+            "contentName": "string.quoted.double.raw.kdl meta.embedded.query.codeshaper",
+            "patterns": [
+                {
+                    "include": "#query"
+                }
+            ]
+        },
+        "quoted-query": {
+            "begin": "(?<![\\w-])((?:reference-)?location)([ \\t]+)(\")(?=\\s*\\()",
+            "beginCaptures": {
+                "1": {
+                    "name": "entity.name.tag"
+                },
+                "3": {
+                    "name": "punctuation.definition.string.begin.kdl"
+                }
+            },
+            "end": "\"",
+            "endCaptures": {
+                "0": {
+                    "name": "punctuation.definition.string.end.kdl"
+                }
+            },
+            "contentName": "string.quoted.double.query.kdl meta.embedded.query.codeshaper",
+            "patterns": [
+                {
+                    "include": "#query"
+                }
+            ]
+        },
+        "query": {
+            "patterns": [
+                {
+                    "match": ";.*?(?=\"|$)",
+                    "name": "comment.line.semicolon.query.codeshaper"
+                },
+                {
+                    "match": "\\\\\"(?:[^\"\\\\]|\\\\[^\"])*\\\\\"",
+                    "name": "string.quoted.single.query.codeshaper"
+                },
+                {
+                    "match": "\"(?:[^\"\\\\]|\\\\.)*\"(?!#)",
+                    "name": "string.quoted.single.query.codeshaper"
+                },
+                {
+                    "match": "(#)([A-Za-z0-9_.-]+[?!]?)",
+                    "captures": {
+                        "1": {
+                            "name": "punctuation.definition.predicate.query.codeshaper"
+                        },
+                        "2": {
+                            "name": "support.function.predicate.query.codeshaper"
+                        }
+                    }
+                },
+                {
+                    "match": "(@)([A-Za-z0-9_.-]+)",
+                    "captures": {
+                        "1": {
+                            "name": "punctuation.definition.capture.query.codeshaper"
+                        },
+                        "2": {
+                            "name": "variable.parameter.capture.query.codeshaper"
+                        }
+                    }
+                },
+                {
+                    "match": "!?[A-Za-z_][A-Za-z0-9_-]*(?=\\s*:)",
+                    "name": "variable.other.property.field.query.codeshaper"
+                },
+                {
+                    "match": "![A-Za-z_][A-Za-z0-9_-]*",
+                    "name": "variable.other.property.field.query.codeshaper"
+                },
+                {
+                    "match": "(?<![\\w.])_(?!\\w)",
+                    "name": "variable.language.wildcard.query.codeshaper"
+                },
+                {
+                    "match": "(?<=[\\s(/]|^)[A-Za-z_][A-Za-z0-9_-]*",
+                    "name": "entity.name.type.node.query.codeshaper"
+                },
+                {
+                    "match": "[*+?](?=[\\s)\\]]|$)",
+                    "name": "keyword.operator.quantifier.query.codeshaper"
+                },
+                {
+                    "match": "[()\\[\\]]",
+                    "name": "punctuation.section.query.codeshaper"
+                }
+            ]
+        },
+        "raw-regex": {
+            "begin": "(?<![\\w-])(match|from|prepare)([ \\t]+)(r(#*)\")",
+            "beginCaptures": {
+                "1": {
+                    "name": "entity.name.tag"
+                },
+                "3": {
+                    "name": "punctuation.definition.string.begin.kdl"
+                }
+            },
+            "end": "\"\\4",
+            "endCaptures": {
+                "0": {
+                    "name": "punctuation.definition.string.end.kdl"
+                }
+            },
+            "contentName": "string.regexp.codeshaper",
+            "patterns": [
+                {
+                    "include": "#regex"
+                }
+            ]
+        },
+        "quoted-regex": {
+            "begin": "(?<![\\w-])(match|from|prepare)([ \\t]+)(\")",
+            "beginCaptures": {
+                "1": {
+                    "name": "entity.name.tag"
+                },
+                "3": {
+                    "name": "punctuation.definition.string.begin.kdl"
+                }
+            },
+            "end": "\"",
+            "endCaptures": {
+                "0": {
+                    "name": "punctuation.definition.string.end.kdl"
+                }
+            },
+            "contentName": "string.regexp.codeshaper",
+            "patterns": [
+                {
+                    "include": "#escaped-regex"
+                }
+            ]
+        },
+        "regex": {
+            "patterns": [
+                {
+                    "match": "\\\\(?:[pP](?:\\{[^}\"]*\\}|\\w)|[dDwWsS])",
+                    "name": "constant.other.character-class.regexp"
+                },
+                {
+                    "match": "\\\\[bBAz]",
+                    "name": "keyword.control.anchor.regexp"
+                },
+                {
+                    "match": "\\\\(?:x[0-9A-Fa-f]{2}|[xuU]\\{[0-9A-Fa-f]+\\}|[^\"])",
+                    "name": "constant.character.escape.regexp"
+                },
+                {
+                    "match": "\\[\\^?\\]?(?:[^\\]\\\\\"]|\\\\.)*\\]",
+                    "name": "constant.other.character-class.set.regexp"
+                },
+                {
+                    "match": "(\\()(\\?(?:P?<[A-Za-z_]\\w*>|[imsUxRu-]*[:)]))",
+                    "captures": {
+                        "1": {
+                            "name": "punctuation.definition.group.regexp"
+                        },
+                        "2": {
+                            "name": "storage.type.group.regexp"
+                        }
+                    }
+                },
+                {
+                    "match": "[()]",
+                    "name": "punctuation.definition.group.regexp"
+                },
+                {
+                    "match": "(?:[*+?]|\\{\\d+(?:,\\d*)?\\})\\??",
+                    "name": "keyword.operator.quantifier.regexp"
+                },
+                {
+                    "match": "[\\^$]",
+                    "name": "keyword.control.anchor.regexp"
+                },
+                {
+                    "match": "\\|",
+                    "name": "keyword.operator.or.regexp"
+                },
+                {
+                    "match": "\\.",
+                    "name": "constant.other.character-class.regexp"
+                }
+            ]
+        },
+        "escaped-regex": {
+            "patterns": [
+                {
+                    "match": "\\\\\\\\(?:[pP](?:\\{[^}\"]*\\}|\\w)|[dDwWsS])",
+                    "name": "constant.other.character-class.regexp"
+                },
+                {
+                    "match": "\\\\\\\\[bBAz]",
+                    "name": "keyword.control.anchor.regexp"
+                },
+                {
+                    "match": "\\\\\\\\(?:\\\\\\\\|\\\\\"|[^\"\\\\])",
+                    "name": "constant.character.escape.regexp"
+                },
+                {
+                    "match": "\\\\(?:[nrtbf\\\\\"/]|u\\{[a-fA-F0-9]{1,6}\\})",
+                    "name": "constant.character.escape.kdl"
+                },
+                {
+                    "match": "\\[\\^?\\]?(?:[^\\]\\\\\"]|\\\\.)*\\]",
+                    "name": "constant.other.character-class.set.regexp"
+                },
+                {
+                    "match": "(\\()(\\?(?:P?<[A-Za-z_]\\w*>|[imsUxRu-]*[:)]))",
+                    "captures": {
+                        "1": {
+                            "name": "punctuation.definition.group.regexp"
+                        },
+                        "2": {
+                            "name": "storage.type.group.regexp"
+                        }
+                    }
+                },
+                {
+                    "match": "[()]",
+                    "name": "punctuation.definition.group.regexp"
+                },
+                {
+                    "match": "(?:[*+?]|\\{\\d+(?:,\\d*)?\\})\\??",
+                    "name": "keyword.operator.quantifier.regexp"
+                },
+                {
+                    "match": "[\\^$]",
+                    "name": "keyword.control.anchor.regexp"
+                },
+                {
+                    "match": "\\|",
+                    "name": "keyword.operator.or.regexp"
+                },
+                {
+                    "match": "\\.",
+                    "name": "constant.other.character-class.regexp"
+                }
+            ]
+        }
+    }
+}

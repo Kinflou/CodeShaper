@@ -1,6 +1,7 @@
 // Standard Uses
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
+use std::ops::Range;
 
 // Crate Uses
 use crate::shaping::patch::validation::{Diagnostic, Severity};
@@ -40,6 +41,21 @@ impl PatchSource {
         Ok(Self { name: name.to_string(), text: text.to_string(), spans: node_spans(&document.nodes) })
     }
 
+    pub fn narrow(&self, literal: SourceSpan, range: Range<usize>) -> Option<SourceSpan> {
+        let text = self.text.get(literal.offset()..literal.offset() + literal.len())?;
+        let offsets = literal_offsets(text);
+
+        let start = *offsets.get(range.start)?;
+        let end = *offsets.get(range.end)?;
+        let (start, end) = match (start == end, text[end..].chars().next().filter(|_| range.end + 1 < offsets.len())) {
+            (false, _) => (start, end),
+            (true, Some(next)) => (start, end + next.len_utf8()),
+            (true, None) => (*offsets.get(range.start.checked_sub(1)?)?, end)
+        };
+
+        Some(SourceSpan::from(literal.offset() + start..literal.offset() + end))
+    }
+
     pub fn report(&self, diagnostic: &Diagnostic, title: String) -> Report {
         Report::new(SourceReport {
             title,
@@ -50,6 +66,43 @@ impl PatchSource {
     }
 }
 
+
+pub fn literal_offsets(text: &str) -> Vec<usize> {
+    if let Some(raw) = text.strip_prefix('r') {
+        let hashes = raw.bytes().take_while(|byte| *byte == b'#').count();
+        let start = hashes + 2;
+
+        return (start..=text.len().saturating_sub(hashes + 1))
+            .filter(|at| text.as_bytes().get(at - 1..=*at) != Some(b"\r\n"))
+            .collect()
+    }
+
+    let end = text.len().saturating_sub(1);
+    let mut offsets = vec![];
+    let mut at = 1;
+
+    while at < end {
+        let character = text[at..].chars().next().unwrap_or_default();
+        let (source, decoded) = match (character, text[at + character.len_utf8()..].chars().next()) {
+            ('\\', Some('u')) => {
+                let length = text[at..].find('}').map(|found| found + 1).unwrap_or(2);
+                let code = text[at..at + length].trim_start_matches("\\u{").trim_end_matches('}');
+                let decoded = u32::from_str_radix(code, 16).ok().and_then(char::from_u32).map(char::len_utf8);
+
+                (length, decoded.unwrap_or(1))
+            }
+            ('\r', Some('\n')) => (2, 1),
+            ('\\', Some(escaped)) => (1 + escaped.len_utf8(), escaped.len_utf8()),
+            _ => (character.len_utf8(), character.len_utf8())
+        };
+
+        offsets.extend((0..decoded).map(|byte| if source == decoded { at + byte } else { at }));
+        at += source;
+    }
+
+    offsets.push(end);
+    offsets
+}
 
 fn source_span(span: &Span) -> SourceSpan {
     SourceSpan::from(span.0..span.1)

@@ -3,13 +3,13 @@
 // Crate Uses
 use crate::shaping::patch::replacer::Replacer;
 use crate::shaping::patch::controller::PatchController;
-use crate::shaping::operation::actions::{Action, LocalsMap};
-use crate::shaping::operation::actions::composer::Composer;
+use crate::shaping::operation::actions::Action;
+use crate::shaping::operation::actions::composer::{Composer, Locals};
+use crate::shaping::patch::trace::Sample;
 use crate::expressions::visitor;
 
 // External Uses
 use indextree::NodeId;
-use regex::Regex;
 
 
 pub struct ReplacerAction {
@@ -32,26 +32,33 @@ impl ReplacerAction {
     pub fn replacer(&self) -> &Replacer { &self.replacer }
 
     pub fn replace_input(&self, controller: &PatchController, input: &str) -> Option<String> {
-        let from = Regex::new(&self.replacer.from).ok()?;
+        let from = self.replacer.from_regex().ok()?;
         let composer = self.composer.as_ref()?;
 
         let mut result = String::with_capacity(input.len());
         let mut last = 0;
+        let mut matches = 0;
 
         for captures in from.captures_iter(input) {
             let found = captures.get(0)?;
 
-            let mut locals = LocalsMap::default();
-            for (index, group) in captures.iter().skip(1).enumerate() {
-                if let Some(group) = group {
-                    locals.push_with_left(index, group.as_str().to_owned());
-                }
-            }
-            *composer.locals.borrow_mut() = locals;
+            *composer.locals.borrow_mut() = Locals::new(&from, &captures);
 
             let replacement = visitor::navigate_expression(
                 composer, controller, &self.replacer.to, &[]
             ).ok()?;
+
+            matches += 1;
+            if controller.tracing() {
+                let sample = Sample {
+                    input: found.as_str().to_string(),
+                    groups: captures.iter().skip(1).map(|group| group.map(|group| group.as_str().to_string())).collect(),
+                    output: replacement.clone(),
+                    matched: true,
+                    ..Sample::default()
+                };
+                controller.record(*self.self_id(), |trace, limit| trace.sample(limit, sample));
+            }
 
             result.push_str(&input[last..found.start()]);
             result.push_str(&replacement);
@@ -59,6 +66,8 @@ impl ReplacerAction {
         }
 
         result.push_str(&input[last..]);
+        controller.record(*self.self_id(), |trace, _| trace.input(matches));
+
         Some(result)
     }
 }

@@ -1,10 +1,9 @@
 // Standard Uses
 
 // Crate Uses
-use crate::expressions::syntax::ExpressionAST;
+use crate::expressions::syntax::{ExpressionAST, ExpressionError};
 
 // External Uses
-use miette::{IntoDiagnostic, Result};
 use pest::iterators::Pair;
 use pest::Parser;
 use pest_derive::Parser;
@@ -15,52 +14,57 @@ use pest_derive::Parser;
 #[grammar = "src/expressions/syntax/expression.pest"]
 pub struct ActionParser;
 
-pub fn parse_expression(input: &str) -> Result<ExpressionAST> {
-    let expression = ActionParser::parse(Rule::action, input).into_diagnostic()?.next().unwrap();
+pub fn parse_expression(input: &str) -> Result<ExpressionAST<'_>, ExpressionError> {
+    let expression = parse_tolerant(input)?;
+
+    match expression.errors().into_iter().next() {
+        Some(error) => Err(error),
+        None => Ok(expression)
+    }
+}
+
+pub fn parse_tolerant(input: &str) -> Result<ExpressionAST<'_>, ExpressionError> {
+    let expression = ActionParser::parse(Rule::action, input)
+        .map_err(|error| ExpressionError { message: error.to_string(), span: 0..input.len() })?
+        .next()
+        .unwrap();
 
     Ok(parse_pair(expression))
 }
 
 
 fn parse_pair(pair: Pair<Rule>) -> ExpressionAST {
+    let start = pair.as_span().start();
+    let head = |name: &str| start..start + name.len() + 3;
+
     match pair.as_rule() {
         Rule::action => ExpressionAST::Action(
-            pair.into_inner().map(|pair| {
-                let item = parse_pair(pair);
-
-                item
-            }).collect::<Vec<ExpressionAST>>(),
+            pair.into_inner()
+                .filter(|pair| pair.as_rule() != Rule::EOI)
+                .map(parse_pair)
+                .collect()
         ),
-        Rule::text => {
-            ExpressionAST::Text(pair.as_str())
-        }
+        Rule::text => ExpressionAST::Text(pair.as_str()),
+        Rule::unclosed => ExpressionAST::Unclosed { text: pair.as_str(), span: start..pair.as_span().end() },
         Rule::action_call => {
             let mut inner = pair.into_inner();
             let name = inner.next().unwrap().as_str();
+            let arguments = inner.map(parse_pair).collect();
 
-            let mut arguments = vec![];
-            for arg in inner {
-                arguments.push(parse_pair(arg));
-            }
-
-            ExpressionAST::ActionCall((name, arguments))
-        },
-        Rule::argument => {
-            let mut inner = pair.into_inner();
-            parse_pair(inner.next().unwrap())
+            ExpressionAST::ActionCall { name, arguments, span: head(name) }
         }
-        Rule::string => {
-            let text = pair.into_inner().next().unwrap().as_str();
-            ExpressionAST::Text(text)
-        }
+        Rule::argument => parse_pair(pair.into_inner().next().unwrap()),
+        Rule::string => ExpressionAST::Text(pair.into_inner().next().unwrap().as_str()),
         Rule::local_call => {
-            ExpressionAST::LocalCall(pair.into_inner().next().unwrap().as_str())
+            let name = pair.into_inner().next().unwrap().as_str();
+
+            ExpressionAST::LocalCall { name, span: head(name) }
         }
         Rule::argument_call => {
-            ExpressionAST::ArgumentCall(pair.into_inner().next().unwrap().as_str())
+            let name = pair.into_inner().next().unwrap().as_str();
+
+            ExpressionAST::ArgumentCall { name, span: head(name) }
         }
         missing => unreachable!("Rule not implemented {:?}", missing)
     }
 }
-
-

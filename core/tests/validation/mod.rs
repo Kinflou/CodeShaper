@@ -6,6 +6,7 @@ use std::ops::Range;
 // External Uses
 use codeshaper_core::ast::backend::LanguageBackend;
 use codeshaper_core::shaping::patch::Patch;
+use codeshaper_core::shaping::patch::pattern::groups;
 use codeshaper_core::shaping::patch::validation::{validate, validate_source, Diagnostic, DiagnosticKind, Severity};
 use miette::{bail, Result};
 
@@ -95,6 +96,23 @@ fn incorrect_regex() {
 }
 
 #[test]
+fn unknown_flags() {
+    let actions = replacer("Line", "old (\\w+)", "new $[0]").replace("to \"", "flags \"iq\"\n            to \"");
+    let (content, diagnostics) = check_source(&actions);
+
+    assert_eq!(kinds(&diagnostics), vec![(DiagnosticKind::IncorrectRegex, "replacer #1", "flags")]);
+    assert_eq!(spanned(&content, &diagnostics[0]).1, r#""iq""#);
+}
+
+#[test]
+fn unclosed_call() {
+    let diagnostics = check(&replacer("Line", "old (\\w+)", "new $[0] #[names"));
+
+    assert_eq!(kinds(&diagnostics), vec![(DiagnosticKind::IncorrectExpression, "replacer #1", "to")]);
+    assert!(diagnostics[0].message.contains("'#[names' is not a complete call"));
+}
+
+#[test]
 fn location_not_found() {
     let actions = replacer("Missing", "old", "new");
 
@@ -177,8 +195,8 @@ fn spans_point_at_values() {
         (DiagnosticKind::ActionNotFound, "replacer #1", "to"),
     ]);
     assert_eq!(spanned(&content, &diagnostics[0]).1, r#""Missing""#);
-    assert_eq!(spanned(&content, &diagnostics[1]).1, r#"r"old (""#);
-    assert_eq!(spanned(&content, &diagnostics[2]).1, r#""new #[gone]""#);
+    assert_eq!(spanned(&content, &diagnostics[1]).1, "(");
+    assert_eq!(spanned(&content, &diagnostics[2]).1, "#[gone]");
 }
 
 #[test]
@@ -221,4 +239,49 @@ fn calls_pass_enough_arguments() {
     ]);
     assert!(diagnostics[0].message.contains("'#[pair]' is called with 1 argument(s), but uses '@[1]'"));
     assert!(diagnostics[1].message.contains("'#[names]' takes no arguments, but is called with 1"));
+}
+
+fn underlined(from: &str, to: &str) -> Vec<String> {
+    let actions = replacer("Line", "FROM", "TO").replace(r#"r"FROM""#, from).replace(r#""TO""#, to);
+    let (content, diagnostics) = check_source(&actions);
+
+    diagnostics.iter().map(|diagnostic| spanned(&content, diagnostic).1.to_string()).collect()
+}
+
+#[test]
+fn spans_allow_for_escapes() {
+    assert_eq!(underlined(r#"r"(\w+)""#, r##""\t$[0();\n""##), vec!["$[0"]);
+    assert_eq!(underlined(r#"r"(\w+)""#, r##""\u{e9}\"é\\ $[5] $[0]""##), vec!["$[5]"]);
+    assert_eq!(underlined(r#""(\\w+) (""#, r#""$[0]""#), vec!["("]);
+}
+
+#[test]
+fn spans_allow_for_raw_and_multiline_strings() {
+    assert_eq!(underlined(r#"r"(\w+)""#, "r##\"a \"#\n  #[gone] é $[7]\"##"), vec!["$[7]", "#[gone]"]);
+    assert_eq!(underlined("r#\"(\\w+)\n[z\"#", r#""x""#), vec!["["]);
+    assert_eq!(underlined("r#\"(\\w+)\r\n[z\"#", r#""x""#), vec!["["]);
+    assert_eq!(underlined(r#"r"(\w+)""#, "\"é\r\n\r\n$[7]\""), vec!["$[7]"]);
+}
+
+#[test]
+fn each_wrong_call_has_its_own_span() {
+    assert_eq!(underlined(r#"r"old""#, r##""#[one]($[0]) #[two]""##), vec!["$[0]", "#[one]", "#[two]"]);
+    assert_eq!(underlined(r#"r"old""#, r##""a @[0] b""##), vec!["@[0]"]);
+}
+
+#[test]
+fn groups_have_ranges_and_names() {
+    let pattern = r"(a)(?:b)(?P<n>c(d))[(]\(e\)(?i:f)";
+    let found: Vec<(&str, Option<String>)> = groups(pattern, "").unwrap().into_iter()
+        .map(|group| (&pattern[group.range], group.name))
+        .collect();
+
+    assert_eq!(found, vec![("(a)", None), ("(?P<n>c(d))", Some("n".to_string())), ("(d)", None)]);
+    assert_eq!(groups("(a # (b)\n)", "x").unwrap().len(), 1);
+    assert_eq!(groups("(a", ""), None);
+}
+
+#[test]
+fn every_unclosed_call_is_reported() {
+    assert_eq!(underlined(r#"r"old""#, r##""#[one $[0] @[x \t#[gone]""##), vec!["#[one", "@[x", "$[0]", "#[gone]"]);
 }

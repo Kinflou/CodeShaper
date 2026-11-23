@@ -4,10 +4,10 @@ use std::ops::Range;
 // Crate Uses
 
 // External Uses
-use codeshaper_core::ast::backend::LanguageBackend;
+use codeshaper_core::ast::backend::{LanguageBackend, LocationError};
 use codeshaper_core::registry::Registry;
-use miette::{miette, bail, Result};
-use tree_sitter::{Language, Node, Parser, Query, QueryCursor, StreamingIterator, Tree};
+use miette::{miette, bail, Report, Result};
+use tree_sitter::{Language, Node, Parser, Query, QueryCursor, QueryError, QueryErrorKind, StreamingIterator, Tree};
 
 
 #[allow(unused_variables)]
@@ -57,12 +57,35 @@ impl TreeSitterBackend {
     }
 
     fn query(&self, query: &str) -> Result<(Query, u32)> {
-        let query = Query::new(&self.language, query).map_err(|err| miette!("{err}"))?;
+        let query = Query::new(&self.language, query).map_err(|error| self.query_error(query, error))?;
         let Some(target) = query.capture_index_for_name("target") else {
             bail!("Query location has no @target capture")
         };
 
         Ok((query, target))
+    }
+
+    fn query_error(&self, query: &str, error: QueryError) -> LocationError {
+        let name = error.message.trim_matches('"');
+        let message = match error.kind {
+            QueryErrorKind::NodeType => format!("'{name}' is not a {} node kind", self.name),
+            QueryErrorKind::Field => format!("'{name}' is not a {} field", self.name),
+            QueryErrorKind::Capture => format!("'@{name}' is not captured in the query"),
+            QueryErrorKind::Predicate => format!("Invalid predicate: {}", error.message),
+            QueryErrorKind::Structure => format!("This pattern never matches in {}", self.name),
+            QueryErrorKind::Syntax => "Invalid query syntax".to_string(),
+            QueryErrorKind::Language => error.message
+        };
+
+        let range = match error.kind {
+            QueryErrorKind::Predicate | QueryErrorKind::Language => None,
+            _ => query.get(error.offset..).map(|rest| {
+                let length = rest.find(|character: char| !is_word(character)).unwrap_or(rest.len());
+                error.offset..error.offset + length
+            })
+        };
+
+        LocationError { message, range }
     }
 
     fn segment(&self, index: usize, segment: &str) -> Result<Segment> {
@@ -136,17 +159,71 @@ impl LanguageBackend for TreeSitterBackend {
     }
 
     fn check_location(&self, location: &str) -> Result<()> {
+        let leading = location.len() - location.trim_start().len();
         let location = location.trim();
 
         if location.starts_with('(') {
-            return self.query(location).map(|_| ())
+            return self.query(location).map(|_| ()).map_err(|error| shift(error, leading))
         }
 
+        let mut start = leading;
         for (index, segment) in location.split('.').enumerate() {
-            self.segment(index, segment)?;
+            let range = start..start + segment.len();
+            self.segment(index, segment).map_err(|error| LocationError { message: error.to_string(), range: Some(range.clone()) })?;
+            start = range.end + 1;
         }
 
         Ok(())
+    }
+
+    fn describe_location(&self, location: &str) -> Result<String> {
+        let location = location.trim();
+
+        if location.starts_with('(') {
+            self.query(location)?;
+            return Ok(format!("{} query, located at its `@target` capture", self.name))
+        }
+
+        let segments = location.split('.').enumerate()
+            .map(|(index, segment)| Ok(match self.segment(index, segment)? {
+                Segment::Field(field) => format!("field `{field}`"),
+                Segment::Kind(kind) => format!("node kind `{kind}`")
+            }))
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(format!("{}: {}", self.name, segments.join(" › ")))
+    }
+
+    fn node_kinds(&self) -> Vec<String> {
+        let mut kinds: Vec<String> = (0..self.language.node_kind_count() as u16)
+            .filter(|id| self.language.node_kind_is_named(*id) && self.language.node_kind_is_visible(*id))
+            .filter_map(|id| self.language.node_kind_for_id(id))
+            .filter(|kind| !kind.starts_with('_'))
+            .map(str::to_string)
+            .collect();
+
+        kinds.sort();
+        kinds.dedup();
+        kinds
+    }
+
+    fn fields(&self) -> Vec<String> {
+        (1..=self.language.field_count() as u16)
+            .filter_map(|id| self.language.field_name_for_id(id))
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn location_names(&self, segment: usize) -> Vec<String> {
+        let mut names: Vec<String> = self.node_kinds().iter().map(|kind| to_pascal_case(kind)).collect();
+
+        if segment > 0 {
+            names.extend(self.fields().iter().map(|field| to_pascal_case(field)));
+        }
+
+        names.sort();
+        names.dedup();
+        names
     }
 }
 
@@ -156,6 +233,19 @@ enum Segment {
     Kind(String)
 }
 
+
+fn shift(error: Report, by: usize) -> Report {
+    match error.downcast::<LocationError>() {
+        Ok(LocationError { message, range }) => {
+            LocationError { message, range: range.map(|range| range.start + by..range.end + by) }.into()
+        }
+        Err(error) => error
+    }
+}
+
+fn is_word(character: char) -> bool {
+    character.is_alphanumeric() || matches!(character, '_' | '-' | '.' | '?' | '!')
+}
 
 fn collect_descendants<'tree>(node: Node<'tree>, kind: &str, found: &mut Vec<Node<'tree>>) {
     let mut cursor = node.walk();
@@ -199,4 +289,13 @@ fn to_snake_case(name: &str) -> String {
     }
 
     snake
+}
+
+fn to_pascal_case(name: &str) -> String {
+    name.split('_')
+        .map(|word| {
+            let mut characters = word.chars();
+            characters.next().map(|first| first.to_uppercase().chain(characters).collect::<String>()).unwrap_or_default()
+        })
+        .collect()
 }

@@ -69,3 +69,28 @@ fn patches_validate() {
         assert!(errors.is_empty(), "{}: {errors:#?}", path.display());
     }
 }
+
+#[test]
+fn preview_matches_the_run() {
+    let directory = tempfile::tempdir().unwrap();
+    let example = directory.path();
+    copy_directory(Path::new(EXAMPLE), example);
+
+    let operation = Operation::from_file(&example.join("configuration.kdl")).unwrap();
+    let preview = operation.session(&registry()).unwrap().preview().unwrap();
+    let patched = preview.files.iter().map(|file| &file.path).collect::<Vec<_>>();
+    let report = operation.run(&registry()).unwrap();
+
+    let run = report.files.iter().filter(|file| file.outcome != Outcome::Unchanged).map(|file| &file.path).collect::<Vec<_>>();
+    assert_eq!(patched, run);
+    assert!(!patched.is_empty());
+
+    for file in &preview.files {
+        let written = [&operation.configuration.target, &operation.configuration.output].into_iter()
+            .map(|root| example.join(root).join(&file.path))
+            .filter_map(|path| fs::read_to_string(path).ok())
+            .collect::<Vec<_>>();
+
+        assert!(written.contains(&file.result), "{}", file.path.display());
+    }
+}

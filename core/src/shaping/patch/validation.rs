@@ -1,16 +1,17 @@
 // Standard Uses
 use std::collections::{HashMap, HashSet};
+use std::ops::Range;
 
 // Crate Uses
-use crate::ast::backend::LanguageBackend;
+use crate::ast::backend::{LanguageBackend, LocationError};
 use crate::expressions::syntax::ExpressionAST;
-use crate::expressions::syntax::parser::parse_expression;
-use crate::shaping::patch::{Actions, Patch};
+use crate::expressions::syntax::parser::parse_tolerant;
+use crate::shaping::patch::{pattern, Actions, Patch};
+use crate::shaping::patch::pattern::{check_flags, regex_builder};
 use crate::shaping::patch::source::{ActionSpans, NodeSpans, PatchSource};
 
 // External Uses
 use miette::SourceSpan;
-use regex::Regex;
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,9 +28,27 @@ pub enum DiagnosticKind {
     IncorrectArgs,
     IncorrectExpression,
     DuplicateAction,
+    RecursiveAction,
     UnusedAction,
     IncorrectFilePattern,
     FileNotMatched
+}
+
+impl DiagnosticKind {
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::IncorrectRegex => "incorrect-regex",
+            Self::LocationNotFound => "location-not-found",
+            Self::ActionNotFound => "action-not-found",
+            Self::IncorrectArgs => "incorrect-args",
+            Self::IncorrectExpression => "incorrect-expression",
+            Self::DuplicateAction => "duplicate-action",
+            Self::RecursiveAction => "recursive-action",
+            Self::UnusedAction => "unused-action",
+            Self::IncorrectFilePattern => "incorrect-file-pattern",
+            Self::FileNotMatched => "file-not-matched"
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -64,12 +83,12 @@ pub fn validate(patch: &Patch, backend: Option<&dyn LanguageBackend>) -> Vec<Dia
 }
 
 pub fn validate_source(patch: &Patch, source: &PatchSource, backend: Option<&dyn LanguageBackend>) -> Vec<Diagnostic> {
-    check(patch, Some(&source.spans.actions), backend)
+    check(patch, Some(source), backend)
 }
 
-fn check(patch: &Patch, spans: Option<&ActionSpans>, backend: Option<&dyn LanguageBackend>) -> Vec<Diagnostic> {
-    let mut validator = Validator { backend, ..Validator::default() };
-    validator.actions(&patch.actions, "", spans);
+fn check(patch: &Patch, source: Option<&PatchSource>, backend: Option<&dyn LanguageBackend>) -> Vec<Diagnostic> {
+    let mut validator = Validator { backend, source, ..Validator::default() };
+    validator.actions(&patch.actions, "", source.map(|source| &source.spans.actions));
 
     let calls = std::mem::take(&mut validator.calls);
     for (action, field, name, count, span) in &calls {
@@ -80,10 +99,17 @@ fn check(patch: &Patch, spans: Option<&ActionSpans>, backend: Option<&dyn Langua
             continue
         }
 
+        if leads_to(&calls, &validator.names, name, action) {
+            validator.report(DiagnosticKind::RecursiveAction, action, field, format!("'#[{name}]' calls back to this action"));
+        }
+
         let required = validator.required.get(name).copied().unwrap_or(0);
 
         if !validator.receivers.contains(name) && *count > 0 {
             let message = format!("'#[{name}]' takes no arguments, but is called with {count}");
+            validator.report(DiagnosticKind::IncorrectArgs, action, field, message);
+        } else if *count == 0 && validator.prepared.contains(name) {
+            let message = format!("'#[{name}]' is called without arguments, but its 'prepare' regex runs on the first one");
             validator.report(DiagnosticKind::IncorrectArgs, action, field, message);
         } else if *count < required {
             let message = format!(
@@ -111,26 +137,46 @@ fn check(patch: &Patch, spans: Option<&ActionSpans>, backend: Option<&dyn Langua
 
 
 
+fn leads_to(
+    calls: &[Call], names: &HashMap<String, (String, Option<SourceSpan>)>, name: &str, target: &str
+) -> bool {
+    let mut pending = vec![name];
+    let mut seen = HashSet::new();
+
+    while let Some(name) = pending.pop() {
+        if !seen.insert(name) { continue }
+        let Some((path, _)) = names.get(name) else { continue };
+        if path == target { return true }
+
+        pending.extend(calls.iter().filter(|call| call.0 == *path).map(|call| call.2.as_str()));
+    }
+
+    false
+}
+
 fn join(parent: &str, action: &str) -> String {
     if parent.is_empty() { action.to_string() } else { format!("{parent}/{action}") }
 }
 
 
-#[derive(Clone, Copy)]
 enum Locals {
-    Groups(usize),
+    Groups { count: usize, names: Vec<String> },
     Unavailable(&'static str),
     Unknown
 }
 
+type Call = (String, &'static str, String, usize, Option<SourceSpan>);
+
 #[derive(Default)]
 struct Validator<'a> {
     backend: Option<&'a dyn LanguageBackend>,
+    source: Option<&'a PatchSource>,
     diagnostics: Vec<Diagnostic>,
     names: HashMap<String, (String, Option<SourceSpan>)>,
     receivers: HashSet<String>,
     required: HashMap<String, usize>,
-    calls: Vec<(String, &'static str, String, usize, Option<SourceSpan>)>,
+    prepared: HashSet<String>,
+    calls: Vec<Call>,
     current: Option<&'a NodeSpans>,
     current_span: Option<SourceSpan>
 }
@@ -139,6 +185,20 @@ impl<'a> Validator<'a> {
     fn report(&mut self, kind: DiagnosticKind, action: &str, field: &'static str, message: String) {
         let span = self.span(field);
         self.diagnostics.push(Diagnostic::new(kind, action, field, message).at(span));
+    }
+
+    fn report_at(
+        &mut self, kind: DiagnosticKind, action: &str, field: &'static str, message: String, range: Option<Range<usize>>
+    ) {
+        let span = self.narrow(field, range);
+        self.diagnostics.push(Diagnostic::new(kind, action, field, message).at(span));
+    }
+
+    fn narrow(&self, field: &str, range: Option<Range<usize>>) -> Option<SourceSpan> {
+        let span = self.span(field)?;
+        let narrowed = self.source.zip(range).and_then(|(source, range)| source.narrow(span, range));
+
+        Some(narrowed.unwrap_or(span))
     }
 
     fn span(&self, field: &str) -> Option<SourceSpan> {
@@ -161,8 +221,9 @@ impl<'a> Validator<'a> {
                 self.location(&path, "reference-location", reference_location);
             }
 
-            let locals = self.regex(&path, "match", &builder.r#match);
-            self.expression(&path, "build", &builder.build, locals, None);
+            self.flags(&path, &builder.flags);
+            let locals = self.regex(&path, "match", &builder.r#match, &builder.flags);
+            self.expression(&path, "build", &builder.build, &locals, None);
             self.actions(&builder.actions, &path, nested);
         }
 
@@ -176,8 +237,9 @@ impl<'a> Validator<'a> {
                 self.location(&path, "reference-location", &replacer.reference_location);
             }
 
-            let locals = self.regex(&path, "from", &replacer.from);
-            self.expression(&path, "to", &replacer.to, locals, None);
+            self.flags(&path, &replacer.flags);
+            let locals = self.regex(&path, "from", &replacer.from, &replacer.flags);
+            self.expression(&path, "to", &replacer.to, &locals, None);
             self.actions(&replacer.actions, &path, nested);
         }
 
@@ -186,11 +248,12 @@ impl<'a> Validator<'a> {
             let path = self.name(parent, &maker.name);
             self.receivers.insert(maker.name.clone());
 
+            self.flags(&path, &maker.flags);
             let locals = match &maker.prepare {
-                Some(prepare) => self.regex(&path, "prepare", prepare),
+                Some(prepare) => self.regex(&path, "prepare", prepare, &maker.flags),
                 None => Locals::Unavailable("the maker has no 'prepare' regex")
             };
-            self.expression(&path, "make", &maker.make, locals, Some(&maker.name));
+            self.expression(&path, "make", &maker.make, &locals, Some(&maker.name));
         }
 
         for (index, list) in actions.lists.iter().flatten().enumerate() {
@@ -198,7 +261,7 @@ impl<'a> Validator<'a> {
             let path = self.name(parent, &list.name);
             self.receivers.insert(list.name.clone());
             if let Some(index) = &list.index {
-                self.expression(&path, "index", index, Locals::Unavailable("'index' has no regex"), Some(&list.name));
+                self.expression(&path, "index", index, &Locals::Unavailable("'index' has no regex"), Some(&list.name));
             }
         }
 
@@ -206,7 +269,7 @@ impl<'a> Validator<'a> {
             self.enter(spans.map(|spans| spans.switchers.as_slice()), index);
             let path = self.name(parent, &switch.name);
             self.receivers.insert(switch.name.clone());
-            self.expression(&path, "index", &switch.index, Locals::Unavailable("'index' has no regex"), Some(&switch.name));
+            self.expression(&path, "index", &switch.index, &Locals::Unavailable("'index' has no regex"), Some(&switch.name));
         }
     }
 
@@ -228,71 +291,97 @@ impl<'a> Validator<'a> {
         let Some(backend) = self.backend else { return };
 
         if let Err(error) = backend.check_location(location) {
-            self.report(DiagnosticKind::LocationNotFound, action, field, error.to_string());
+            let range = error.downcast_ref::<LocationError>().and_then(|error| error.range.clone());
+            self.report_at(DiagnosticKind::LocationNotFound, action, field, error.to_string(), range);
         }
     }
 
-    fn regex(&mut self, action: &str, field: &'static str, regex: &str) -> Locals {
-        match Regex::new(regex) {
-            Ok(regex) => Locals::Groups(regex.captures_len() - 1),
+    fn flags(&mut self, action: &str, flags: &str) {
+        if let Err(error) = check_flags(flags) {
+            self.report(DiagnosticKind::IncorrectRegex, action, "flags", error.to_string());
+        }
+    }
+
+    fn regex(&mut self, action: &str, field: &'static str, regex: &str, flags: &str) -> Locals {
+        match regex_builder(regex, flags).build() {
+            Ok(regex) => Locals::Groups {
+                count: regex.captures_len() - 1,
+                names: regex.capture_names().flatten().map(str::to_string).collect()
+            },
             Err(error) => {
-                self.report(DiagnosticKind::IncorrectRegex, action, field, error.to_string());
+                let (message, range) = match pattern::error(regex, flags) {
+                    Some((message, range)) => (message, Some(range)),
+                    None => (error.to_string(), None)
+                };
+                self.report_at(DiagnosticKind::IncorrectRegex, action, field, message, range);
                 Locals::Unknown
             }
         }
     }
 
-    fn expression(&mut self, action: &str, field: &'static str, text: &str, locals: Locals, arguments: Option<&str>) {
-        match parse_expression(text) {
-            Ok(expression) => self.walk(action, field, &expression, locals, arguments),
-            Err(error) => self.report(DiagnosticKind::IncorrectExpression, action, field, error.to_string())
+    fn expression(&mut self, action: &str, field: &'static str, text: &str, locals: &Locals, arguments: Option<&str>) {
+        match parse_tolerant(text) {
+            Ok(expression) => {
+                for error in expression.errors() {
+                    self.report_at(DiagnosticKind::IncorrectExpression, action, field, error.message, Some(error.span));
+                }
+                self.walk(action, field, &expression, locals, arguments);
+            }
+            Err(error) => self.report_at(DiagnosticKind::IncorrectExpression, action, field, error.message, Some(error.span))
         }
     }
 
     fn walk(
-        &mut self, action: &str, field: &'static str, expression: &ExpressionAST, locals: Locals, arguments: Option<&str>
+        &mut self, action: &str, field: &'static str, expression: &ExpressionAST, locals: &Locals, arguments: Option<&str>
     ) {
         match expression {
             ExpressionAST::Action(parts) => for part in parts {
                 self.walk(action, field, part, locals, arguments);
             },
-            ExpressionAST::ActionCall((name, call_arguments)) => {
-                let span = self.span(field);
+            ExpressionAST::ActionCall { name, arguments: call_arguments, span } => {
+                let span = self.narrow(field, Some(span.clone()));
                 self.calls.push((action.to_string(), field, name.to_string(), call_arguments.len(), span));
 
                 for argument in call_arguments {
                     self.walk(action, field, argument, locals, arguments);
                 }
             }
-            ExpressionAST::LocalCall(variable) => self.local(action, field, variable, locals),
-            ExpressionAST::ArgumentCall(variable) => match (arguments, variable.parse::<usize>()) {
+            ExpressionAST::LocalCall { name, span } => {
+                if let (Some(receiver), Locals::Groups { .. }) = (arguments, locals) {
+                    self.prepared.insert(receiver.to_string());
+                }
+
+                self.local(action, field, name, span, locals)
+            }
+            ExpressionAST::ArgumentCall { name: variable, span } => match (arguments, variable.parse::<usize>()) {
                 (None, _) => {
                     let message = format!("'@[{variable}]' is used where no arguments exist");
-                    self.report(DiagnosticKind::IncorrectArgs, action, field, message);
+                    self.report_at(DiagnosticKind::IncorrectArgs, action, field, message, Some(span.clone()));
                 }
                 (Some(_), Err(_)) => {
                     let message = format!("'@[{variable}]' must be an argument number");
-                    self.report(DiagnosticKind::IncorrectArgs, action, field, message);
+                    self.report_at(DiagnosticKind::IncorrectArgs, action, field, message, Some(span.clone()));
                 }
                 (Some(receiver), Ok(index)) => {
                     let required = self.required.entry(receiver.to_string()).or_default();
                     *required = (*required).max(index + 1);
                 }
             },
-            ExpressionAST::Text(_) => {}
+            ExpressionAST::Unclosed { .. } | ExpressionAST::Text(_) => {}
         }
     }
 
-    fn local(&mut self, action: &str, field: &'static str, variable: &str, locals: Locals) {
+    fn local(&mut self, action: &str, field: &'static str, variable: &str, span: &Range<usize>, locals: &Locals) {
         let message = match (locals, variable.parse::<usize>()) {
             (Locals::Unknown, _) => return,
             (Locals::Unavailable(reason), _) => format!("'$[{variable}]' has no capture group to refer to: {reason}"),
-            (Locals::Groups(_), Err(_)) => format!("'$[{variable}]' must be a capture group number"),
-            (Locals::Groups(groups), Ok(index)) if index >= groups =>
-                format!("'$[{index}]' needs {} capture group(s), but the regex has {groups}", index + 1),
-            (Locals::Groups(_), Ok(_)) => return
+            (Locals::Groups { names, .. }, Err(_)) if names.iter().any(|name| name == variable) => return,
+            (Locals::Groups { .. }, Err(_)) => format!("'$[{variable}]' is not a capture group number or name of the regex"),
+            (Locals::Groups { count, .. }, Ok(index)) if index >= *count =>
+                format!("'$[{index}]' needs {} capture group(s), but the regex has {count}", index + 1),
+            (Locals::Groups { .. }, Ok(_)) => return
         };
 
-        self.report(DiagnosticKind::IncorrectArgs, action, field, message);
+        self.report_at(DiagnosticKind::IncorrectArgs, action, field, message, Some(span.clone()));
     }
 }

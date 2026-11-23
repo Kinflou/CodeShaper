@@ -3,7 +3,8 @@ pub mod settings;
 
 // Standard Uses
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::{fs, io};
+use std::path::{Path, MAIN_SEPARATOR};
 
 // Crate Uses
 use crate::shaping::patch::Patch;
@@ -24,12 +25,16 @@ pub struct Project {
 
 impl Project {
     pub fn from_directory(path: &Path) -> Result<Self> {
+        Self::from_directory_with(path, &|path| fs::read_to_string(path))
+    }
+
+    pub fn from_directory_with(path: &Path, read: &dyn Fn(&Path) -> io::Result<String>) -> Result<Self> {
         if !path.is_dir() {
             bail!("Expected a shaping project directory, got {} instead", path.display());
         }
 
         let settings = ProjectSettings::from_path(path)?;
-        let (patches, sources) = load_patches(&path.join("patches"))?;
+        let (patches, sources) = load_patches(&path.join("patches"), read)?;
 
         Ok(Self {
             directory: path.to_str().unwrap().to_string(),
@@ -41,7 +46,9 @@ impl Project {
 }
 
 
-pub fn load_patches(directory: &Path) -> Result<(BTreeMap<String, Patch>, BTreeMap<String, PatchSource>)> {
+pub fn load_patches(
+    directory: &Path, read: &dyn Fn(&Path) -> io::Result<String>
+) -> Result<(BTreeMap<String, Patch>, BTreeMap<String, PatchSource>)> {
     let mut patches = BTreeMap::new();
     let mut sources = BTreeMap::new();
     let search = directory.join("**").join("*.*");
@@ -52,9 +59,9 @@ pub fn load_patches(directory: &Path) -> Result<(BTreeMap<String, Patch>, BTreeM
 
     for entry in entries {
         let path = entry.into_diagnostic()?;
-        let name = path.strip_prefix(directory).into_diagnostic()?.to_string_lossy().to_string();
+        let name = path.strip_prefix(directory).into_diagnostic()?.to_string_lossy().replace(MAIN_SEPARATOR, "/");
 
-        let (patch, source) = Patch::load(&path)
+        let (patch, source) = Patch::load_with(&path, read)
             .wrap_err_with(|| format!("Could not load patch {}", path.display()))?;
 
         patches.insert(name.clone(), patch);

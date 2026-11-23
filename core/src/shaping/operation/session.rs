@@ -10,7 +10,7 @@ use crate::shaping::operation::report::{FileReport, Outcome, Report};
 use crate::target::{File, Solution};
 
 // External Uses
-use miette::{Context, IntoDiagnostic, Result};
+use miette::{bail, Context, IntoDiagnostic, Result};
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,6 +28,21 @@ pub struct Change {
     pub patch: String,
     pub before: String,
     pub result: Result<String, miette::Report>
+}
+
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreviewedFile {
+    pub path: PathBuf,
+    pub before: String,
+    pub result: String
+}
+
+#[derive(Debug)]
+pub struct Preview {
+    pub directory: PathBuf,
+    pub files: Vec<PreviewedFile>,
+    pub errors: Vec<(PathBuf, miette::Report)>
 }
 
 
@@ -175,6 +190,33 @@ impl<'a> Session<'a> {
         self.steps.is_empty()
     }
 
+    pub fn preview(self) -> Result<Preview> {
+        self.preview_while(&|| true)
+    }
+
+    pub fn preview_while(mut self, keep_going: &dyn Fn() -> bool) -> Result<Preview> {
+        while keep_going() && self.next().is_some() {}
+        if self.cursor < self.steps.len() { bail!("The preview was stopped") }
+
+        let mut originals: Vec<Option<String>> = vec![None; self.files.len()];
+        let mut errors = vec![];
+
+        for ((index, _), change) in self.steps.iter().zip(self.history) {
+            originals[*index].get_or_insert(change.before);
+
+            if let Err(error) = change.result {
+                errors.push((change.file, error));
+            }
+        }
+
+        let files = self.files.into_iter().zip(originals).zip(self.contents)
+            .filter_map(|((file, before), result)| Some(PreviewedFile { path: file.path, before: before?, result: result? }))
+            .filter(|file| file.before != file.result)
+            .collect();
+
+        Ok(Preview { directory: self.directory, files, errors })
+    }
+
     pub fn finish(mut self) -> Result<Report> {
         while self.next().is_some() {}
         self.stop();
@@ -229,7 +271,7 @@ impl<'a> Session<'a> {
 
         let (before, result) = match before {
             Ok(before) => {
-                let result = self.operation.apply_patch(self.registry, &patch, file, &before);
+                let result = self.operation.apply_patch(self.registry, &patch, &self.operation.project.patches[&patch], file, &before);
                 (before, result)
             }
             Err(error) => (String::new(), Err(error))

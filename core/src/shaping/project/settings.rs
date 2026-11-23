@@ -1,8 +1,10 @@
 // Standard Uses
+use std::borrow::Cow;
 use std::fs;
 use std::path::Path;
 
 // Crate Uses
+use crate::shaping::lines::unix;
 
 // External Uses
 use miette::{miette, bail, Context, IntoDiagnostic, Report, Result};
@@ -56,8 +58,12 @@ fn from_extension(content: &str, extension: &str) -> Result<ProjectSettings> {
 
 
 
-fn from_kdl(content: &str) -> Result<ProjectSettings> {
-    parse::<ProjectSettings>("settings.kdl", content)
-        .map_err(Report::new)
+pub fn from_kdl(content: &str) -> Result<ProjectSettings> {
+    let settings = parse::<ProjectSettings>("settings.kdl", content).map_err(Report::new)?;
+
+    match unix(content) {
+        Cow::Borrowed(_) => Ok(settings),
+        Cow::Owned(content) => parse::<ProjectSettings>("settings.kdl", &content).map_err(Report::new)
+    }
 }
 

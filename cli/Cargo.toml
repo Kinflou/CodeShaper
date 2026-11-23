@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 # local
 codeshaper.workspace=true
+codeshaper-lsp.workspace=true
 
 # interface
 clap = { version="4.6.9", features=["derive"] }

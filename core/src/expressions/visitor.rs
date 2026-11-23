@@ -50,15 +50,16 @@ pub(crate) fn visit_expression(
                 result += &*visit_expression(visitor, controller, act, arguments)?;
             }
         }
-        ExpressionAST::ActionCall((name, args)) => {
+        ExpressionAST::ActionCall { name, arguments: args, .. } => {
             result += &*visitor.visit_action_call(controller, name, args)?;
         }
-        ExpressionAST::LocalCall(var) => {
+        ExpressionAST::LocalCall { name: var, .. } => {
             result += &*visitor.visit_local_call(controller, var)?;
         }
-        ExpressionAST::ArgumentCall(var) => {
+        ExpressionAST::ArgumentCall { name: var, .. } => {
             result += &*visitor.visit_argument_call(controller, var, arguments)?;
         }
+        ExpressionAST::Unclosed { .. } => return None,
         ExpressionAST::Text(text) => {
             result += &*visitor.visit_text(controller, text)?;
         }

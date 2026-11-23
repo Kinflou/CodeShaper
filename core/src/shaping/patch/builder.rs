@@ -17,6 +17,8 @@ pub struct Builder {
     pub reference_location: Option<String>,
     #[knus(child, unwrap(argument))]
     pub r#match: String,
+    #[knus(child, unwrap(argument), default)]
+    pub flags: String,
     #[knus(child, unwrap(argument))]
     pub build: String,
     #[knus(child, unwrap(argument), default)]

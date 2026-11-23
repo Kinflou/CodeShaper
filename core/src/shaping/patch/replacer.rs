@@ -2,9 +2,12 @@
 
 // Crate Uses
 use crate::shaping::patch::Actions;
+use crate::shaping::patch::pattern::{check_flags, regex_builder};
 
 // External Uses
 use knus::Decode;
+use miette::{IntoDiagnostic, Result};
+use regex::Regex;
 
 
 #[derive(Default, Clone, Debug, PartialEq)]
@@ -29,5 +32,11 @@ pub struct Replacer {
 impl Replacer {
     pub fn target_location(&self) -> &str {
         if self.reference_location.is_empty() { &self.location } else { &self.reference_location }
+    }
+
+    pub fn from_regex(&self) -> Result<Regex> {
+        check_flags(&self.flags)?;
+
+        regex_builder(&self.from, &self.flags).build().into_diagnostic()
     }
 }

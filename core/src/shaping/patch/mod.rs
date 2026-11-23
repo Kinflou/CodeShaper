@@ -6,12 +6,16 @@ pub mod maker;
 pub mod resolver;
 pub mod validation;
 pub mod source;
+pub mod trace;
+pub mod pattern;
 
 // Standard Uses
-use std::fs;
+use std::{fs, io};
+use std::borrow::Cow;
 use std::path::Path;
 
 // Crate Uses
+use crate::shaping::lines::unix;
 use crate::shaping::patch::builder::Builder;
 use crate::shaping::patch::replacer::Replacer;
 use crate::shaping::patch::maker::Maker;
@@ -69,16 +73,25 @@ impl Patch {
     }
 
     pub fn from_kdl(filename: &str, content: &str) -> Result<Self> {
-        knus::parse::<Patch>(filename, content).map_err(Report::new)
+        let patch = knus::parse::<Patch>(filename, content).map_err(Report::new)?;
+
+        match unix(content) {
+            Cow::Borrowed(_) => Ok(patch),
+            Cow::Owned(content) => knus::parse::<Patch>(filename, &content).map_err(Report::new)
+        }
     }
 
     pub fn load(path: &Path) -> Result<(Self, PatchSource)> {
+        Self::load_with(path, &|path| fs::read_to_string(path))
+    }
+
+    pub fn load_with(path: &Path, read: &dyn Fn(&Path) -> io::Result<String>) -> Result<(Self, PatchSource)> {
         let extension = path.extension().and_then(|extension| extension.to_str()).unwrap_or_default();
         if extension != "kdl" {
             bail!("Extension {} is not supported", extension)
         }
 
-        let content = fs::read_to_string(path).into_diagnostic()?;
+        let content = read(path).into_diagnostic()?;
         let name = path.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_default();
 
         Self::parse(&name, &content)

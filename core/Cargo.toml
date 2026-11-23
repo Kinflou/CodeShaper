@@ -11,8 +11,8 @@ miette = { workspace=true, features=["fancy"] }
 pest = "2.5.0"
 pest_derive = "2.5.0"
 regex = "1.9.5"
+regex-syntax = "0.8.8"
 regex-automata = "0.4.9"
-bimap = "0.6.3"
 indextree = "4.6.0"
 enum_dispatch = "0.3.12"
 

@@ -1,24 +1,51 @@
 // Standard Uses
 use std::cell::RefCell;
+use std::collections::HashMap;
 
 // Crate Uses
-use crate::shaping::operation::actions::{Action, ActionOf, LocalsMap};
+use crate::shaping::operation::actions::{Action, ActionOf};
 use crate::shaping::patch::controller::PatchController;
+use crate::shaping::patch::pattern::regex_builder;
+use crate::shaping::patch::trace::Sample;
 use crate::expressions::visitor;
 use crate::expressions::visitor::ExpressionVisitor;
 use crate::expressions::syntax::ExpressionAST;
-use crate::utils::dual_key_map::DualKeyMap;
 
 // External Uses
-use regex::Regex;
+use regex::{Captures, Regex};
 use indextree::NodeId;
 
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Locals {
+    values: Vec<String>,
+    names: HashMap<String, usize>
+}
+
+impl Locals {
+    pub fn new(regex: &Regex, captures: &Captures) -> Self {
+        let values = captures.iter().skip(1)
+            .map(|group| group.map(|group| group.as_str().to_owned()).unwrap_or_default())
+            .collect();
+        let names = regex.capture_names().skip(1).enumerate()
+            .filter_map(|(number, name)| Some((name?.to_owned(), number)))
+            .collect();
+
+        Self { values, names }
+    }
+
+    pub fn get(&self, variable: &str) -> Option<&String> {
+        let number = variable.parse().ok().or_else(|| self.names.get(variable).copied())?;
+
+        self.values.get(number)
+    }
+}
 
 #[allow(unused)]
 pub struct Composer {
     action_id: NodeId,
     // patch_controller: Rc<RefCell<PatchController>>,
-    pub(crate) locals: RefCell<LocalsMap>,
+    pub(crate) locals: RefCell<Locals>,
     built: RefCell<String>,
 }
 
@@ -51,25 +78,20 @@ impl ExpressionVisitor for Composer {
             return None
         };
 
-        match action {
-            ActionOf::BuilderAction(builder) => {
-                return builder.process(controller);
-            }
-            ActionOf::ReplacerAction(replacer) => {
+        let result = match action {
+            ActionOf::BuilderAction(builder) => builder.process(controller),
+            ActionOf::ReplacerAction(_) => None,
+            ActionOf::MakerAction(maker) => maker.make_with_args(&args, controller),
+            ActionOf::SwitchAction(switch) => switch.resolve_with_args(controller, &args),
+            ActionOf::ListAction(list) => list.index_with_args(controller, &args)
+        };
 
-            }
-            ActionOf::MakerAction(maker) => {
-                return maker.make_with_args(&args, controller)
-            }
-            ActionOf::SwitchAction(switch) => {
-                return switch.resolve_with_args(controller, &args)
-            }
-            ActionOf::ListAction(list) => {
-                return list.index_with_args(controller, &args)
-            }
+        if let (Some(output), true) = (&result, controller.tracing()) {
+            let call = Sample { groups: args.into_iter().map(Some).collect(), output: output.clone(), ..Sample::default() };
+            controller.record(*action.self_id(), |trace, limit| trace.call(limit, call));
         }
 
-        None
+        result
     }
 
     fn visit_text(&self, controller: &PatchController, text: &str) -> Option<String> {
@@ -79,23 +101,7 @@ impl ExpressionVisitor for Composer {
     fn visit_local_call(
         &self, controller: &PatchController, variable: &str
     ) -> Option<String> {
-        let locals = self.locals.borrow();
-
-        let action: &ActionOf = controller.actions.get(self.action_id).unwrap().get();
-
-        if let Ok(number) = variable.parse::<usize>() {
-            let Some(local) = locals.get_by_left(number) else {
-                panic!("Local not found")
-            };
-
-            return Some(local.clone())
-        }
-
-        if let Some(local) = self.locals.borrow().get_by_right(variable.to_owned()) {
-            return None
-        }
-
-        panic!("Local '{}' not found", variable);
+        self.locals.borrow().get(variable).cloned()
     }
 
     fn visit_argument_call(
@@ -107,25 +113,11 @@ impl ExpressionVisitor for Composer {
     }
 }
 
-pub fn capture_locals(reg_expr: Option<&str>, content: &str) -> LocalsMap {
-    let Some(reg_expr) = reg_expr else { return LocalsMap::default() };
-
-    let re = Regex::new(reg_expr).unwrap();
-    let Some(captures) = re.captures(content) else {
-        return DualKeyMap::default()
-    };
-
-    let mut locals = LocalsMap::default();
-    for (idx, mat) in captures.iter().skip(1).enumerate() {
-        if let Some(mat) = mat {
-            locals.push_with_left(idx, mat.as_str().to_owned())
-        }
-    };
-
-    // TODO: Add named captures
-    // locals.push((name.to_string(), captures.name(name).unwrap().as_str().to_string()))
-
-    locals
+pub fn capture_locals(reg_expr: Option<&str>, flags: &str, content: &str) -> Locals {
+    reg_expr
+        .and_then(|reg_expr| regex_builder(reg_expr, flags).build().ok())
+        .and_then(|regex| regex.captures(content).map(|captures| Locals::new(&regex, &captures)))
+        .unwrap_or_default()
 }
 
 /*

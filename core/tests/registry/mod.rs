@@ -49,6 +49,8 @@ fn backend_by_name_and_extension() {
     assert!(registry.backend("other").is_none());
     assert!(registry.backend_for(Path::new("main.cpp")).is_none());
     assert!(registry.backend_for(Path::new("Makefile")).is_none());
+    assert_eq!(registry.extensions("stub"), vec!["st", "stub"]);
+    assert!(registry.extensions("other").is_empty());
 }
 
 #[test]

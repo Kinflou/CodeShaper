@@ -15,10 +15,10 @@ fn parse_simple_expression() {
     let expression = syntax::parser::parse_expression(some_expression).unwrap();
 
     let expected_result = ExpressionAST::Action(vec![
-        ExpressionAST::ActionCall(("some_expr", vec![
+        ExpressionAST::ActionCall { name: "some_expr", arguments: vec![
             ExpressionAST::Text("some"),
             ExpressionAST::Text("value")
-        ])),
+        ], span: 0..12 },
     ]);
 
     pretty_assertions::assert_eq!(expected_result, expression);
@@ -33,11 +33,11 @@ fn parse_nested_expression() {
     let expression = syntax::parser::parse_expression(nexted_expression).unwrap();
 
     let expected_result = ExpressionAST::Action(vec![
-        ExpressionAST::ActionCall(("parent_expr", vec![
+        ExpressionAST::ActionCall { name: "parent_expr", arguments: vec![
             ExpressionAST::Text("value_1"),
-            ExpressionAST::ActionCall(("child_expr", vec![])),
+            ExpressionAST::ActionCall { name: "child_expr", arguments: vec![], span: 26..39 },
             ExpressionAST::Text("value_3")
-        ])),
+        ], span: 0..14 },
     ]);
 
     pretty_assertions::assert_eq!(expression, expected_result);
@@ -52,18 +52,37 @@ fn parse_multiple_nested_expression() {
     let expression = syntax::parser::parse_expression(nexted_expression).unwrap();
 
     let expected_result = ExpressionAST::Action(vec![
-        ExpressionAST::ActionCall(("parent_expr", vec![
-                ExpressionAST::Text("value_1"),
-                ExpressionAST::ActionCall(
-                    ("child_expr", vec![
-                        ExpressionAST::ActionCall(("child_child_expr", vec![])),
-                    ])
-                ),
-                ExpressionAST::Text("value_3"),
-            ])
-        ),
+        ExpressionAST::ActionCall { name: "parent_expr", arguments: vec![
+            ExpressionAST::Text("value_1"),
+            ExpressionAST::ActionCall { name: "child_expr", arguments: vec![
+                ExpressionAST::ActionCall { name: "child_child_expr", arguments: vec![], span: 40..59 },
+            ], span: 26..39 },
+            ExpressionAST::Text("value_3"),
+        ], span: 0..14 },
     ]);
 
     pretty_assertions::assert_eq!(expected_result, expression);
 }
 
+
+#[test]
+fn unclosed_calls_are_errors() {
+    for input in ["$[0]\n#[method_call_builder", "$[0", "a @[", "#[]", "#[name with space]"] {
+        let error = syntax::parser::parse_expression(input).unwrap_err();
+
+        assert!(error.to_string().contains("is not a complete call"), "{input}: {error}");
+    }
+
+    let error = syntax::parser::parse_expression("x #[method_call_builder").unwrap_err();
+    assert!(error.to_string().starts_with("'#[method_call_builder' is not a complete call"), "{error}");
+}
+
+#[test]
+fn brackets_without_markers_are_text() {
+    for input in ["[x]", "a[0] = b[1];", "$5 and @export", "#include <std>", ""] {
+        let expression = syntax::parser::parse_expression(input).unwrap();
+        let expected = if input.is_empty() { vec![] } else { vec![ExpressionAST::Text(input)] };
+
+        pretty_assertions::assert_eq!(ExpressionAST::Action(expected), expression);
+    }
+}

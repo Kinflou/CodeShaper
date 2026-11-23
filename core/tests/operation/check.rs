@@ -39,6 +39,16 @@ fn disabled_patches_are_checked_but_do_not_block() {
 }
 
 #[test]
+fn nested_patches_are_named_with_slashes() {
+    let broken = rename("lines", "Line").replace("new $[0]", "#[missing]");
+    let directory = workspace("replace", &[("nested/broken.kdl", broken)]);
+
+    assert_eq!(check(&directory), vec![
+        ("nested/broken.kdl".to_string(), DiagnosticKind::ActionNotFound, Severity::Error)
+    ]);
+}
+
+#[test]
 fn unmatched_file_pattern() {
     let rust = patch("lines", "Line", "old", "new").replace("**/*.txt", "**/*.rs");
     let directory = workspace("replace", &[("rust.kdl", rust)]);

@@ -1,0 +1,153 @@
+{
+  "name": "codeshaper",
+  "displayName": "CodeShaper",
+  "description": "Diagnostics, completion and navigation for CodeShaper patches",
+  "version": "0.1.0",
+  "publisher": "kinflou",
+  "license": "Apache-2.0",
+  "icon": "images/icon.png",
+  "repository": "https://github.com/Kinflou/CodeShaper",
+  "engines": {
+    "vscode": "^1.91.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
+  "activationEvents": [
+    "onLanguage:kdl",
+    "workspaceContains:**/settings.kdl"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "kdl",
+        "aliases": [
+          "KDL",
+          "kdl"
+        ],
+        "extensions": [
+          ".kdl"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "kdl",
+        "scopeName": "source.kdl.codeshaper",
+        "path": "./syntaxes/kdl.tmLanguage.json"
+      },
+      {
+        "scopeName": "codeshaper.expressions.injection",
+        "path": "./syntaxes/expressions.tmLanguage.json",
+        "injectTo": [
+          "source.kdl.codeshaper"
+        ]
+      },
+      {
+        "scopeName": "codeshaper.fields.injection",
+        "path": "./syntaxes/fields.tmLanguage.json",
+        "injectTo": [
+          "source.kdl.codeshaper"
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "codeshaper.preview",
+        "title": "CodeShaper: Preview Patch Result",
+        "icon": {
+          "light": "images/preview-light.png",
+          "dark": "images/preview-dark.png"
+        }
+      },
+      {
+        "command": "codeshaper.previewOperation",
+        "title": "CodeShaper: Preview Operation Result",
+        "icon": {
+          "light": "images/preview-light.png",
+          "dark": "images/preview-dark.png"
+        }
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "codeshaper.preview",
+          "when": "resourceLangId == kdl && resourcePath =~ /[\\\\/]patches[\\\\/]/",
+          "group": "navigation"
+        },
+        {
+          "command": "codeshaper.previewOperation",
+          "when": "resourceLangId == kdl && resourceFilename == configuration.kdl",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "codeshaper.preview",
+          "when": "editorLangId == kdl"
+        },
+        {
+          "command": "codeshaper.previewOperation",
+          "when": "editorLangId == kdl"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "CodeShaper",
+      "properties": {
+        "codeshaper.server.path": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the codeshaper executable, started as `codeshaper lsp`. When empty, the one included with the extension is used, or `codeshaper` on the PATH if there is none."
+        },
+        "codeshaper.hover.samples": {
+          "type": "integer",
+          "default": 3,
+          "minimum": 1,
+          "description": "How many sample results hovers show."
+        },
+        "codeshaper.hover.lines": {
+          "type": "integer",
+          "default": 8,
+          "minimum": 1,
+          "description": "Lines kept from each hover sample before it is cut."
+        },
+        "codeshaper.hover.characters": {
+          "type": "integer",
+          "default": 400,
+          "minimum": 1,
+          "description": "Characters kept from each hover sample before it is cut."
+        },
+        "codeshaper.inlayHints.groups": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show each capture group's number before it. Takes effect after reloading the window."
+        },
+        "codeshaper.inlayHints.matches": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show how many places each location matches, updated on open and save. Takes effect after reloading the window."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^11.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/vscode": "^1.91.0",
+    "@vscode/vsce": "3.9.2",
+    "typescript": "^5.9.3"
+  }
+}
