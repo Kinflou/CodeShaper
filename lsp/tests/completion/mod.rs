@@ -8,6 +8,7 @@ use codeshaper::core::shaping::patch::Patch;
 use codeshaper_lsp::completion::completion;
 use codeshaper_lsp::schema;
 use codeshaper_lsp::syntax::Outline;
+use lsp_types::{CompletionTextEdit, Position};
 
 
 fn labels(text: &str, offset: usize) -> Vec<String> {
@@ -128,4 +129,16 @@ fn locals_offer_the_regex_groups() {
 
     assert_eq!(found, vec![("0", Some(r"(\w+)")), ("1", Some(r"(?P<n>\d)"))]);
     assert_eq!(labels(&text.replace("from", "location"), offset), Vec::<String>::new());
+}
+
+#[test]
+fn file_offers_target_paths() {
+    let (_directory, project) = crate::preview::operation();
+    let text = "alias \"cpp\"\nfile \"a.c\"\n";
+
+    let items = completion(&codeshaper::registry(), &project, text, text.find("a.c").unwrap() + 3);
+
+    assert_eq!(items.iter().map(|item| item.label.as_str()).collect::<Vec<_>>(), vec!["a.cpp", "b.cpp"]);
+    let Some(CompletionTextEdit::Edit(edit)) = &items[1].text_edit else { panic!("expected an edit") };
+    assert_eq!((edit.range.start, edit.range.end), (Position::new(1, 6), Position::new(1, 9)));
 }

@@ -1,10 +1,13 @@
 // Standard Uses
+use std::ops::Range;
 use std::path::Path;
 
 // Crate Uses
 use crate::document::ast_set;
+use crate::position::LineIndex;
 use crate::schema::{self, regex_field, LOCATIONS};
 use crate::syntax::{Context, Outline};
+use crate::target::every_file;
 use crate::trace::groups;
 
 // External Uses
@@ -12,7 +15,7 @@ use codeshaper::core::ast::backend::LanguageBackend;
 use codeshaper::core::registry::Registry;
 use codeshaper::core::shaping::operation::patch_backend;
 use codeshaper::core::shaping::patch::Patch;
-use lsp_types::{CompletionItem, CompletionItemKind};
+use lsp_types::{CompletionItem, CompletionItemKind, CompletionTextEdit, TextEdit};
 
 
 pub fn completion(registry: &Registry, project: &Path, text: &str, offset: usize) -> Vec<CompletionItem> {
@@ -26,7 +29,11 @@ pub fn completion(registry: &Registry, project: &Path, text: &str, offset: usize
                 .map(|name| item(name, CompletionItemKind::PROPERTY, None))
                 .collect()
         }
-        Context::Value { node, before, .. } => {
+        Context::Value { node, literal, before } => {
+            if outline.is_top(node, "file") {
+                return paths(registry, project, text, literal.content)
+            }
+
             if before.rfind("#[").is_some_and(|open| !before[open..].contains(']')) {
                 return outline.actions()
                     .map(|(node, name)| item(&name.value, CompletionItemKind::FUNCTION, Some(&node.name)))
@@ -56,6 +63,22 @@ pub fn completion(registry: &Registry, project: &Path, text: &str, offset: usize
         }
         Context::None => vec![]
     }
+}
+
+fn paths(registry: &Registry, project: &Path, text: &str, content: Range<usize>) -> Vec<CompletionItem> {
+    let line = text[content.start..].find('\n').map(|length| content.start + length).unwrap_or(text.len());
+    let range = LineIndex::new(text).range(content.start..content.end.min(line));
+
+    every_file(registry, project).iter()
+        .map(|path| {
+            let path = path.display().to_string();
+
+            CompletionItem {
+                text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(range, path.clone()))),
+                ..item(&path, CompletionItemKind::FILE, None)
+            }
+        })
+        .collect()
 }
 
 pub fn backend<'r>(registry: &'r Registry, project: &Path, outline: &Outline) -> Option<&'r dyn LanguageBackend> {

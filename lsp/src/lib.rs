@@ -10,20 +10,22 @@ pub mod schema;
 pub mod server;
 pub mod symbols;
 pub mod syntax;
+pub mod target;
+pub mod toggle;
 pub mod tokens;
 pub mod trace;
 
 // Standard Uses
 
 // Crate Uses
-use crate::server::{Options, Server};
+use crate::server::{Options, Server, TOGGLE_COMMAND};
 use crate::tokens::LEGEND;
 use crate::trace::Limits;
 
 // External Uses
 use lsp_server::Connection;
 use lsp_types::{
-    CodeLensOptions, CompletionOptions, FoldingRangeProviderCapability, HoverProviderCapability, OneOf, RenameOptions, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
+    CodeActionProviderCapability, CodeLensOptions, CompletionOptions, ExecuteCommandOptions, FoldingRangeProviderCapability, HoverProviderCapability, OneOf, RenameOptions, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
     SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind
 };
 use miette::{miette, IntoDiagnostic, Result};
@@ -40,6 +42,8 @@ pub fn capabilities() -> ServerCapabilities {
         code_lens_provider: Some(CodeLensOptions { resolve_provider: Some(false) }),
         definition_provider: Some(OneOf::Left(true)),
         references_provider: Some(OneOf::Left(true)),
+        code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
+        execute_command_provider: Some(ExecuteCommandOptions { commands: vec![TOGGLE_COMMAND.to_string()], ..ExecuteCommandOptions::default() }),
         rename_provider: Some(OneOf::Right(RenameOptions { prepare_provider: Some(true), work_done_progress_options: Default::default() })),
         document_symbol_provider: Some(OneOf::Left(true)),
         folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),

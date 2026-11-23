@@ -67,6 +67,14 @@ impl Outline {
         })
     }
 
+    pub fn literal_at(&self, offset: usize) -> Option<(usize, &Literal)> {
+        self.literals().find(|(_, literal)| literal.range.start <= offset && offset <= literal.range.end)
+    }
+
+    pub fn is_top(&self, node: usize, name: &str) -> bool {
+        self.nodes[node].parent.is_none() && self.nodes[node].name == name
+    }
+
     pub fn field(&self, action: usize, name: &str) -> Option<&Literal> {
         self.nodes.iter()
             .find(|node| node.parent == Some(action) && node.name == name)

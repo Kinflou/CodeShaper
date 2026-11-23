@@ -1,17 +1,20 @@
 // Standard Uses
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 // Crate Uses
 use crate::completion::completion;
-use crate::diagnostics::{coverage, diagnostics};
+use crate::diagnostics::{coverage, diagnostics, file};
 use crate::document::{kind, DocumentKind};
 use crate::hover::hover;
 use crate::navigation::{definition, references, rename, symbol_at};
 use crate::position::LineIndex;
 use crate::preview::{preview, replacement_counts};
+use crate::schema::LOCATIONS;
 use crate::symbols::{folding, symbols};
 use crate::syntax::Outline;
+use crate::target;
+use crate::toggle::toggle;
 use crate::tokens::tokens;
 use crate::trace::{Limits, Traces};
 
@@ -23,10 +26,11 @@ use lsp_types::notification::{
     Notification as _, PublishDiagnostics
 };
 use lsp_types::request::{
-    CodeLensRefresh, CodeLensRequest, Completion, DocumentSymbolRequest, FoldingRangeRequest, GotoDefinition, HoverRequest,
+    ApplyWorkspaceEdit, CodeActionRequest, CodeLensRefresh, CodeLensRequest, Completion, DocumentSymbolRequest, ExecuteCommand, FoldingRangeRequest, GotoDefinition, HoverRequest,
     PrepareRenameRequest, References, Rename, Request as _, SemanticTokensFullRequest
 };
 use lsp_types::{
+    ApplyWorkspaceEditParams, CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, ExecuteCommandParams,
     CodeLens, CodeLensParams, Command, CompletionParams, CompletionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, Hover,
     HoverContents, HoverParams, Location, MarkupContent, MarkupKind, Position, PublishDiagnosticsParams,
@@ -40,6 +44,7 @@ use url::Url;
 
 
 const PREVIEW_COMMAND: &str = "codeshaper.preview";
+pub const TOGGLE_COMMAND: &str = "codeshaper.toggle";
 const PREVIEW_REQUEST: &str = "codeshaper/preview";
 
 
@@ -120,8 +125,15 @@ impl<'c> Server<'c> {
                 let uri = position.text_document.uri;
                 let found = self.documents.get(&uri).and_then(|text| {
                     let index = LineIndex::new(text);
-                    let range = definition(&Outline::parse(text), text, index.offset(position.position))?;
-                    Some(GotoDefinitionResponse::Scalar(Location::new(uri.clone(), index.range(range))))
+                    let outline = Outline::parse(text);
+                    let offset = index.offset(position.position);
+
+                    if let Some(range) = definition(&outline, text, offset) {
+                        return Some(GotoDefinitionResponse::Scalar(Location::new(uri.clone(), index.range(range))))
+                    }
+
+                    outline.literal_at(offset).filter(|(node, _)| outline.is_top(*node, "file"))?;
+                    Some(GotoDefinitionResponse::Array(self.target_files(&uri, &outline)))
                 });
 
                 Response::new_ok(request.id, found)
@@ -132,9 +144,16 @@ impl<'c> Server<'c> {
                 let uri = position.text_document.uri;
                 let found: Vec<Location> = self.documents.get(&uri).map(|text| {
                     let index = LineIndex::new(text);
+                    let outline = Outline::parse(text);
                     let offset = index.offset(position.position);
 
-                    references(&Outline::parse(text), text, offset, params.context.include_declaration).into_iter()
+                    if let Some((_, literal)) = outline.literal_at(offset)
+                        .filter(|(node, _)| LOCATIONS.contains(&outline.nodes[*node].name.as_str()))
+                    {
+                        return self.target_places(&uri, &outline, &literal.value)
+                    }
+
+                    references(&outline, text, offset, params.context.include_declaration).into_iter()
                         .map(|range| Location::new(uri.clone(), index.range(range)))
                         .collect()
                 }).unwrap_or_default();
@@ -180,15 +199,20 @@ impl<'c> Server<'c> {
             CodeLensRequest::METHOD => {
                 let params: CodeLensParams = serde_json::from_value(request.params).into_diagnostic()?;
                 let uri = params.text_document.uri;
-                let lens = |range, title: String| CodeLens {
+                let command = |range, title: String, command: &str| CodeLens {
                     range,
-                    command: Some(Command::new(title, PREVIEW_COMMAND.to_string(), Some(vec![json!(uri.as_str())]))),
+                    command: Some(Command::new(title, command.to_string(), Some(vec![json!(uri.as_str())]))),
                     data: None
                 };
+                let lens = |range, title: String| command(range, title, PREVIEW_COMMAND);
 
                 let mut lenses = vec![];
                 if let Some((project, text, _)) = self.patch_at(&uri, Position::default()) {
                     lenses.push(lens(Range::default(), "Preview result".to_string()));
+
+                    if let Some(toggle) = toggle(&Outline::parse(text)) {
+                        lenses.push(command(LineIndex::new(text).range(toggle.node), toggle.title.to_string(), TOGGLE_COMMAND));
+                    }
 
                     if let Some(trace) = self.traces.cached(&project, text) {
                         let index = LineIndex::new(text);
@@ -197,6 +221,33 @@ impl<'c> Server<'c> {
                 }
 
                 Response::new_ok(request.id, lenses)
+            }
+            CodeActionRequest::METHOD => {
+                let params: CodeActionParams = serde_json::from_value(request.params).into_diagnostic()?;
+                let uri = params.text_document.uri;
+                let found: Vec<CodeActionOrCommand> = self.toggle(&uri)
+                    .filter(|(node, _, _)| node.start.line <= params.range.end.line && params.range.start.line <= node.end.line)
+                    .map(|(_, title, edit)| CodeActionOrCommand::CodeAction(CodeAction {
+                        title: title.to_string(),
+                        kind: Some(CodeActionKind::REFACTOR_REWRITE),
+                        edit: Some(edit),
+                        ..CodeAction::default()
+                    }))
+                    .into_iter().collect();
+
+                Response::new_ok(request.id, found)
+            }
+            ExecuteCommand::METHOD => {
+                let params: ExecuteCommandParams = serde_json::from_value(request.params).into_diagnostic()?;
+                let uri = params.arguments.first().and_then(|uri| uri.as_str()?.parse::<Uri>().ok());
+
+                match uri.filter(|_| params.command == TOGGLE_COMMAND).and_then(|uri| self.toggle(&uri)) {
+                    Some((_, title, edit)) => {
+                        self.ask(ApplyWorkspaceEdit::METHOD, json!(ApplyWorkspaceEditParams { label: Some(title.to_string()), edit }))?;
+                        Response::new_ok(request.id, json!(null))
+                    }
+                    None => Response::new_err(request.id, ErrorCode::InvalidParams as i32, "Not an open patch with an 'enabled' field".to_string())
+                }
             }
             PREVIEW_REQUEST => self.preview(request),
             SemanticTokensFullRequest::METHOD => {
@@ -296,17 +347,53 @@ impl<'c> Server<'c> {
         let Some((project, text, _)) = self.patch_at(uri, Position::default()) else { return Ok(()) };
         let text = text.to_string();
 
-        let Some(trace) = self.traces.get(&self.registry, &project, &text) else {
-            self.coverage.remove(uri);
-            return Ok(())
-        };
-        self.coverage.insert(uri.clone(), coverage(&text, &trace));
+        let mut found: Vec<lsp_types::Diagnostic> = file(&self.registry, &project, &text).into_iter().collect();
+        let trace = self.traces.get(&self.registry, &project, &text);
+        found.extend(trace.iter().flat_map(|trace| coverage(&text, trace)));
+        self.coverage.insert(uri.clone(), found);
 
         if !self.refresh_lenses { return Ok(()) }
+
+        self.ask(CodeLensRefresh::METHOD, json!(null))
+    }
+
+    fn ask(&mut self, method: &str, params: serde_json::Value) -> Result<()> {
         self.next += 1;
-        let request = Request::new(RequestId::from(format!("refresh-{}", self.next)), CodeLensRefresh::METHOD.to_string(), ());
+        let request = Request::new(RequestId::from(format!("server-{}", self.next)), method.to_string(), params);
 
         self.connection.sender.send(request.into()).into_diagnostic()
+    }
+
+    fn toggle(&self, uri: &Uri) -> Option<(Range, &'static str, WorkspaceEdit)> {
+        let (_, text, _) = self.patch_at(uri, Position::default())?;
+        let index = LineIndex::new(text);
+        let toggle = toggle(&Outline::parse(text))?;
+        let edit = TextEdit::new(index.range(toggle.value), toggle.text.to_string());
+
+        Some((index.range(toggle.node), toggle.title, WorkspaceEdit::new(HashMap::from([(uri.clone(), vec![edit])]))))
+    }
+
+    fn target_files(&self, uri: &Uri, outline: &Outline) -> Vec<Location> {
+        let Some((project, _, _)) = self.patch_at(uri, Position::default()) else { return vec![] };
+        let Some((directory, files)) = target::files(&self.registry, &project, outline) else { return vec![] };
+
+        files.iter()
+            .filter_map(|file| Some(Location::new(file_uri(&directory.join(file))?, Range::default())))
+            .collect()
+    }
+
+    fn target_places(&self, uri: &Uri, outline: &Outline, location: &str) -> Vec<Location> {
+        let Some((project, _, _)) = self.patch_at(uri, Position::default()) else { return vec![] };
+        let mut found = vec![];
+
+        for places in target::places(&self.registry, &project, outline, location) {
+            let Some(uri) = file_uri(&places.path) else { continue };
+            let index = LineIndex::new(&places.source);
+
+            found.extend(places.ranges.into_iter().map(|range| Location::new(uri.clone(), index.range(range))));
+        }
+
+        found
     }
 
     fn publish(&self, uri: &Uri) -> Result<()> {
@@ -330,6 +417,10 @@ impl<'c> Server<'c> {
 
 fn path(uri: &Uri) -> Option<PathBuf> {
     Url::parse(uri.as_str()).ok()?.to_file_path().ok()
+}
+
+fn file_uri(path: &Path) -> Option<Uri> {
+    Url::from_file_path(path).ok()?.as_str().parse().ok()
 }
 
 fn message(error: &miette::Report) -> String {

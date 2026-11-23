@@ -6,17 +6,16 @@ use std::rc::Rc;
 // Crate Uses
 use crate::completion::backend;
 use crate::navigation::{calls, symbol_at, Symbol};
-use crate::preview::configuration;
 use crate::schema::{regex_field, LOCATIONS};
 use crate::syntax::{is_name, Literal, Outline, ACTIONS};
+use crate::target::{self, matches};
 use crate::trace::{diff, fenced, groups, inline, truncate, Limits, Traces};
 
 // External Uses
 use codeshaper::core::registry::Registry;
-use codeshaper::core::shaping::operation::{LocationMatches, Operation};
-use codeshaper::core::shaping::patch::Patch;
 use codeshaper::core::shaping::patch::replacer::FLAGS;
 use codeshaper::core::shaping::patch::trace::{ActionTrace, Trace};
+use url::Url;
 
 
 const LISTED: usize = 10;
@@ -42,9 +41,7 @@ pub fn hover(
         return Some((value, range))
     }
 
-    let (node, literal) = outline.literals()
-        .find(|(_, literal)| literal.range.start <= offset && offset <= literal.range.end)
-        .map(|(node, literal)| (node, literal.clone()))?;
+    let (node, literal) = outline.literal_at(offset).map(|(node, literal)| (node, literal.clone()))?;
     let field = outline.nodes[node].name.as_str();
 
     if LOCATIONS.contains(&field) {
@@ -114,13 +111,7 @@ pub fn hover(
 }
 
 fn files(registry: &Registry, project: &Path, outline: &Outline) -> Option<String> {
-    let patch = Patch {
-        alias: outline.argument("alias").unwrap_or_default().to_string(),
-        file: outline.argument("file").unwrap_or_default().to_string(),
-        ..Patch::default()
-    };
-    let operation = Operation::from_file(&configuration(project).ok()?).ok()?;
-    let (_, files) = operation.matching_files(registry, "", &patch).ok()?;
+    let (directory, files) = target::files(registry, project, outline)?;
 
     if files.is_empty() {
         return Some("Matches no target file".to_string())
@@ -128,7 +119,10 @@ fn files(registry: &Registry, project: &Path, outline: &Outline) -> Option<Strin
 
     let mut value = format!("Matches {} target file(s)\n", files.len());
     for file in files.iter().take(LISTED) {
-        value += &format!("\n- `{}`", file.path.display());
+        value += &match Url::from_file_path(directory.join(file)) {
+            Ok(url) => format!("\n- [`{}`](<{url}>)", file.display()),
+            Err(_) => format!("\n- `{}`", file.display())
+        };
     }
     if files.len() > LISTED {
         value += &format!("\n- +{} more", files.len() - LISTED);
@@ -204,17 +198,6 @@ fn location(registry: &Registry, project: &Path, outline: &Outline, literal: Lit
     ));
 
     Some((description + &found.unwrap_or_default(), literal.range))
-}
-
-fn matches(registry: &Registry, project: &Path, outline: &Outline, location: &str) -> Option<LocationMatches> {
-    let patch = Patch {
-        alias: outline.argument("alias").unwrap_or_default().to_string(),
-        file: outline.argument("file").unwrap_or_default().to_string(),
-        ..Patch::default()
-    };
-    let operation = Operation::from_file(&configuration(project).ok()?).ok()?;
-
-    operation.locate(registry, "", &patch, location).ok()
 }
 
 fn traced(

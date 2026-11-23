@@ -7,6 +7,7 @@ pub mod session;
 // Standard Uses
 use std::fmt::{Display, Formatter};
 use std::fs;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -18,6 +19,7 @@ use crate::shaping::operation::report::Report;
 use crate::shaping::operation::session::{Change, Session};
 use crate::shaping::patch::Patch;
 use crate::shaping::patch::controller::PatchController;
+use crate::shaping::patch::source::PatchSource;
 use crate::shaping::patch::trace::Trace;
 use crate::shaping::patch::validation::{validate, validate_source, Diagnostic as PatchDiagnostic, DiagnosticKind, Severity};
 use crate::shaping::project::Project;
@@ -39,6 +41,13 @@ pub struct LocationMatches {
     pub files: usize,
     pub matched_files: usize,
     pub places: usize
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Places {
+    pub path: PathBuf,
+    pub source: String,
+    pub ranges: Vec<Range<usize>>
 }
 
 
@@ -94,21 +103,8 @@ impl Operation {
         let files = solution.files();
 
         for (name, patch) in &self.project.patches {
-            if !patch.enabled { continue }
-
-            let diagnostic = match Pattern::new(&patch.file) {
-                Err(error) => PatchDiagnostic::new(
-                    DiagnosticKind::IncorrectFilePattern, "patch", "file", error.to_string()
-                ),
-                Ok(pattern) if !files.iter().any(|file| pattern.matches_path(&file.path)) => PatchDiagnostic::new(
-                    DiagnosticKind::FileNotMatched, "patch", "file",
-                    format!("'{}' matches no file in the target", patch.file)
-                ),
-                Ok(_) => continue
-            };
-            let span = self.project.sources[name].spans.fields.get("file").copied();
-
-            found.push((name.clone(), PatchDiagnostic { span, ..diagnostic }));
+            let diagnostic = file_diagnostic(patch, &self.project.sources[name], &files);
+            found.extend(diagnostic.map(|diagnostic| (name.clone(), diagnostic)));
         }
 
         Ok(found)
@@ -179,22 +175,38 @@ impl Operation {
     }
 
     pub fn locate(&self, registry: &Registry, name: &str, patch: &Patch, location: &str) -> Result<LocationMatches> {
+        let places = self.places(registry, name, patch, location)?;
+
+        Ok(LocationMatches {
+            files: places.len(),
+            matched_files: places.iter().filter(|places| !places.ranges.is_empty()).count(),
+            places: places.iter().map(|places| places.ranges.len()).sum()
+        })
+    }
+
+    pub fn places(&self, registry: &Registry, name: &str, patch: &Patch, location: &str) -> Result<Vec<Places>> {
         let (directory, files) = self.matching_files(registry, name, patch)?;
-        let mut matches = LocationMatches { files: files.len(), ..LocationMatches::default() };
 
-        for file in &files {
-            let Ok(source) = fs::read_to_string(directory.join(&file.path)) else { continue };
-            let Ok(found) = self.backend(registry, patch, file).and_then(|backend| backend.locate(&source, location)) else {
-                continue
-            };
+        let places = files.iter()
+            .map(|file| {
+                let path = directory.join(&file.path);
+                let source = fs::read_to_string(&path).unwrap_or_default();
+                let ranges = self.backend(registry, patch, file)
+                    .and_then(|backend| backend.locate(&source, location))
+                    .unwrap_or_default();
 
-            if !found.is_empty() {
-                matches.matched_files += 1;
-                matches.places += found.len();
-            }
-        }
+                Places { path, source, ranges }
+            })
+            .collect();
 
-        Ok(matches)
+        Ok(places)
+    }
+
+    pub fn check_file(&self, registry: &Registry, patch: &Patch, source: &PatchSource) -> Result<Option<PatchDiagnostic>> {
+        let target = self.directory.join(&self.configuration.target);
+        let solution = registry.load_target(&self.project.settings.target, &target)?;
+
+        Ok(file_diagnostic(patch, source, &solution.files()))
     }
 
     pub fn trace(&self, registry: &Registry, name: &str, patch: &Patch, limit: usize) -> Result<Trace> {
@@ -289,6 +301,24 @@ pub fn patch_backend<'r>(registry: &'r Registry, patch: &Patch, ast_set: &str) -
         Some(name) => registry.backend(name),
         None => registry.backend_for(Path::new(&patch.file))
     }
+}
+
+fn file_diagnostic(patch: &Patch, source: &PatchSource, files: &[&File]) -> Option<PatchDiagnostic> {
+    if !patch.enabled { return None }
+
+    let diagnostic = match Pattern::new(&patch.file) {
+        Err(error) => PatchDiagnostic::new(
+            DiagnosticKind::IncorrectFilePattern, "patch", "file", error.to_string()
+        ),
+        Ok(pattern) if !files.iter().any(|file| pattern.matches_path(&file.path)) => PatchDiagnostic::new(
+            DiagnosticKind::FileNotMatched, "patch", "file",
+            format!("'{}' matches no file in the target", patch.file)
+        ),
+        Ok(_) => return None
+    };
+    let span = source.spans.fields.get("file").copied();
+
+    Some(PatchDiagnostic { span, ..diagnostic })
 }
 
 fn file_pattern(name: &str, patch: &Patch) -> Result<Pattern> {

@@ -8,6 +8,7 @@ use crate::document::{ast_set, kind, DocumentKind};
 use crate::navigation::calls;
 use crate::position::LineIndex;
 use crate::syntax::{Outline, ACTION_NODES};
+use crate::target::operation;
 
 // External Uses
 use codeshaper::core::registry::Registry;
@@ -15,7 +16,7 @@ use codeshaper::core::shaping::operation::configuration;
 use codeshaper::core::shaping::operation::patch_backend;
 use codeshaper::core::shaping::patch::Patch;
 use codeshaper::core::shaping::patch::trace::Trace;
-use codeshaper::core::shaping::patch::validation::{validate_source, Severity};
+use codeshaper::core::shaping::patch::validation::{validate_source, Diagnostic as PatchDiagnostic, Severity};
 use codeshaper::core::shaping::project::settings;
 use lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString};
 use miette::Report;
@@ -48,30 +49,39 @@ fn patch(registry: &Registry, project: &Path, path: &Path, text: &str, index: &L
 
     let backend = patch_backend(registry, &patch, &ast_set(project));
 
-    validate_source(&patch, &source, backend).into_iter()
-        .map(|diagnostic| {
-            let range = diagnostic.span
-                .map(|span| index.range(span.offset()..span.offset() + span.len()))
-                .unwrap_or_default();
-            let severity = match diagnostic.severity {
-                Severity::Error => DiagnosticSeverity::ERROR,
-                Severity::Warning => DiagnosticSeverity::WARNING
-            };
-            let message = format!("{} › {}: {}", diagnostic.action, diagnostic.field, diagnostic.message);
+    validate_source(&patch, &source, backend).into_iter().map(|diagnostic| convert(diagnostic, index)).collect()
+}
 
-            Diagnostic {
-                range,
-                severity: Some(severity),
-                code: Some(NumberOrString::String(diagnostic.kind.code().to_string())),
-                source: Some(SOURCE.to_string()),
-                message,
-                ..Diagnostic::default()
-            }
-        })
-        .collect()
+fn convert(diagnostic: PatchDiagnostic, index: &LineIndex) -> Diagnostic {
+    let range = diagnostic.span
+        .map(|span| index.range(span.offset()..span.offset() + span.len()))
+        .unwrap_or_default();
+    let severity = match diagnostic.severity {
+        Severity::Error => DiagnosticSeverity::ERROR,
+        Severity::Warning => DiagnosticSeverity::WARNING
+    };
+    let message = format!("{} › {}: {}", diagnostic.action, diagnostic.field, diagnostic.message);
+
+    Diagnostic {
+        range,
+        severity: Some(severity),
+        code: Some(NumberOrString::String(diagnostic.kind.code().to_string())),
+        source: Some(SOURCE.to_string()),
+        message,
+        ..Diagnostic::default()
+    }
+}
+
+pub fn file(registry: &Registry, project: &Path, text: &str) -> Option<Diagnostic> {
+    let (patch, source) = Patch::parse("", text).ok()?;
+    let diagnostic = operation(project)?.check_file(registry, &patch, &source).ok()??;
+
+    Some(convert(diagnostic, &LineIndex::new(text)))
 }
 
 pub fn coverage(text: &str, trace: &Trace) -> Vec<Diagnostic> {
+    if trace.files == 0 { return vec![] }
+
     let outline = Outline::parse(text);
     let index = LineIndex::new(text);
     let called: HashSet<String> = calls(&outline, text).into_iter().map(|call| call.name).collect();

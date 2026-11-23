@@ -231,7 +231,8 @@ fn indexers_mark_the_choices_used() {
 #[test]
 fn patch_fields_show_files_and_backend() {
     let (text, _) = hovered(INDEXED, "*.cpp", 1);
-    assert_eq!(text, "Matches 2 target file(s)\n\n- `a.cpp`\n- `b.cpp`");
+    assert!(text.starts_with("Matches 2 target file(s)\n\n- [`a.cpp`](<file:///"), "{text}");
+    assert!(text.contains("/target/a.cpp>)\n- [`b.cpp`](<file:///"), "{text}");
 
     let (text, _) = hovered(INDEXED, "\"cpp\"", 1);
     assert!(text.starts_with("Language backend `cpp`, chosen by default for ") && text.contains("`.cpp`"), "{text}");

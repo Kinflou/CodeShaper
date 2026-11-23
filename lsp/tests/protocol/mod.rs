@@ -304,9 +304,12 @@ fn preview_lens_and_request() {
     assert_eq!((command.title.as_str(), command.command.as_str()), ("Preview result", "codeshaper.preview"));
     assert_eq!(command.arguments, Some(vec![serde_json::json!(uri.as_str())]));
 
-    let counted = lenses[1].command.clone().unwrap();
+    let toggle = lenses[1].command.clone().unwrap();
+    assert_eq!((toggle.title.as_str(), toggle.command.as_str()), ("Enable patch", "codeshaper.toggle"));
+
+    let counted = lenses[2].command.clone().unwrap();
     assert_eq!(counted.title, "1 replacement(s) in 1 file(s)");
-    assert_eq!(lenses[1].range.start, Position::new(6, 8));
+    assert_eq!(lenses[2].range.start, Position::new(6, 8));
 
     let response = client.request("codeshaper/preview", serde_json::json!({ "uri": uri.as_str() }));
     let result = response.response_result.unwrap();
@@ -318,6 +321,65 @@ fn preview_lens_and_request() {
 
     let response = client.request("codeshaper/preview", serde_json::json!({ "uri": "file:///nowhere/rename.kdl" }));
     assert!(response.response_result.is_err());
+
+    client.stop();
+}
+
+#[test]
+fn file_and_location_lead_to_the_target() {
+    let (_directory, project) = operation();
+    let mut client = Client::start();
+    let uri = client.open(&project.join("patches/rename.kdl"), RENAME);
+
+    let params = GotoDefinitionParams {
+        text_document_position_params: at(&uri, Position::new(2, 8)),
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default()
+    };
+    let response = client.request(GotoDefinition::METHOD, to_json!(params));
+    let files: Vec<Location> = serde_json::from_value(response.response_result.unwrap()).unwrap();
+    assert_eq!(files.len(), 2);
+    assert!(files[0].uri.as_str().ends_with("/target/a.cpp"));
+
+    let params = ReferenceParams {
+        text_document_position: at(&uri, Position::new(7, 25)),
+        context: ReferenceContext { include_declaration: false },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default()
+    };
+    let response = client.request(References::METHOD, to_json!(params));
+    let places: Vec<Location> = serde_json::from_value(response.response_result.unwrap()).unwrap();
+    assert_eq!(places.iter().map(|place| (place.range.start, place.range.end)).collect::<Vec<_>>(), vec![
+        (Position::new(0, 0), Position::new(0, 13)), (Position::new(0, 0), Position::new(0, 14))
+    ]);
+
+    client.stop();
+}
+
+#[test]
+fn patches_are_toggled() {
+    let (_directory, project) = operation();
+    let mut client = Client::start();
+    let uri = client.open(&project.join("patches/rename.kdl"), RENAME);
+    assert_eq!(client.published(), Vec::<String>::new());
+
+    let params = serde_json::json!({
+        "textDocument": { "uri": uri.as_str() },
+        "range": { "start": { "line": 0, "character": 2 }, "end": { "line": 0, "character": 2 } },
+        "context": { "diagnostics": [] }
+    });
+    let actions = client.request("textDocument/codeAction", params).response_result.unwrap();
+    assert_eq!(actions[0]["title"], "Enable patch");
+    let edit = &actions[0]["edit"]["changes"][uri.as_str()][0];
+    assert_eq!((&edit["newText"], &edit["range"]["start"]["character"]), (&serde_json::json!("true"), &serde_json::json!(8)));
+
+    let params = serde_json::json!({ "command": "codeshaper.toggle", "arguments": [uri.as_str()] });
+    client.connection.sender.send(Request::new(RequestId::from(90), "workspace/executeCommand".to_string(), params).into()).unwrap();
+    let Message::Request(apply) = client.receive() else { panic!("expected an edit") };
+    assert_eq!(apply.method, "workspace/applyEdit");
+    assert_eq!(apply.params["edit"]["changes"][uri.as_str()][0]["newText"], "true");
+    let Message::Response(done) = client.receive() else { panic!("expected a response") };
+    assert_eq!(done.id, RequestId::from(90));
 
     client.stop();
 }

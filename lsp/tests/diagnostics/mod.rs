@@ -1,12 +1,12 @@
 // Standard Uses
-use std::fs;
+use std::{fs, slice};
 
 // Crate Uses
 use crate::{project, BROKEN};
 use crate::preview::operation;
 
 // External Uses
-use codeshaper_lsp::diagnostics::{coverage, diagnostics};
+use codeshaper_lsp::diagnostics::{coverage, diagnostics, file};
 use codeshaper_lsp::trace::Traces;
 use lsp_types::{DiagnosticSeverity, NumberOrString, Position, Range};
 
@@ -120,4 +120,18 @@ fn coverage_reports_what_matches_nothing() {
         ("from-unmatched".to_string(), Some(DiagnosticSeverity::WARNING), "replacer #2 › from: never matches in the 2 located content(s)"),
     ]);
     assert_eq!(found[1].range, Range::new(Position::new(12, 36), Position::new(12, 45)));
+}
+
+#[test]
+fn unmatched_files_are_reported_once() {
+    let (_directory, project) = operation();
+    let text = UNCOVERED.replace("enabled false", "enabled true").replace("*.cpp", "*.missing");
+    let trace = Traces::default().get(&codeshaper::registry(), &project, &text).unwrap();
+
+    let found = file(&codeshaper::registry(), &project, &text).unwrap();
+    assert_eq!(codes(slice::from_ref(&found)), vec!["file-not-matched"]);
+    assert_eq!(found.range, Range::new(Position::new(2, 5), Position::new(2, 16)));
+    assert_eq!(coverage(&text, &trace), vec![]);
+
+    assert_eq!(file(&codeshaper::registry(), &project, UNCOVERED), None);
 }
