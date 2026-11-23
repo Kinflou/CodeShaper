@@ -3,6 +3,7 @@ mod completion;
 mod diagnostics;
 mod groups;
 mod hover;
+mod inlay;
 mod navigation;
 mod position;
 mod preview;

@@ -4,6 +4,7 @@ pub mod diagnostics;
 pub mod document;
 pub mod groups;
 pub mod hover;
+pub mod inlay;
 pub mod navigation;
 pub mod position;
 pub mod preview;
@@ -21,9 +22,11 @@ pub mod worker;
 // Standard Uses
 
 // Crate Uses
+use crate::inlay::Hints;
 use crate::server::{Options, Server, TOGGLE_COMMAND};
 use crate::tokens::LEGEND;
 use crate::trace::Limits;
+use crate::worker::Refresh;
 
 // External Uses
 use codeshaper::core::registry::Registry;
@@ -45,6 +48,7 @@ pub fn capabilities() -> ServerCapabilities {
         hover_provider: Some(HoverProviderCapability::Simple(true)),
         code_lens_provider: Some(CodeLensOptions { resolve_provider: Some(false) }),
         definition_provider: Some(OneOf::Left(true)),
+        inlay_hint_provider: Some(OneOf::Left(true)),
         document_highlight_provider: Some(OneOf::Left(true)),
         references_provider: Some(OneOf::Left(true)),
         code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
@@ -80,7 +84,14 @@ pub fn serve_with(connection: &Connection, registry: impl Fn() -> Registry + Sen
 
     let options = Options {
         limits: limits(&parameters),
-        refresh_lenses: parameters["capabilities"]["workspace"]["codeLens"]["refreshSupport"].as_bool().unwrap_or(false),
+        refresh: Refresh {
+            lenses: parameters["capabilities"]["workspace"]["codeLens"]["refreshSupport"].as_bool().unwrap_or(false),
+            hints: parameters["capabilities"]["workspace"]["inlayHint"]["refreshSupport"].as_bool().unwrap_or(false)
+        },
+        hints: Hints {
+            groups: parameters["initializationOptions"]["inlayHints"]["groups"].as_bool().unwrap_or(false),
+            matches: parameters["initializationOptions"]["inlayHints"]["matches"].as_bool().unwrap_or(false)
+        },
         definition_links: parameters["capabilities"]["textDocument"]["definition"]["linkSupport"].as_bool().unwrap_or(false)
     };
 

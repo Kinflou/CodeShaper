@@ -10,6 +10,7 @@ use std::thread::{self, JoinHandle};
 // Crate Uses
 use crate::diagnostics::{coverage, file};
 use crate::hover::hover;
+use crate::inlay::{places, Counts, Hints};
 use crate::position::LineIndex;
 use crate::preview::{configuration, operation_preview, preview};
 use crate::syntax::Outline;
@@ -22,7 +23,7 @@ use codeshaper::core::shaping::operation::session::Preview;
 use codeshaper::core::shaping::patch::trace::Trace;
 use lsp_server::{ErrorCode, Message, Notification, Request, RequestId, Response};
 use lsp_types::notification::{Notification as _, PublishDiagnostics};
-use lsp_types::request::{CodeLensRefresh, Request as _};
+use lsp_types::request::{CodeLensRefresh, InlayHintRefreshRequest, Request as _};
 use lsp_types::{Diagnostic, Hover, HoverContents, Location, MarkupContent, MarkupKind, PublishDiagnosticsParams, Uri};
 use serde_json::json;
 use url::Url;
@@ -54,7 +55,8 @@ struct State {
     revision: u64,
     diagnostics: Vec<Diagnostic>,
     coverage: Vec<Diagnostic>,
-    trace: Option<Arc<Trace>>
+    trace: Option<Arc<Trace>>,
+    counts: Counts
 }
 
 #[derive(Default)]
@@ -70,14 +72,21 @@ pub struct Shared {
     stopping: AtomicBool,
     revisions: AtomicU64,
     asked: AtomicI32,
-    refresh_lenses: bool
+    refresh: Refresh,
+    hints: Hints
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Refresh {
+    pub lenses: bool,
+    pub hints: bool
 }
 
 type Outgoing = Box<dyn Fn(Message) + Send + Sync>;
 
 
 impl Shared {
-    pub fn new(sender: impl Fn(Message) + Send + Sync + 'static, refresh_lenses: bool) -> Self {
+    pub fn new(sender: impl Fn(Message) + Send + Sync + 'static, refresh: Refresh, hints: Hints) -> Self {
         Self {
             sender: Box::new(sender),
             states: Mutex::default(),
@@ -85,7 +94,8 @@ impl Shared {
             stopping: AtomicBool::default(),
             revisions: AtomicU64::default(),
             asked: AtomicI32::default(),
-            refresh_lenses
+            refresh,
+            hints
         }
     }
 
@@ -128,6 +138,10 @@ impl Shared {
         lock(&self.states).get(uri)?.trace.clone()
     }
 
+    pub fn counts(&self, uri: &Uri) -> Counts {
+        lock(&self.states).get(uri).map(|state| state.counts.clone()).unwrap_or_default()
+    }
+
     pub fn cancel(&self, id: RequestId) {
         let mut requests = lock(&self.requests);
 
@@ -136,19 +150,23 @@ impl Shared {
         }
     }
 
-    fn traced(&self, snapshot: &Snapshot, coverage: Vec<Diagnostic>, trace: Option<Arc<Trace>>) {
+    fn traced(&self, snapshot: &Snapshot, coverage: Vec<Diagnostic>, trace: Option<Arc<Trace>>, counts: Counts) {
         let mut states = lock(&self.states);
         let Some(state) = states.get_mut(&snapshot.uri).filter(|state| state.revision == snapshot.revision) else { return };
 
         state.trace = trace;
+        state.counts = counts;
         if state.coverage != coverage {
             state.coverage = coverage;
             self.publish(&snapshot.uri, state);
         }
         drop(states);
 
-        if self.refresh_lenses {
+        if self.refresh.lenses {
             self.ask(CodeLensRefresh::METHOD, json!(null));
+        }
+        if self.refresh.hints && self.hints.matches {
+            self.ask(InlayHintRefreshRequest::METHOD, json!(null));
         }
     }
 
@@ -258,7 +276,18 @@ fn trace(shared: &Arc<Shared>, registry: &Registry, traces: &mut Traces, snapsho
     let trace = traces.get(registry, project, text);
     found.extend(trace.iter().flat_map(|trace| coverage(text, trace)));
 
-    shared.traced(snapshot, found, trace);
+    let mut counts = Counts::default();
+    if shared.hints.matches {
+        let outline = Outline::parse(text);
+
+        for (place, _) in places(&outline) {
+            if !shared.is_current(snapshot) { return }
+            let Some(matches) = target::matches(registry, project, &outline, &place.location) else { continue };
+            counts.insert(place, matches);
+        }
+    }
+
+    shared.traced(snapshot, found, trace, counts);
 }
 
 fn answer(
@@ -277,7 +306,7 @@ fn answer(
 
             Response::new_ok(id.clone(), found)
         }
-        Work::Places(location) => Response::new_ok(id.clone(), places(registry, project, text, &location)),
+        Work::Places(location) => Response::new_ok(id.clone(), target_places(registry, project, text, &location)),
         Work::Preview => preview_response(registry, id, uri, project, text),
         Work::Operation { configuration: path, open } => {
             let keep_going = || !shared.is_cancelled(id);
@@ -292,7 +321,7 @@ fn answer(
     }
 }
 
-fn places(registry: &Registry, project: &Path, text: &str, location: &str) -> Vec<Location> {
+fn target_places(registry: &Registry, project: &Path, text: &str, location: &str) -> Vec<Location> {
     let mut found = vec![];
 
     for places in target::places(registry, project, &Outline::parse(text), location) {

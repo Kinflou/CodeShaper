@@ -8,6 +8,7 @@ use crate::completion::completion;
 use crate::diagnostics::diagnostics;
 use crate::document::{kind, DocumentKind};
 use crate::groups::link_at;
+use crate::inlay::{inlay_hints, Hints};
 use crate::navigation::{definition, references, rename, symbol_at};
 use crate::position::LineIndex;
 use crate::preview::replacement_counts;
@@ -18,7 +19,7 @@ use crate::target;
 use crate::toggle::toggle;
 use crate::tokens::tokens;
 use crate::trace::Limits;
-use crate::worker::{file_uri, path, Shared, Snapshot, Work, Worker};
+use crate::worker::{file_uri, path, Refresh, Shared, Snapshot, Work, Worker};
 
 // External Uses
 use codeshaper::core::registry::Registry;
@@ -29,14 +30,14 @@ use lsp_types::notification::{
     Notification as _
 };
 use lsp_types::request::{
-    ApplyWorkspaceEdit, CodeActionRequest, CodeLensRequest, Completion, DocumentHighlightRequest, DocumentSymbolRequest, ExecuteCommand, FoldingRangeRequest, GotoDefinition, HoverRequest,
+    ApplyWorkspaceEdit, CodeActionRequest, CodeLensRequest, Completion, DocumentHighlightRequest, DocumentSymbolRequest, ExecuteCommand, FoldingRangeRequest, GotoDefinition, HoverRequest, InlayHintRequest,
     PrepareRenameRequest, References, Rename, Request as _, SemanticTokensFullRequest
 };
 use lsp_types::{
     ApplyWorkspaceEditParams, CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, DocumentHighlight, DocumentHighlightParams, ExecuteCommandParams,
     CodeLens, CodeLensParams, Command, CompletionParams, CompletionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse,
-    HoverParams, Location, LocationLink, Position,
+    HoverParams, InlayHint, InlayHintParams, Location, LocationLink, Position,
     Range, ReferenceParams, SemanticTokens, SemanticTokensParams, SemanticTokensResult, Uri,
     DocumentSymbolParams, DocumentSymbolResponse, FoldingRangeParams, PrepareRenameResponse, RenameParams,
     TextDocumentPositionParams, TextEdit, WorkspaceEdit
@@ -55,7 +56,8 @@ const OPERATION_REQUEST: &str = "codeshaper/previewOperation";
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Options {
     pub limits: Limits,
-    pub refresh_lenses: bool,
+    pub refresh: Refresh,
+    pub hints: Hints,
     pub definition_links: bool
 }
 
@@ -65,17 +67,25 @@ pub struct Server<'c> {
     documents: HashMap<Uri, String>,
     shared: Arc<Shared>,
     worker: Worker,
-    definition_links: bool
+    definition_links: bool,
+    hints: Hints
 }
 
 impl<'c> Server<'c> {
     pub fn new(connection: &'c Connection, registry: impl Fn() -> Registry + Send + 'static, options: Options) -> Self {
         let sender = connection.sender.clone();
-        let shared = Arc::new(Shared::new(move |message| { let _ = sender.send(message); }, options.refresh_lenses));
+        let shared = Arc::new(Shared::new(move |message| { let _ = sender.send(message); }, options.refresh, options.hints));
         let own = registry();
         let worker = Worker::start(shared.clone(), registry, options.limits);
 
-        Self { connection, registry: own, documents: HashMap::new(), shared, worker, definition_links: options.definition_links }
+        Self {
+            connection,
+            registry: own,
+            documents: HashMap::new(),
+            shared, worker,
+            definition_links: options.definition_links,
+            hints: options.hints
+        }
     }
 
     pub fn serve(&mut self) -> Result<()> {
@@ -257,6 +267,18 @@ impl<'c> Server<'c> {
                 }
 
                 Response::new_ok(request.id, lenses)
+            }
+            InlayHintRequest::METHOD => {
+                let params: InlayHintParams = serde_json::from_value(request.params).into_diagnostic()?;
+                let uri = params.text_document.uri;
+                let found: Vec<InlayHint> = self.patch_at(&uri, Position::default())
+                    .map(|(_, text, _)| inlay_hints(text, self.hints, &self.shared.counts(&uri)))
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|hint| params.range.start <= hint.position && hint.position <= params.range.end)
+                    .collect();
+
+                Response::new_ok(request.id, found)
             }
             CodeActionRequest::METHOD => {
                 let params: CodeActionParams = serde_json::from_value(request.params).into_diagnostic()?;

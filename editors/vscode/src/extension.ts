@@ -66,6 +66,10 @@ export async function activate(context: ExtensionContext): Promise<void> {
                 samples: configuration.get<number>("hover.samples", 3),
                 lines: configuration.get<number>("hover.lines", 8),
                 characters: configuration.get<number>("hover.characters", 400)
+            },
+            inlayHints: {
+                groups: configuration.get<boolean>("inlayHints.groups", false),
+                matches: configuration.get<boolean>("inlayHints.matches", false)
             }
         }
     };

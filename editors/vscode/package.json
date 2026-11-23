@@ -121,6 +121,16 @@
           "default": 400,
           "minimum": 1,
           "description": "Characters kept from each hover sample before it is cut."
+        },
+        "codeshaper.inlayHints.groups": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show each capture group's number before it. Takes effect after reloading the window."
+        },
+        "codeshaper.inlayHints.matches": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show how many places each location matches, updated on open and save. Takes effect after reloading the window."
         }
       }
     }
