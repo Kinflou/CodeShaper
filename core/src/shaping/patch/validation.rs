@@ -1,11 +1,12 @@
 // Standard Uses
 use std::collections::{HashMap, HashSet};
+use std::ops::Range;
 
 // Crate Uses
-use crate::ast::backend::LanguageBackend;
+use crate::ast::backend::{LanguageBackend, LocationError};
 use crate::expressions::syntax::ExpressionAST;
 use crate::expressions::syntax::parser::parse_expression;
-use crate::shaping::patch::{Actions, Patch};
+use crate::shaping::patch::{pattern, Actions, Patch};
 use crate::shaping::patch::replacer::{check_flags, regex_builder};
 use crate::shaping::patch::source::{ActionSpans, NodeSpans, PatchSource};
 
@@ -82,12 +83,12 @@ pub fn validate(patch: &Patch, backend: Option<&dyn LanguageBackend>) -> Vec<Dia
 }
 
 pub fn validate_source(patch: &Patch, source: &PatchSource, backend: Option<&dyn LanguageBackend>) -> Vec<Diagnostic> {
-    check(patch, Some(&source.spans.actions), backend)
+    check(patch, Some(source), backend)
 }
 
-fn check(patch: &Patch, spans: Option<&ActionSpans>, backend: Option<&dyn LanguageBackend>) -> Vec<Diagnostic> {
-    let mut validator = Validator { backend, ..Validator::default() };
-    validator.actions(&patch.actions, "", spans);
+fn check(patch: &Patch, source: Option<&PatchSource>, backend: Option<&dyn LanguageBackend>) -> Vec<Diagnostic> {
+    let mut validator = Validator { backend, source, ..Validator::default() };
+    validator.actions(&patch.actions, "", source.map(|source| &source.spans.actions));
 
     let calls = std::mem::take(&mut validator.calls);
     for (action, field, name, count, span) in &calls {
@@ -167,6 +168,7 @@ type Call = (String, &'static str, String, usize, Option<SourceSpan>);
 #[derive(Default)]
 struct Validator<'a> {
     backend: Option<&'a dyn LanguageBackend>,
+    source: Option<&'a PatchSource>,
     diagnostics: Vec<Diagnostic>,
     names: HashMap<String, (String, Option<SourceSpan>)>,
     receivers: HashSet<String>,
@@ -180,6 +182,20 @@ impl<'a> Validator<'a> {
     fn report(&mut self, kind: DiagnosticKind, action: &str, field: &'static str, message: String) {
         let span = self.span(field);
         self.diagnostics.push(Diagnostic::new(kind, action, field, message).at(span));
+    }
+
+    fn report_at(
+        &mut self, kind: DiagnosticKind, action: &str, field: &'static str, message: String, range: Option<Range<usize>>
+    ) {
+        let span = self.narrow(field, range);
+        self.diagnostics.push(Diagnostic::new(kind, action, field, message).at(span));
+    }
+
+    fn narrow(&self, field: &str, range: Option<Range<usize>>) -> Option<SourceSpan> {
+        let span = self.span(field)?;
+        let narrowed = self.source.zip(range).and_then(|(source, range)| source.narrow(span, range));
+
+        Some(narrowed.unwrap_or(span))
     }
 
     fn span(&self, field: &str) -> Option<SourceSpan> {
@@ -273,7 +289,8 @@ impl<'a> Validator<'a> {
         let Some(backend) = self.backend else { return };
 
         if let Err(error) = backend.check_location(location) {
-            self.report(DiagnosticKind::LocationNotFound, action, field, error.to_string());
+            let range = error.downcast_ref::<LocationError>().and_then(|error| error.range.clone());
+            self.report_at(DiagnosticKind::LocationNotFound, action, field, error.to_string(), range);
         }
     }
 
@@ -281,7 +298,11 @@ impl<'a> Validator<'a> {
         match regex_builder(regex, flags).build() {
             Ok(regex) => Locals::Groups(regex.captures_len() - 1),
             Err(error) => {
-                self.report(DiagnosticKind::IncorrectRegex, action, field, error.to_string());
+                let (message, range) = match pattern::error(regex, flags) {
+                    Some((message, range)) => (message, Some(range)),
+                    None => (error.to_string(), None)
+                };
+                self.report_at(DiagnosticKind::IncorrectRegex, action, field, message, range);
                 Locals::Unknown
             }
         }
@@ -290,7 +311,7 @@ impl<'a> Validator<'a> {
     fn expression(&mut self, action: &str, field: &'static str, text: &str, locals: Locals, arguments: Option<&str>) {
         match parse_expression(text) {
             Ok(expression) => self.walk(action, field, &expression, locals, arguments),
-            Err(error) => self.report(DiagnosticKind::IncorrectExpression, action, field, error.to_string())
+            Err(error) => self.report_at(DiagnosticKind::IncorrectExpression, action, field, error.message, Some(error.span))
         }
     }
 
@@ -301,23 +322,23 @@ impl<'a> Validator<'a> {
             ExpressionAST::Action(parts) => for part in parts {
                 self.walk(action, field, part, locals, arguments);
             },
-            ExpressionAST::ActionCall((name, call_arguments)) => {
-                let span = self.span(field);
+            ExpressionAST::ActionCall { name, arguments: call_arguments, span } => {
+                let span = self.narrow(field, Some(span.clone()));
                 self.calls.push((action.to_string(), field, name.to_string(), call_arguments.len(), span));
 
                 for argument in call_arguments {
                     self.walk(action, field, argument, locals, arguments);
                 }
             }
-            ExpressionAST::LocalCall(variable) => self.local(action, field, variable, locals),
-            ExpressionAST::ArgumentCall(variable) => match (arguments, variable.parse::<usize>()) {
+            ExpressionAST::LocalCall { name, span } => self.local(action, field, name, span, locals),
+            ExpressionAST::ArgumentCall { name: variable, span } => match (arguments, variable.parse::<usize>()) {
                 (None, _) => {
                     let message = format!("'@[{variable}]' is used where no arguments exist");
-                    self.report(DiagnosticKind::IncorrectArgs, action, field, message);
+                    self.report_at(DiagnosticKind::IncorrectArgs, action, field, message, Some(span.clone()));
                 }
                 (Some(_), Err(_)) => {
                     let message = format!("'@[{variable}]' must be an argument number");
-                    self.report(DiagnosticKind::IncorrectArgs, action, field, message);
+                    self.report_at(DiagnosticKind::IncorrectArgs, action, field, message, Some(span.clone()));
                 }
                 (Some(receiver), Ok(index)) => {
                     let required = self.required.entry(receiver.to_string()).or_default();
@@ -328,7 +349,7 @@ impl<'a> Validator<'a> {
         }
     }
 
-    fn local(&mut self, action: &str, field: &'static str, variable: &str, locals: Locals) {
+    fn local(&mut self, action: &str, field: &'static str, variable: &str, span: &Range<usize>, locals: Locals) {
         let message = match (locals, variable.parse::<usize>()) {
             (Locals::Unknown, _) => return,
             (Locals::Unavailable(reason), _) => format!("'$[{variable}]' has no capture group to refer to: {reason}"),
@@ -338,6 +359,6 @@ impl<'a> Validator<'a> {
             (Locals::Groups(_), Ok(_)) => return
         };
 
-        self.report(DiagnosticKind::IncorrectArgs, action, field, message);
+        self.report_at(DiagnosticKind::IncorrectArgs, action, field, message, Some(span.clone()));
     }
 }

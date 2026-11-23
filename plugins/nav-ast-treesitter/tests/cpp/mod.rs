@@ -6,7 +6,7 @@ use std::rc::Rc;
 // Crate Uses
 
 // External Uses
-use codeshaper_core::ast::backend::LanguageBackend;
+use codeshaper_core::ast::backend::{LanguageBackend, LocationError};
 use codeshaper_core::registry::Registry;
 use codeshaper_core::shaping::patch::Patch;
 use codeshaper_core::shaping::patch::controller::PatchController;
@@ -160,4 +160,19 @@ fn example_patches_validate() {
 
         assert!(errors.is_empty(), "{}: {errors:#?}", path.display());
     }
+}
+
+fn location_range(location: &str) -> Option<String> {
+    let error = TreeSitterBackend::cpp().check_location(location).unwrap_err();
+
+    error.downcast_ref::<LocationError>().unwrap().range.clone().map(|range| location[range].to_string())
+}
+
+#[test]
+fn location_errors_point_at_the_wrong_part() {
+    assert_eq!(location_range("FunctionDefinition.nope.body").as_deref(), Some("nope"));
+    assert_eq!(location_range("  Nope.body").as_deref(), Some("Nope"));
+    assert_eq!(location_range("\n  (function_definition\n    (nope) @target)").as_deref(), Some("nope"));
+    assert_eq!(location_range("(function_definition nope: (_) @target)").as_deref(), Some("nope"));
+    assert_eq!(location_range("((identifier) @target (#eq? @other \"a\"))").as_deref(), Some("other"));
 }

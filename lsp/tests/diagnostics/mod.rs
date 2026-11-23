@@ -66,7 +66,7 @@ fn patch_diagnostics_point_at_values() {
     let found = diagnostics(&codeshaper::registry(), &path, BROKEN);
 
     assert_eq!(codes(&found), vec!["location-not-found", "incorrect-regex", "action-not-found"]);
-    assert_eq!(found[1].range, Range::new(Position::new(8, 17), Position::new(8, 25)));
+    assert_eq!(found[1].range, Range::new(Position::new(8, 23), Position::new(8, 24)));
     assert_eq!(found[1].severity, Some(DiagnosticSeverity::ERROR));
     assert!(found[1].message.starts_with("replacer #1 › from: "));
 }

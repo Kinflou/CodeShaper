@@ -194,8 +194,8 @@ fn spans_point_at_values() {
         (DiagnosticKind::ActionNotFound, "replacer #1", "to"),
     ]);
     assert_eq!(spanned(&content, &diagnostics[0]).1, r#""Missing""#);
-    assert_eq!(spanned(&content, &diagnostics[1]).1, r#"r"old (""#);
-    assert_eq!(spanned(&content, &diagnostics[2]).1, r#""new #[gone]""#);
+    assert_eq!(spanned(&content, &diagnostics[1]).1, "(");
+    assert_eq!(spanned(&content, &diagnostics[2]).1, "#[gone]");
 }
 
 #[test]
@@ -238,4 +238,30 @@ fn calls_pass_enough_arguments() {
     ]);
     assert!(diagnostics[0].message.contains("'#[pair]' is called with 1 argument(s), but uses '@[1]'"));
     assert!(diagnostics[1].message.contains("'#[names]' takes no arguments, but is called with 1"));
+}
+
+fn underlined(from: &str, to: &str) -> Vec<String> {
+    let actions = replacer("Line", "FROM", "TO").replace(r#"r"FROM""#, from).replace(r#""TO""#, to);
+    let (content, diagnostics) = check_source(&actions);
+
+    diagnostics.iter().map(|diagnostic| spanned(&content, diagnostic).1.to_string()).collect()
+}
+
+#[test]
+fn spans_allow_for_escapes() {
+    assert_eq!(underlined(r#"r"(\w+)""#, r##""\t$[0();\n""##), vec!["$[0"]);
+    assert_eq!(underlined(r#"r"(\w+)""#, r##""\u{e9}\"é\\ $[5] $[0]""##), vec!["$[5]"]);
+    assert_eq!(underlined(r#""(\\w+) (""#, r#""$[0]""#), vec!["("]);
+}
+
+#[test]
+fn spans_allow_for_raw_and_multiline_strings() {
+    assert_eq!(underlined(r#"r"(\w+)""#, "r##\"a \"#\n  #[gone] é $[7]\"##"), vec!["$[7]", "#[gone]"]);
+    assert_eq!(underlined("r#\"(\\w+)\n[z\"#", r#""x""#), vec!["["]);
+}
+
+#[test]
+fn each_wrong_call_has_its_own_span() {
+    assert_eq!(underlined(r#"r"old""#, r##""#[one]($[0]) #[two]""##), vec!["$[0]", "#[one]", "#[two]"]);
+    assert_eq!(underlined(r#"r"old""#, r##""a @[0] b""##), vec!["@[0]"]);
 }

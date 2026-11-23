@@ -1,10 +1,28 @@
 // Standard Uses
+use std::fmt::{Display, Formatter};
 use std::ops::Range;
 
 // Crate Uses
 
 // External Uses
-use miette::Result;
+use miette::{Diagnostic, Result};
+
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocationError {
+    pub message: String,
+    pub range: Option<Range<usize>>
+}
+
+impl Display for LocationError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for LocationError {}
+
+impl Diagnostic for LocationError {}
 
 
 pub trait LanguageBackend {

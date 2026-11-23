@@ -4,6 +4,8 @@
 use crate::project;
 
 // External Uses
+use codeshaper_lsp::completion::completion;
+use codeshaper_lsp::diagnostics::diagnostics;
 use codeshaper_lsp::hover::hover;
 use codeshaper_lsp::trace::Traces;
 
@@ -245,4 +247,22 @@ fn broken_patches_show_no_samples() {
     let offset = broken.find("build").unwrap() + 7;
 
     assert_eq!(hover(&codeshaper::registry(), &project, &mut Traces::default(), &broken, offset), None);
+}
+
+#[test]
+fn half_typed_patches_never_panic() {
+    let (_directory, project) = crate::preview::operation();
+    let registry = codeshaper::registry();
+    let path = project.join("patches/half.kdl");
+
+    for patch in [TRACED, INDEXED] {
+        for (offset, removed) in patch.char_indices().step_by(23) {
+            let text = format!("{}{}", &patch[..offset], &patch[offset + removed.len_utf8()..]);
+
+            diagnostics(&registry, &path, &text);
+            completion(&registry, &project, &text, offset);
+            hover(&registry, &project, &mut Traces::default(), &text, offset);
+            Traces::default().get(&registry, &project, &text);
+        }
+    }
 }

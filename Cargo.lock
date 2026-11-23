@@ -257,6 +257,7 @@ dependencies = [
  "pretty_assertions",
  "regex",
  "regex-automata",
+ "regex-syntax",
  "tempfile",
 ]
 
