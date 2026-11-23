@@ -42,6 +42,13 @@
         "injectTo": [
           "source.kdl.codeshaper"
         ]
+      },
+      {
+        "scopeName": "codeshaper.fields.injection",
+        "path": "./syntaxes/fields.tmLanguage.json",
+        "injectTo": [
+          "source.kdl.codeshaper"
+        ]
       }
     ],
     "commands": [

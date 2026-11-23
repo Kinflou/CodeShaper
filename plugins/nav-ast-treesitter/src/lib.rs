@@ -194,18 +194,31 @@ impl LanguageBackend for TreeSitterBackend {
         Ok(format!("{}: {}", self.name, segments.join(" › ")))
     }
 
-    fn location_names(&self, segment: usize) -> Vec<String> {
-        let mut names: Vec<String> = (0..self.language.node_kind_count() as u16)
+    fn node_kinds(&self) -> Vec<String> {
+        let mut kinds: Vec<String> = (0..self.language.node_kind_count() as u16)
             .filter(|id| self.language.node_kind_is_named(*id) && self.language.node_kind_is_visible(*id))
             .filter_map(|id| self.language.node_kind_for_id(id))
             .filter(|kind| !kind.starts_with('_'))
-            .map(to_pascal_case)
+            .map(str::to_string)
             .collect();
 
+        kinds.sort();
+        kinds.dedup();
+        kinds
+    }
+
+    fn fields(&self) -> Vec<String> {
+        (1..=self.language.field_count() as u16)
+            .filter_map(|id| self.language.field_name_for_id(id))
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn location_names(&self, segment: usize) -> Vec<String> {
+        let mut names: Vec<String> = self.node_kinds().iter().map(|kind| to_pascal_case(kind)).collect();
+
         if segment > 0 {
-            names.extend((1..=self.language.field_count() as u16)
-                .filter_map(|id| self.language.field_name_for_id(id))
-                .map(to_pascal_case));
+            names.extend(self.fields().iter().map(|field| to_pascal_case(field)));
         }
 
         names.sort();

@@ -6,6 +6,7 @@ pub mod hover;
 pub mod navigation;
 pub mod position;
 pub mod preview;
+pub mod query;
 pub mod schema;
 pub mod server;
 pub mod symbols;
@@ -35,7 +36,7 @@ pub fn capabilities() -> ServerCapabilities {
     ServerCapabilities {
         text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
         completion_provider: Some(CompletionOptions {
-            trigger_characters: Some(["[", ".", "\""].map(str::to_string).to_vec()),
+            trigger_characters: Some(["[", ".", "\"", "(", "#", "@"].map(str::to_string).to_vec()),
             ..CompletionOptions::default()
         }),
         hover_provider: Some(HoverProviderCapability::Simple(true)),

@@ -1,10 +1,12 @@
 // Standard Uses
+use std::collections::BTreeSet;
 use std::ops::Range;
 use std::path::Path;
 
 // Crate Uses
 use crate::document::ast_set;
 use crate::position::LineIndex;
+use crate::query::{captures, is_query, part_at, Part, PREDICATES};
 use crate::schema::{self, regex_field, LOCATIONS};
 use crate::syntax::{Context, Outline};
 use crate::target::every_file;
@@ -51,11 +53,12 @@ pub fn completion(registry: &Registry, project: &Path, text: &str, offset: usize
             }
 
             let location = LOCATIONS.contains(&outline.nodes[node].name.as_str());
-            if !location || before.trim_start().starts_with('(') {
-                return vec![]
-            }
+            if !location { return vec![] }
 
             let Some(backend) = backend(registry, project, &outline) else { return vec![] };
+            if is_query(&literal) {
+                return query(backend, text, literal.content, offset)
+            }
 
             backend.location_names(before.matches('.').count()).iter()
                 .map(|name| item(name, CompletionItemKind::CLASS, Some(backend.name())))
@@ -63,6 +66,38 @@ pub fn completion(registry: &Registry, project: &Path, text: &str, offset: usize
         }
         Context::None => vec![]
     }
+}
+
+fn query(backend: &dyn LanguageBackend, text: &str, content: Range<usize>, offset: usize) -> Vec<CompletionItem> {
+    let source = &text[content.clone()];
+    let Some((part, word)) = part_at(source, offset - content.start) else { return vec![] };
+    let range = LineIndex::new(text).range(content.start + word.start..content.start + word.end);
+    let separator = if source[word.end..].trim_start().starts_with(':') { "" } else { ": " };
+
+    let names: Vec<(String, String)> = match part {
+        Part::Kind => backend.node_kinds().into_iter().map(|kind| (kind, String::new())).collect(),
+        Part::Field => backend.fields().into_iter().map(|field| (field, separator.to_string())).collect(),
+        Part::Predicate => PREDICATES.iter().map(|(name, _)| (name.to_string(), String::new())).collect(),
+        Part::Capture => {
+            let mut names = captures(&format!("{}{}", &source[..word.start], &source[word.end..]))
+                .into_iter().map(str::to_string).collect::<BTreeSet<_>>();
+            names.insert("target".to_string());
+            names.into_iter().map(|name| (name, String::new())).collect()
+        }
+    };
+    let kind = match part {
+        Part::Kind => CompletionItemKind::CLASS,
+        Part::Field => CompletionItemKind::FIELD,
+        Part::Predicate => CompletionItemKind::FUNCTION,
+        Part::Capture => CompletionItemKind::VARIABLE
+    };
+
+    names.into_iter()
+        .map(|(name, suffix)| CompletionItem {
+            text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(range, format!("{name}{suffix}")))),
+            ..item(&name, kind, Some(backend.name()))
+        })
+        .collect()
 }
 
 fn paths(registry: &Registry, project: &Path, text: &str, content: Range<usize>) -> Vec<CompletionItem> {

@@ -37,6 +37,14 @@ pub trait LanguageBackend {
         self.check_location(location).map(|_| format!("{} location `{}`", self.name(), location.trim()))
     }
 
+    fn node_kinds(&self) -> Vec<String> {
+        vec![]
+    }
+
+    fn fields(&self) -> Vec<String> {
+        vec![]
+    }
+
     fn location_names(&self, _segment: usize) -> Vec<String> {
         vec![]
     }

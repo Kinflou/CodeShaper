@@ -6,13 +6,16 @@ use std::rc::Rc;
 // Crate Uses
 use crate::completion::backend;
 use crate::navigation::{calls, symbol_at, Symbol};
+use crate::query::{is_query, part_at, Part, PREDICATES};
 use crate::schema::{regex_field, LOCATIONS};
 use crate::syntax::{is_name, Literal, Outline, ACTIONS};
 use crate::target::{self, matches};
 use crate::trace::{diff, fenced, groups, inline, truncate, Limits, Traces};
 
 // External Uses
+use codeshaper::core::ast::backend::LanguageBackend;
 use codeshaper::core::registry::Registry;
+use codeshaper::core::shaping::operation::LocationMatches;
 use codeshaper::core::shaping::patch::replacer::FLAGS;
 use codeshaper::core::shaping::patch::trace::{ActionTrace, Trace};
 use url::Url;
@@ -45,7 +48,7 @@ pub fn hover(
     let field = outline.nodes[node].name.as_str();
 
     if LOCATIONS.contains(&field) {
-        return location(registry, project, &outline, literal)
+        return location(registry, project, &outline, text, literal, offset)
     }
 
     if outline.nodes[node].parent.is_none() {
@@ -186,18 +189,54 @@ fn results(action: Option<&ActionTrace>, trace: &Trace, language: &str, limits: 
     value
 }
 
-fn location(registry: &Registry, project: &Path, outline: &Outline, literal: Literal) -> Option<(String, Range<usize>)> {
+fn location(
+    registry: &Registry, project: &Path, outline: &Outline, text: &str, literal: Literal, offset: usize
+) -> Option<(String, Range<usize>)> {
     let backend = backend(registry, project, outline)?;
+
+    if is_query(&literal) && literal.content.start <= offset && offset <= literal.content.end {
+        let source = &text[literal.content.clone()];
+        let found = part_at(source, offset - literal.content.start).filter(|(_, word)| !word.is_empty());
+
+        if let Some((part, word)) = found {
+            let range = literal.content.start + word.start..literal.content.start + word.end;
+            let counted = |query: &str| matches(registry, project, outline, query).map(summary).unwrap_or_default();
+
+            return Some((query(backend, part, &source[word], source, counted), range))
+        }
+    }
+
     let description = match backend.describe_location(&literal.value) {
         Ok(description) => description,
         Err(error) => return Some((format!("Not a {} location: {error}", backend.name()), literal.range))
     };
 
-    let found = matches(registry, project, outline, &literal.value).map(|matches| format!(
-        "\n\nMatches {} place(s) in {} of {} target file(s)", matches.places, matches.matched_files, matches.files
-    ));
+    let found = matches(registry, project, outline, &literal.value).map(summary);
 
     Some((description + &found.unwrap_or_default(), literal.range))
+}
+
+fn summary(matches: LocationMatches) -> String {
+    format!("\n\nMatches {} place(s) in {} of {} target file(s)", matches.places, matches.matched_files, matches.files)
+}
+
+fn query(backend: &dyn LanguageBackend, part: Part, word: &str, source: &str, counted: impl Fn(&str) -> String) -> String {
+    let name = backend.name();
+
+    match part {
+        Part::Kind if word == "_" => "Any named node".to_string(),
+        Part::Kind if backend.node_kinds().iter().any(|kind| kind == word) =>
+            format!("`{word}`: {name} node kind{}", counted(&format!("({word}) @target"))),
+        Part::Kind => format!("`{word}` is not a {name} node kind"),
+        Part::Field if backend.fields().iter().any(|field| field == word.trim_start_matches('!')) => format!("`{word}`: {name} field"),
+        Part::Field => format!("`{word}` is not a {name} field"),
+        Part::Predicate => match PREDICATES.iter().find(|(predicate, _)| *predicate == word) {
+            Some((_, meaning)) => format!("`#{word}`: {meaning}"),
+            None => format!("`#{word}` does not filter matches")
+        },
+        Part::Capture if word == "target" => format!("`@target`: the place this location points at{}", counted(source)),
+        Part::Capture => format!("`@{word}`: a capture, for predicates to refer to")
+    }
 }
 
 fn traced(

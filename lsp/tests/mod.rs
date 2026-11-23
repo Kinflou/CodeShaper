@@ -6,6 +6,7 @@ mod navigation;
 mod position;
 mod preview;
 mod protocol;
+mod query;
 mod symbols;
 mod syntax;
 mod tokens;
