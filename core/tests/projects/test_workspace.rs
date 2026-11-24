@@ -48,3 +48,11 @@ fn load_test_workspace_patch() {
     assert!(!patch.enabled);
     assert_eq!(patch.file, "CallerModule.cpp");
 }
+
+#[test]
+fn missing_projects_are_named() {
+    let directory = tempfile::tempdir().unwrap();
+    let error = Project::from_directory(directory.path()).err().unwrap().to_string();
+
+    assert!(error.starts_with("Could not find project.kdl at"), "{error}");
+}

@@ -141,7 +141,7 @@ pub fn options(outline: &Outline) -> impl Iterator<Item = &Node> {
 }
 
 fn saved_settings(path: &Path, text: &str) -> Option<ProjectSettings> {
-    let content = fs::read_to_string(project(path, text)?.join("settings.kdl")).ok()?;
+    let content = fs::read_to_string(project(path, text)?.join(settings::FILE)).ok()?;
 
     settings::from_kdl(&content).ok()
 }

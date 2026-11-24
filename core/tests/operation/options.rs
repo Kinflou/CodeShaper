@@ -70,7 +70,7 @@ fn set(directory: &TempDir, path: &str, from: &str, to: &str) {
 
 fn on_disk(result: &str) -> TempDir {
     let directory = workspace(result, &[("rename.kdl", rename("lines", "Line"))]);
-    set(&directory, "shaping/settings.kdl", "\"list\"", "\"disk\"");
+    set(&directory, "shaping/project.kdl", "\"list\"", "\"disk\"");
 
     directory
 }
@@ -156,7 +156,7 @@ fn configurations_replace_the_defaults() {
         (" {\n    exclude \"c\" \"d\"\n}", options(&[("files", &["a", "b"]), ("exclude", &["c", "d"])]))
     ] {
         let directory = on_disk("replace");
-        set(&directory, "shaping/settings.kdl", "\"disk\"", defaults);
+        set(&directory, "shaping/project.kdl", "\"disk\"", defaults);
         set(&directory, "configuration.kdl", "\"target/\"", &format!("\"target/\"{overrides}"));
 
         let (registry, given) = disk();
@@ -192,7 +192,7 @@ fn unknown_options_are_rejected() {
     };
 
     let directory = on_disk("replace");
-    set(&directory, "shaping/settings.kdl", "\"disk\"", "\"disk\" {\n    include \"a\"\n}");
+    set(&directory, "shaping/project.kdl", "\"disk\"", "\"disk\" {\n    include \"a\"\n}");
     assert_eq!(error(&directory), "The target type 'disk' has no option 'include', its options are: files, exclude");
 
     let directory = workspace("replace", &[]);

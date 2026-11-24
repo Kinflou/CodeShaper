@@ -42,7 +42,7 @@ fn both() -> Registry {
 
 fn project(ast_set: &str, patches: &[(&str, String)]) -> TempDir {
     let directory = workspace("replace", patches);
-    let settings = directory.path().join("shaping/settings.kdl");
+    let settings = directory.path().join("shaping/project.kdl");
     fs::write(&settings, fs::read_to_string(&settings).unwrap().replace("ast-set \"lines\"", ast_set)).unwrap();
 
     directory

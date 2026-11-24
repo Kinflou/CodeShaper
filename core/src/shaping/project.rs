@@ -29,7 +29,7 @@ impl Project {
         patch.ancestors().skip(1)
             .filter(|ancestor| ancestor.file_name().is_some_and(|name| name == "patches"))
             .filter_map(Path::parent)
-            .find(|project| project.join("settings.kdl").is_file())
+            .find(|project| project.join(settings::FILE).is_file())
             .map(Path::to_path_buf)
     }
 

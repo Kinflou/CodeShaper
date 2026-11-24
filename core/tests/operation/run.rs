@@ -32,8 +32,8 @@ impl TargetLoader for GroupsLoader {
 }
 
 fn run_groups(directory: &TempDir, files: &[&'static str]) -> Result<Vec<FileReport>> {
-    let settings = read(directory, "shaping/settings.kdl").replace("\"list\"", "\"groups\"");
-    fs::write(directory.path().join("shaping/settings.kdl"), settings).unwrap();
+    let settings = read(directory, "shaping/project.kdl").replace("\"list\"", "\"groups\"");
+    fs::write(directory.path().join("shaping/project.kdl"), settings).unwrap();
 
     let mut registry = registry();
     registry.add_loader(Box::new(GroupsLoader(files.to_vec())));

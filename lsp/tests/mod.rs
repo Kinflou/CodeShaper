@@ -50,7 +50,7 @@ pub fn project(patches: &[(&str, &str)]) -> (TempDir, PathBuf) {
     let project = directory.path().join("shaping_project");
 
     fs::create_dir_all(project.join("patches")).unwrap();
-    fs::write(project.join("settings.kdl"), SETTINGS).unwrap();
+    fs::write(project.join("project.kdl"), SETTINGS).unwrap();
 
     for (name, content) in patches {
         fs::write(project.join("patches").join(name), content).unwrap();

@@ -176,7 +176,7 @@ fn apply_uses_the_projects_language() {
     assert!(apply(&alone, &file, &[]).2.contains("use --language"));
     assert!(apply(&alone, &file, &["--language", "cpp"]).1.contains("+++ b/"));
 
-    let settings = directory.path().join("shaping_project/settings.kdl");
+    let settings = directory.path().join("shaping_project/project.kdl");
     let content = fs::read_to_string(&settings).unwrap();
     fs::write(&settings, content.replace("ast-set \"cpp\"", "ast-set { cpp \"Return*.cpp\"; }")).unwrap();
     assert!(apply(&patch, &file, &[]).1.contains("+++ b/"));

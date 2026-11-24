@@ -107,7 +107,7 @@ pub fn workspace(result: &str, patches: &[(&str, String)]) -> TempDir {
         ("configuration.kdl", format!(
             "name \"Run\"\nproject \"shaping/\"\ntarget \"target/\"\noutput \"output/\"\nbackup \"backup/\"\nresult \"{result}\"\n"
         )),
-        ("shaping/settings.kdl", "name \"Run\"\ntarget \"list\"\nast-set \"lines\"\ndescription \"\"\n".to_string()),
+        ("shaping/project.kdl", "name \"Run\"\ntarget \"list\"\nast-set \"lines\"\ndescription \"\"\n".to_string()),
         ("target/a.txt", "old one\nkeep\n".to_string()),
         ("target/nested/b.txt", "keep\n".to_string()),
         ("target/c.md", "old three\n".to_string()),

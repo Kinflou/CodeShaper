@@ -16,7 +16,7 @@
   ],
   "activationEvents": [
     "onLanguage:kdl",
-    "workspaceContains:**/settings.kdl"
+    "workspaceContains:**/project.kdl"
   ],
   "main": "./out/extension.js",
   "contributes": {

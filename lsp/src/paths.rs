@@ -15,6 +15,7 @@ use crate::syntax::{Entry, Outline};
 
 // External Uses
 use codeshaper::core::shaping::patch::source::PatchSource;
+use codeshaper::core::shaping::project::settings::FILE;
 use codeshaper::core::target::Options;
 use codeshaper_target_text::options::{listed, Field, Listed, FILES};
 use codeshaper_target_text::{excludes, is_exact, matches, names, plain, EVERY_FILE, WILDCARDS};
@@ -302,7 +303,7 @@ pub fn opening(path: &Path, text: &str, offset: usize) -> Option<(Range<usize>, 
         (_, DocumentKind::Configuration) if is_folder(&outline, &entry, offset) => {
             let folder = directory.join(&value);
             let name = match outline.nodes[entry.node].name.as_str() {
-                "project" => "settings.kdl",
+                "project" => FILE,
                 "target" => "project.godot",
                 _ => return None
             };

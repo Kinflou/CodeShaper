@@ -31,7 +31,7 @@ pub fn kind(path: &Path) -> DocumentKind {
     }
 
     match path.file_name().and_then(|name| name.to_str()) {
-        Some("settings.kdl") => DocumentKind::Settings,
+        Some(settings::FILE) => DocumentKind::Settings,
         Some("configuration.kdl") => DocumentKind::Configuration,
         _ if is_configuration(path) => DocumentKind::Configuration,
         _ => DocumentKind::Other
@@ -46,7 +46,7 @@ fn is_configuration(path: &Path) -> bool {
 }
 
 pub fn ast_set(project: &Path) -> Option<AstSet> {
-    let content = fs::read_to_string(project.join("settings.kdl")).ok()?;
+    let content = fs::read_to_string(project.join(settings::FILE)).ok()?;
 
     settings::from_kdl(&content).ok().map(|settings| settings.ast_set)
 }

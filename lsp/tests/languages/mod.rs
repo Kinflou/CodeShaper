@@ -21,7 +21,7 @@ fn settings(ast_set: &str) -> String {
 
 fn project(ast_set: &str) -> (TempDir, PathBuf) {
     let (directory, project) = operation();
-    fs::write(project.join("settings.kdl"), settings(ast_set)).unwrap();
+    fs::write(project.join("project.kdl"), settings(ast_set)).unwrap();
 
     (directory, project)
 }
@@ -53,7 +53,7 @@ fn languages_come_from_the_matched_files() {
     assert_eq!(names("*.cpp"), vec!["gdscript", "cpp"]);
     assert_eq!(names("*.rs"), Vec::<String>::new());
 
-    fs::write(project.join("settings.kdl"), settings("ast-set {\n    cpp \"*\"\n}")).unwrap();
+    fs::write(project.join("project.kdl"), settings("ast-set {\n    cpp \"*\"\n}")).unwrap();
     forget_languages();
     assert_eq!(names("a.cpp"), vec!["cpp"]);
 }
@@ -80,7 +80,7 @@ fn alias_and_ast_set_suggest_languages() {
 fn unknown_languages_are_pointed_at() {
     let registry = codeshaper::registry();
     let (_directory, project) = project("ast-set \"cpp\"");
-    let found = |ast_set: &str| diagnostics(&registry, &project.join("settings.kdl"), &settings(ast_set));
+    let found = |ast_set: &str| diagnostics(&registry, &project.join("project.kdl"), &settings(ast_set));
 
     assert_eq!(found("ast-set \"cpp\""), vec![]);
     assert_eq!(found("ast-set \"target\""), vec![]);
@@ -118,7 +118,7 @@ fn redundant_aliases_are_faded() {
     assert_eq!(redundant_alias(&project, RENAME), None);
     assert_eq!(redundant_alias(&project, &named.replace("\"cpp\"", "\"gdscript\"")), None);
 
-    fs::write(project.join("settings.kdl"), settings("ast-set {\n    cpp \"*\"\n}")).unwrap();
+    fs::write(project.join("project.kdl"), settings("ast-set {\n    cpp \"*\"\n}")).unwrap();
     assert_eq!(redundant_alias(&project, &named), None);
 }
 

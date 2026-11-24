@@ -86,9 +86,9 @@ fn parse_errors_use_the_label() {
 fn settings_errors_are_reported() {
     let (_directory, project) = project(&[]);
     let text = "name \"Test\"\ntarget \"text\"\n";
-    fs::write(project.join("settings.kdl"), text).unwrap();
+    fs::write(project.join("project.kdl"), text).unwrap();
 
-    let found = diagnostics(&codeshaper::registry(), &project.join("settings.kdl"), text);
+    let found = diagnostics(&codeshaper::registry(), &project.join("project.kdl"), text);
 
     assert_eq!(found.len(), 1);
     assert!(found[0].message.contains("ast-set"));

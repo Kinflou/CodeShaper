@@ -32,7 +32,7 @@ pub fn operation() -> (TempDir, PathBuf) {
     let files = [
         ("configuration.kdl", "name \"Preview\"\nproject \"shaping_project/\"\ntarget \"target/\"\noutput \"out/\"\nresult \"replace\"\n"),
         ("other.kdl", "name \"Other\"\nproject \"elsewhere/\"\ntarget \"target/\"\noutput \"out/\"\nresult \"replace\"\n"),
-        ("shaping_project/settings.kdl", "name \"Preview\"\ntarget \"text\"\nast-set \"cpp\"\ndescription \"\"\n"),
+        ("shaping_project/project.kdl", "name \"Preview\"\ntarget \"text\"\nast-set \"cpp\"\ndescription \"\"\n"),
         ("shaping_project/patches/rename.kdl", RENAME),
         ("target/a.cpp", "void old() {}\n"),
         ("target/b.cpp", "void keep() {}\n"),

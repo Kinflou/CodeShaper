@@ -9,9 +9,11 @@ use crate::shaping::project::ast_set::AstSet;
 use crate::shaping::target::Target;
 
 // External Uses
-use miette::{miette, bail, Context, IntoDiagnostic, Report, Result};
-use glob::glob;
+use miette::{bail, Context, IntoDiagnostic, Report, Result};
 use knus::parse;
+
+
+pub const FILE: &str = "project.kdl";
 
 
 #[derive(Default, Debug, Clone, PartialEq)]
@@ -30,42 +32,27 @@ pub struct ProjectSettings {
 impl ProjectSettings {
 
     pub fn from_path(path: &Path) -> Result<Self> {
-        let mut search = glob(format!("{}settings.*", path.to_str().unwrap()).as_str())
-            .into_diagnostic()
-            .context("Failed to search for glob pattern")
-            .unwrap();
+        let settings = path.join(FILE);
 
-        let settings = search.next()
-            .ok_or_else(|| miette!("Could not find any file named 'settings.*' as '*' being a supported extension\
-            \nat {}", path.to_str().unwrap()))?
-            .into_diagnostic()?;
+        if !settings.is_file() {
+            bail!("Could not find {FILE} at {}", path.display());
+        }
 
-        let extension = settings.extension().unwrap().to_str().unwrap();
         let content = fs::read_to_string(&settings)
             .into_diagnostic()
-            .context("Could not read file")
-            .unwrap();
+            .wrap_err_with(|| format!("Could not read {}", settings.display()))?;
 
-        from_extension(content.as_str(), extension)
+        from_kdl(&content)
     }
 }
-
-
-fn from_extension(content: &str, extension: &str) -> Result<ProjectSettings> {
-    match extension {
-        "kdl" => from_kdl(content),
-        &_ => { bail!("Project settings extension '{}' is not supported", extension) }
-    }
-}
-
 
 
 pub fn from_kdl(content: &str) -> Result<ProjectSettings> {
-    let settings = parse::<ProjectSettings>("settings.kdl", content).map_err(Report::new)?;
+    let settings = parse::<ProjectSettings>(FILE, content).map_err(Report::new)?;
 
     match unix(content) {
         Cow::Borrowed(_) => Ok(settings),
-        Cow::Owned(content) => parse::<ProjectSettings>("settings.kdl", &content).map_err(Report::new)
+        Cow::Owned(content) => parse::<ProjectSettings>(FILE, &content).map_err(Report::new)
     }
 }
 

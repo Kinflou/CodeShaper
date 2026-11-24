@@ -499,8 +499,8 @@ fn refused_operations_say_why() {
     let message = response.response_result.unwrap_err().message;
     assert!(message.contains("No action named 'gone'"), "{message}");
 
-    let settings = fs::read_to_string(project.join("settings.kdl")).unwrap();
-    let other = client.open(&directory.path().join("shaping_project/settings.kdl"), &settings);
+    let settings = fs::read_to_string(project.join("project.kdl")).unwrap();
+    let other = client.open(&directory.path().join("shaping_project/project.kdl"), &settings);
     let response = client.request("codeshaper/previewOperation", serde_json::json!({ "uri": other.as_str() }));
     assert_eq!(response.response_result.unwrap_err().message, "Not an open patch or configuration");
 
@@ -526,14 +526,14 @@ fn failed_previews_say_where() {
     }
 
     let uri = client.open(&project.join("patches/rename.kdl"), RENAME);
-    let settings = fs::read_to_string(project.join("settings.kdl")).unwrap();
-    fs::write(project.join("settings.kdl"), format!("{}\nname \"B\" }}\n", settings.trim_end())).unwrap();
+    let settings = fs::read_to_string(project.join("project.kdl")).unwrap();
+    fs::write(project.join("project.kdl"), format!("{}\nname \"B\" }}\n", settings.trim_end())).unwrap();
     let line = settings.trim_end().lines().count() + 1;
 
     for method in ["codeshaper/preview", "codeshaper/previewOperation"] {
         let response = client.request(method, serde_json::json!({ "uri": uri.as_str() }));
         let message = response.response_result.unwrap_err().message;
-        assert!(message.contains(&format!("settings.kdl:{line}:10: found `}}`")), "{message}");
+        assert!(message.contains(&format!("project.kdl:{line}:10: found `}}`")), "{message}");
     }
 
     client.stop();
@@ -551,7 +551,7 @@ fn target(files: &[&str]) -> (TempDir, PathBuf) {
         fs::write(path, "").unwrap();
     }
 
-    let settings = directory.path().join("shaping/settings.kdl");
+    let settings = directory.path().join("shaping/project.kdl");
     fs::create_dir(directory.path().join("shaping")).unwrap();
     fs::write(&settings, FILES).unwrap();
     fs::write(directory.path().join("configuration.kdl"), CONFIGURATION).unwrap();
@@ -690,7 +690,7 @@ fn saved_settings_recheck_open_patches() {
     client.open(&project.join("patches/rename.kdl"), RENAME);
     assert_eq!(client.published(), Vec::<String>::new());
 
-    let path = project.join("settings.kdl");
+    let path = project.join("project.kdl");
     let text = fs::read_to_string(&path).unwrap().replace("ast-set \"cpp\"", "ast-set \"target\"");
     fs::write(&path, &text).unwrap();
     let uri = client.open(&path, &text);
@@ -747,7 +747,7 @@ fn files_in_targets_elsewhere_are_followed() {
     let (directory, path) = target(&["a.cpp", "b.cpp", "src/c.cpp"]);
     fs::create_dir_all(directory.path().join("work/shaping")).unwrap();
     let text = CONFIGURATION.replace("\"code/\"", "\"../code/\" {\n    files \"late.cpp\"\n}");
-    fs::copy(&path, directory.path().join("work/shaping/settings.kdl")).unwrap();
+    fs::copy(&path, directory.path().join("work/shaping/project.kdl")).unwrap();
     let configuration = directory.path().join("work/engine.kdl");
     fs::write(&configuration, &text).unwrap();
     let client = Client::start();

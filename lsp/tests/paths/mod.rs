@@ -33,7 +33,7 @@ fn workspace() -> (TempDir, [PathBuf; 2]) {
         write(&directory, &format!("code/{file}"), "");
     }
 
-    let settings = write(&directory, "shaping/settings.kdl", &settings(""));
+    let settings = write(&directory, "shaping/project.kdl", &settings(""));
     let configuration = write(&directory, "configuration.kdl", &configuration("code/", ""));
     (directory, [settings, configuration])
 }
@@ -218,7 +218,7 @@ fn configurations_are_known_by_content() {
     for content in ["", "project \"a\"\n", "project\ntarget\nresult\n", "name \"A\"\ngroup \"root\" {\n    files \"*\"\n}\n"] {
         assert_eq!(kind(&write(&directory, "other.kdl", content)), DocumentKind::Other, "{content}");
     }
-    assert_eq!(kind(&directory.path().join("code/project.kdl")), DocumentKind::Other);
+    assert_eq!(kind(&directory.path().join("shaping/project.kdl")), DocumentKind::Settings);
 }
 
 #[test]
@@ -373,7 +373,7 @@ fn defaults_are_checked_for_every_target() {
 #[test]
 fn configurations_show_what_the_defaults_break() {
     let (directory, [_, path]) = workspace();
-    write(&directory, "shaping/settings.kdl", &settings("files \"a.cpp\" \"gone.cpp\" \"*.rs\"\n    exclude \"*.py\" \"[\""));
+    write(&directory, "shaping/project.kdl", &settings("files \"a.cpp\" \"gone.cpp\" \"*.rs\"\n    exclude \"*.py\" \"[\""));
     let check = |text: &str| {
         let mut diagnostics = check(&path, text);
         diagnostics.extend(check_patterns(&path, text, &|| true).unwrap());
@@ -451,7 +451,7 @@ fn entries_open_what_they_name() {
     }
 
     let text = configuration("code/", "");
-    assert_eq!(opened(&paths[1], &text, "shaping"), Some(("shaping/".to_string(), file("shaping/settings.kdl"))));
+    assert_eq!(opened(&paths[1], &text, "shaping"), Some(("shaping/".to_string(), file("shaping/project.kdl"))));
     assert_eq!(opened(&paths[1], &text, "code"), None);
     assert_eq!(opened(&paths[1], &text, "out/"), None);
     write(&directory, "code/project.godot", "");
@@ -484,7 +484,7 @@ fn patterns_are_explained() {
     write(&directory, "engine.kdl", &configuration("engine/", "files \"a.cpp\""));
     assert_eq!(explained(path, &text, "files").unwrap(), "Used for every target, except the ones of `engine.kdl` that have their own");
 
-    write(&directory, "shaping/settings.kdl", &text);
+    write(&directory, "shaping/project.kdl", &text);
     let text = configuration("code/", "files \"a.cpp\"\n    exclude \"b*\"");
     assert_eq!(explained(&paths[1], &text, "files").unwrap(), "Used instead of the project's `files`:\n\n- `*.cpp`");
     assert_eq!(explained(&paths[1], &text, "exclude").unwrap(), "The project has no default `exclude`");
