@@ -1,14 +1,14 @@
 import { window, CancellationToken } from "vscode";
 import { LanguageClient } from "vscode-languageclient/node";
 import { reason } from "../errors";
-import { Subject } from "./copy";
+import { Origin, Subject } from "./copy";
 import { Block, BlockHint, FilesResult, Place, PlainLocation, PlainRange } from "./protocol";
 
 export class Requests {
     constructor(private readonly client: LanguageClient) {}
 
-    files(uri: string): Promise<FilesResult | undefined> {
-        return this.loud("codeshaper/explore", { uri });
+    files({ start, patch }: Origin): Promise<FilesResult | undefined> {
+        return this.loud("codeshaper/explore", { uri: start, patch });
     }
 
     block(subject: Subject, range: PlainRange): Promise<Block | null | undefined> {
@@ -49,6 +49,6 @@ export class Requests {
     }
 }
 
-function about({ document, start, file }: Subject): object {
-    return { uri: start, file, text: document.getText() };
+function about({ document, start, patch, file }: Subject): object {
+    return { uri: start, patch, file, text: document.getText() };
 }

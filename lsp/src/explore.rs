@@ -9,6 +9,7 @@ use crate::document::{kind, DocumentKind};
 use crate::position::LineIndex;
 use crate::preview::configuration;
 use crate::schema::LOCATIONS;
+use crate::section::views;
 use crate::syntax::Outline;
 use crate::target;
 use crate::worker::{file_uri, path};
@@ -132,6 +133,10 @@ impl<'p> Asked<'p> {
         Ok(start..end.max(start))
     }
 
+    fn patch(&self) -> Option<&str> {
+        self.params["patch"].as_str()
+    }
+
     fn location(&self) -> Result<&str> {
         self.params["location"].as_str().ok_or_else(|| miette!("The request has no location"))
     }
@@ -142,7 +147,7 @@ pub fn answer(
     registry: &Registry, located: &mut Located, method: &str, start: &Path, params: &Value, open: &Open, keep_going: &dyn Fn() -> bool
 ) -> Result<Value> {
     match method {
-        FILES_REQUEST => Ok(listed(&files(registry, start, open)?)),
+        FILES_REQUEST => Ok(listed(&files(registry, start, params["patch"].as_str(), open)?)),
         BLOCK_REQUEST => {
             let asked = Asked::new(params)?;
 
@@ -185,10 +190,10 @@ pub fn answer(
     }
 }
 
-pub fn files(registry: &Registry, start: &Path, open: &Open) -> Result<Files> {
-    let (configuration, patch) = match kind(start) {
-        DocumentKind::Patch { project } => (configuration(&project)?, target::patch(&Outline::parse(&read(start, open)?))),
-        DocumentKind::Configuration => (start.to_path_buf(), Patch::default()),
+pub fn files(registry: &Registry, start: &Path, name: Option<&str>, open: &Open) -> Result<Files> {
+    let (configuration, patches) = match kind(start) {
+        DocumentKind::Patch { project } => (configuration(&project)?, patches(&read(start, open)?, name)?),
+        DocumentKind::Configuration => (start.to_path_buf(), vec![Patch::default()]),
         _ => bail!("{} is not a patch or a configuration", start.display())
     };
 
@@ -205,17 +210,31 @@ pub fn files(registry: &Registry, start: &Path, open: &Open) -> Result<Files> {
     };
 
     let solution = operation.target(registry)?;
-    let wanted: Vec<&File> = solution.files().into_iter().filter(|file| patch.file.is_empty() || patch.matches(&file.path)).collect();
+    let wanted: Vec<(&File, &Patch)> = solution.files().into_iter()
+        .filter_map(|file| Some((file, patches.iter().find(|patch| patch.file.is_empty() || patch.matches(&file.path))?)))
+        .collect();
     let files: Vec<Explored> = wanted.iter()
-        .filter_map(|file| Some(Explored {
+        .filter_map(|(file, patch)| Some(Explored {
             path: file.path.clone(),
-            language: operation.backend(registry, &patch, file).ok()?.name().to_string(),
+            language: operation.backend(registry, patch, file).ok()?.name().to_string(),
             usual: operation.backend(registry, &Patch::default(), file).ok().map(|backend| backend.name().to_string())
         }))
         .collect();
     let without = wanted.len() - files.len();
 
     Ok(Files { directory: solution.directory, project, files, without })
+}
+
+fn patches(text: &str, name: Option<&str>) -> Result<Vec<Patch>> {
+    let patches: Vec<Patch> = views(text).iter()
+        .filter(|view| name.is_none() || view.name() == name)
+        .map(|view| target::patch(&Outline::parse(&view.text)))
+        .collect();
+
+    match name {
+        Some(name) if patches.is_empty() => bail!("The file has no patch named '{name}'"),
+        _ => Ok(patches)
+    }
 }
 
 pub fn block_at(nodes: &[SyntaxNode], range: &Range<usize>) -> Option<usize> {
@@ -265,26 +284,29 @@ pub fn uses(
 
     for (name, path) in patch_files(&project.join("patches")).unwrap_or_default() {
         let Ok(source) = read(&path, open) else { continue };
-        let outline = Outline::parse(&source);
-        let patch = target::patch(&outline);
-        let language = match patch.alias.as_str() {
-            "" => file.usual.clone(),
-            alias => Some(alias.to_string())
-        };
-        let Some(backend) = language.and_then(|language| registry.backend(&language)) else { continue };
-        if !patch.matches(&file.path) { continue }
 
-        for (node, literal) in outline.literals().filter(|(node, _)| LOCATIONS.contains(&outline.nodes[*node].name.as_str())) {
-            let Some(action) = outline.nodes[node].parent.and_then(|action| outline.action_path(action)) else { continue };
-            let smallest = located.places(backend, text, &literal.value).into_iter()
-                .filter(|place| place.start <= block.start && block.end <= place.end)
-                .min_by_key(|place| place.len());
+        for view in views(&source) {
+            let outline = Outline::parse(&view.text);
+            let patch = target::patch(&outline);
+            let language = match patch.alias.as_str() {
+                "" => file.usual.clone(),
+                alias => Some(alias.to_string())
+            };
+            let Some(backend) = language.and_then(|language| registry.backend(&language)) else { continue };
+            if !patch.matches(&file.path) { continue }
 
-            found.extend(smallest.map(|place| Use {
-                path: path.clone(), patch: name.clone(), action, field: outline.nodes[node].name.clone(),
-                enabled: outline.argument("enabled") == Some("true"),
-                literal: literal.range.clone(), place
-            }));
+            for (node, literal) in outline.literals().filter(|(node, _)| LOCATIONS.contains(&outline.nodes[*node].name.as_str())) {
+                let Some(action) = outline.nodes[node].parent.and_then(|action| outline.action_path(action)) else { continue };
+                let smallest = located.places(backend, text, &literal.value).into_iter()
+                    .filter(|place| place.start <= block.start && block.end <= place.end)
+                    .min_by_key(|place| place.len());
+
+                found.extend(smallest.map(|place| Use {
+                    path: path.clone(), patch: view.name().unwrap_or(&name).to_string(), action, field: outline.nodes[node].name.clone(),
+                    enabled: outline.argument("enabled") == Some("true"),
+                    literal: literal.range.clone(), place
+                }));
+            }
         }
     }
 
@@ -374,7 +396,7 @@ fn place(
         false => here.iter().rposition(|range| key(range) < key(&at))
     };
 
-    let files = files(registry, start, open)?;
+    let files = files(registry, start, asked.patch(), open)?;
     let own = files.files.iter().position(|file| file.path == asked.file.path);
     let found = |file: &Explored, source: &str, places: &[Range<usize>], index: usize| {
         let mut found = described_file(&files, file).ok_or_else(|| miette!("{} has no address", file.path.display()))?;
@@ -416,7 +438,7 @@ fn places(registry: &Registry, asked: &Asked, start: &Path, open: &Open, keep_go
     let (backend, location) = (asked.backend(registry)?, asked.location()?);
     backend.check_location(location)?;
 
-    let files = files(registry, start, open)?;
+    let files = files(registry, start, asked.patch(), open)?;
     let mut found = vec![];
 
     for file in files.files.iter().filter(|file| file.language == asked.file.language) {

@@ -2,9 +2,11 @@
 
 // Crate Uses
 use crate::position::LineIndex;
+use crate::section::views;
 use crate::syntax::{Node, Outline, ACTION_NODES};
 
 // External Uses
+use codeshaper::core::shaping::patch::file::BLOCK;
 use lsp_types::{DocumentSymbol, FoldingRange, FoldingRangeKind, SymbolKind};
 
 
@@ -13,8 +15,30 @@ const FIELDS: [&str; 3] = ["enabled", "alias", "file"];
 
 #[allow(deprecated)]
 pub fn symbols(text: &str) -> Vec<DocumentSymbol> {
-    let outline = Outline::parse(text);
     let index = LineIndex::new(text);
+
+    views(text).into_iter()
+        .flat_map(|view| {
+            let found = patch(&view.text, &index);
+            let Some(section) = view.section else { return found };
+
+            vec![DocumentSymbol {
+                name: section.name.filter(|name| !name.is_empty()).unwrap_or(BLOCK.to_string()),
+                detail: Some(BLOCK.to_string()),
+                kind: SymbolKind::NAMESPACE,
+                tags: None,
+                deprecated: None,
+                range: index.range(section.whole),
+                selection_range: index.range(section.named),
+                children: (!found.is_empty()).then_some(found)
+            }]
+        })
+        .collect()
+}
+
+#[allow(deprecated)]
+fn patch(text: &str, index: &LineIndex) -> Vec<DocumentSymbol> {
+    let outline = Outline::parse(text);
 
     let fields = outline.nodes.iter()
         .filter(|node| node.parent.is_none() && FIELDS.contains(&node.name.as_str()))
@@ -29,7 +53,7 @@ pub fn symbols(text: &str) -> Vec<DocumentSymbol> {
             children: None
         });
 
-    fields.chain(actions(&outline, text, &index, None)).collect()
+    fields.chain(actions(&outline, text, index, None)).collect()
 }
 
 #[allow(deprecated)]

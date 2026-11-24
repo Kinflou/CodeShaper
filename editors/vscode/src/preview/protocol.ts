@@ -17,4 +17,15 @@ export interface OperationResult {
 
 export interface PreviewResult extends OperationResult {
     matched: number;
+    patch: string | null;
+}
+
+export interface PatchNames {
+    patches: string[];
+}
+
+export interface PreviewedPatch {
+    uri: string;
+    name?: string;
+    position?: { line: number; character: number };
 }

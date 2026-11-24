@@ -5,9 +5,13 @@ import { ExploredFile } from "./protocol";
 
 export const SCHEME = "codeshaper-explore";
 
-export interface Subject {
-    document: TextDocument;
+export interface Origin {
     start: string;
+    patch?: string;
+}
+
+export interface Subject extends Origin {
+    document: TextDocument;
     file: ExploredFile;
 }
 
@@ -30,8 +34,8 @@ export class Copies implements TextDocumentContentProvider {
     }
 }
 
-export async function openCopy(start: string, { uri, path, language, usual }: ExploredFile): Promise<TextEditor> {
-    const query = JSON.stringify({ start, file: { uri, path, language, usual } });
+export async function openCopy({ start, patch }: Origin, { uri, path, language, usual }: ExploredFile): Promise<TextEditor> {
+    const query = JSON.stringify({ start, patch, file: { uri, path, language, usual } });
     const document = await workspace.openTextDocument(Uri.parse(uri).with({ scheme: SCHEME, query }));
 
     return window.showTextDocument(document, { preview: false });
@@ -47,9 +51,9 @@ export function subjectOf(document: TextDocument): Subject | undefined {
     }
 
     try {
-        const { start, file } = JSON.parse(document.uri.query) as Omit<Subject, "document">;
+        const { start, patch, file } = JSON.parse(document.uri.query) as Omit<Subject, "document">;
 
-        return { document, start, file };
+        return { document, start, patch, file };
     } catch {
         return undefined;
     }

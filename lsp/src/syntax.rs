@@ -26,7 +26,8 @@ pub struct Node {
     pub parent: Option<usize>,
     pub arguments: Vec<Literal>,
     pub properties: Vec<(String, Literal)>,
-    pub children: Option<Range<usize>>
+    pub children: Option<Range<usize>>,
+    pub commented: bool
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -50,7 +51,7 @@ pub struct Outline {
 
 impl Outline {
     pub fn parse(text: &str) -> Self {
-        Scanner { text, bytes: text.as_bytes(), at: 0, nodes: vec![], stack: vec![], current: None }.run()
+        Scanner { text, bytes: text.as_bytes(), at: 0, nodes: vec![], stack: vec![], current: None, commented: false }.run()
     }
 
     pub fn top(&self, name: &str) -> Option<&Node> {
@@ -159,7 +160,7 @@ impl Outline {
         }
 
         let start = text[..offset].trim_end_matches(is_word).len();
-        let line = text[..start].trim_end_matches([' ', '\t']);
+        let line = text[..start].trim_end_matches(|character: char| character.is_whitespace() && character != '\n');
 
         if line.is_empty() || line.ends_with(['\n', '{', ';']) {
             return Context::Name { parent: self.enclosing(offset), prefix: start..offset }
@@ -189,7 +190,8 @@ struct Scanner<'t> {
     at: usize,
     nodes: Vec<Node>,
     stack: Vec<Option<usize>>,
-    current: Option<usize>
+    current: Option<usize>,
+    commented: bool
 }
 
 impl Scanner<'_> {
@@ -201,7 +203,7 @@ impl Scanner<'_> {
                 (b'\n' | b';', _) => { self.current = None; self.at += 1; }
                 (b'/', Some(b'/')) => self.skip_line(),
                 (b'/', Some(b'*')) => self.skip_block(),
-                (b'/', Some(b'-')) => self.at += 2,
+                (b'/', Some(b'-')) => { self.commented = self.current.is_none(); self.at += 2; }
                 (b'\\', _) => self.continue_line(),
                 (b'(', _) => self.skip_type(),
                 (b'{', _) => {
@@ -222,11 +224,16 @@ impl Scanner<'_> {
                     self.at += 1;
                 }
                 (byte, _) if byte.is_ascii_whitespace() => self.at += 1,
+                (byte, _) if !byte.is_ascii() && self.space().is_some() => self.at += self.space().unwrap_or(1),
                 _ => self.item()
             }
         }
 
         Outline { nodes: self.nodes }
+    }
+
+    fn space(&self) -> Option<usize> {
+        self.text[self.at..].chars().next().filter(|character| character.is_whitespace()).map(char::len_utf8)
     }
 
     fn item(&mut self) {
@@ -253,7 +260,8 @@ impl Scanner<'_> {
                     parent: self.stack.last().copied().flatten(),
                     arguments: vec![],
                     properties: vec![],
-                    children: None
+                    children: None,
+                    commented: std::mem::take(&mut self.commented)
                 });
                 self.current = Some(self.nodes.len() - 1);
             }

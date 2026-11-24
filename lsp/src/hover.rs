@@ -9,6 +9,7 @@ use crate::groups::{arguments, group_number, groups, locals};
 use crate::navigation::{calls, symbol_at, Symbol};
 use crate::query::{is_query, part_at, Part, PREDICATES};
 use crate::schema::{regex_field, LOCATIONS};
+use crate::section::{view_at, View};
 use crate::syntax::{Literal, Outline, ACTIONS};
 use crate::target::{self, backends, matches};
 use crate::trace::{diff, fenced, inline, truncate, Limits, Traces};
@@ -30,6 +31,8 @@ const LISTED: usize = 10;
 pub fn hover(
     registry: &Registry, project: &Path, traces: &mut Traces, text: &str, offset: usize
 ) -> Option<(String, Range<usize>)> {
+    let View { text, .. } = view_at(text, offset);
+    let text = text.as_ref();
     let outline = Outline::parse(text);
     let language = backends(registry, project, &outline).first().map(|backend| backend.name().to_string()).unwrap_or_default();
 

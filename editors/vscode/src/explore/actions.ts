@@ -7,10 +7,11 @@ import { State } from "./state";
 
 const SHOWN = 5000;
 
-export async function start(requests: Requests, uri?: string): Promise<void> {
-    const target = uri ?? window.activeTextEditor?.document.uri.toString();
-    const found = target && await requests.files(target);
-    if (!target || !found) {
+export async function start(requests: Requests, uri?: string, patch?: string): Promise<void> {
+    const start = uri ?? window.activeTextEditor?.document.uri.toString();
+    const origin = start ? { start, patch } : undefined;
+    const found = origin && await requests.files(origin);
+    if (!origin || !found) {
         return;
     }
 
@@ -23,7 +24,7 @@ export async function start(requests: Requests, uri?: string): Promise<void> {
     const items = found.files.map(file => ({ label: file.path, description: file.language, file }));
     const chosen = items.length === 1 ? items[0] : await window.showQuickPick(items, { placeHolder: `${items.length} file(s)${without}` });
     if (chosen) {
-        await openCopy(target, chosen.file);
+        await openCopy(origin, chosen.file);
     }
 }
 

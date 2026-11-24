@@ -9,10 +9,12 @@ from `codeshaper lsp`.
 Each patch gets a **Preview result** lens, a preview button in the editor's title bar, and
 *CodeShaper: Preview Patch Result* in the command palette. It runs that patch alone, as currently typed, on the original target files its `file`
 pattern matches, and opens a diff of the result. When several files would change, pick one first.
+In a file with several `patch "name" { … }` blocks, each block has its own lenses, and the button and the
+command preview the block at the cursor, or ask for one.
 The target is found through the operation configuration next to the shaping project.
 
 **Explore target**, next to *Preview operation*, opens a read-only copy of a target file and shows which
-location its code belongs to. Hovering a block gives its code, its locations and how many places they match in the file, with
+location its code belongs to. From a `patch` block's lens, only that block's files are listed. Hovering a block gives its code, its locations and how many places they match in the file, with
 links to the next and previous place in the target, all places and the surrounding block, to select the block and to copy the location. It also lists
 the patches that locate that code. With a selection, the hover is about the block around it. Blocks of
 several lines get a hint, down to `codeshaper.explore.depth`, and hovering a hint shows the same for its block. The status bar shows the location at the

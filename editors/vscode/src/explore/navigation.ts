@@ -31,7 +31,7 @@ export class Navigation {
             return;
         }
 
-        const next = place.path === subject.file.path ? editor : await openCopy(subject.start, place);
+        const next = place.path === subject.file.path ? editor : await openCopy(subject, place);
         this.state.choose(next.document, { location, range: place.range });
         await this.go(next, place.range, popup);
         window.setStatusBarMessage(`${location}: place ${place.number} of ${place.places} in ${place.path}`, SHOWN);

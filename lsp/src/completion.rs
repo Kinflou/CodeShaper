@@ -11,20 +11,31 @@ use crate::paths;
 use crate::position::LineIndex;
 use crate::query::{captures, is_query, part_at, Part, PREDICATES};
 use crate::schema::{self, regex_field, LOCATIONS};
+use crate::section::{view_at, View};
 use crate::syntax::{Context, Outline};
 use crate::target::{backends, every_file};
 
 // External Uses
 use codeshaper::core::ast::backend::LanguageBackend;
 use codeshaper::core::registry::Registry;
+use codeshaper::core::shaping::patch::file::BLOCK;
 use codeshaper::core::shaping::project::ast_set::TARGET;
 use lsp_types::{CompletionItem, CompletionItemKind, CompletionTextEdit, TextEdit};
 
 
 pub fn completion(registry: &Registry, project: &Path, text: &str, offset: usize) -> Vec<CompletionItem> {
+    let View { section, text } = view_at(text, offset);
+    let text = text.as_ref();
     let outline = Outline::parse(text);
 
     match outline.context(text, offset) {
+        Context::Name { parent: None, .. } if section.is_none() => {
+            let has = |names: &[&str]| outline.nodes.iter().any(|node| node.parent.is_none() && names.contains(&node.name.as_str()));
+
+            schema::top(has(&[BLOCK]), has(schema::children(None))).into_iter()
+                .map(|name| item(name, CompletionItemKind::PROPERTY, None))
+                .collect()
+        }
         Context::Name { parent, .. } => {
             let parent = parent.map(|parent| outline.nodes[parent].name.as_str());
 

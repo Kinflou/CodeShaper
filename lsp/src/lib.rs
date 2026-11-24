@@ -13,6 +13,7 @@ pub mod position;
 pub mod preview;
 pub mod query;
 pub mod schema;
+pub mod section;
 pub mod server;
 pub mod symbols;
 pub mod syntax;

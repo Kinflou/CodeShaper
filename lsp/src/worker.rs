@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread::{self, JoinHandle};
 
 // Crate Uses
-use crate::diagnostics::{coverage, file};
+use crate::diagnostics::{coverage, duplicates, file};
 use crate::document::{kind, DocumentKind};
 use crate::explore::{self, Located};
 use crate::hover::{hover, settings};
@@ -17,6 +17,7 @@ use crate::navigation::links;
 use crate::paths::{self, check_patterns};
 use crate::position::LineIndex;
 use crate::preview::{configuration, operation_preview, preview};
+use crate::section::views;
 use crate::syntax::Outline;
 use crate::target;
 use crate::trace::{Limits, Traces};
@@ -49,7 +50,7 @@ pub enum Work {
     Places(String),
     Explain(usize),
     Open { field: Field, pattern: String, origin: Range, links: bool },
-    Preview,
+    Preview(Option<String>),
     Operation { configuration: Option<PathBuf>, open: HashMap<PathBuf, String> },
     Explore { method: String, start: PathBuf, params: serde_json::Value, open: HashMap<PathBuf, String> }
 }
@@ -65,7 +66,7 @@ struct State {
     revision: u64,
     diagnostics: Vec<Diagnostic>,
     coverage: Vec<Diagnostic>,
-    trace: Option<Arc<Trace>>,
+    traces: Vec<Option<Arc<Trace>>>,
     counts: Counts
 }
 
@@ -128,7 +129,7 @@ impl Shared {
         state.diagnostics = diagnostics;
         if changed {
             state.coverage.clear();
-            state.trace = None;
+            state.traces.clear();
         }
         self.publish(uri, state);
     }
@@ -144,8 +145,8 @@ impl Shared {
         lock(&self.states).get(uri).map(|state| state.revision)
     }
 
-    pub fn trace(&self, uri: &Uri) -> Option<Arc<Trace>> {
-        lock(&self.states).get(uri)?.trace.clone()
+    pub fn traces(&self, uri: &Uri) -> Vec<Option<Arc<Trace>>> {
+        lock(&self.states).get(uri).map(|state| state.traces.clone()).unwrap_or_default()
     }
 
     pub fn counts(&self, uri: &Uri) -> Counts {
@@ -160,11 +161,11 @@ impl Shared {
         }
     }
 
-    fn traced(&self, snapshot: &Snapshot, coverage: Vec<Diagnostic>, trace: Option<Arc<Trace>>, counts: Counts) {
+    fn traced(&self, snapshot: &Snapshot, coverage: Vec<Diagnostic>, traces: Vec<Option<Arc<Trace>>>, counts: Counts) {
         let mut states = lock(&self.states);
         let Some(state) = states.get_mut(&snapshot.uri).filter(|state| state.revision == snapshot.revision) else { return };
 
-        state.trace = trace;
+        state.traces = traces;
         state.counts = counts;
         if state.coverage != coverage {
             state.coverage = coverage;
@@ -306,13 +307,18 @@ fn trace(shared: &Arc<Shared>, registry: &Registry, traces: &mut Traces, snapsho
     let (guard, current) = (shared.clone(), snapshot.clone());
     traces.guard(move || guard.is_current(&current));
 
-    let mut found = file(registry, project, text);
-    let trace = traces.get(registry, project, text);
-    found.extend(trace.iter().flat_map(|trace| coverage(text, trace)));
-
+    let mut found = path(&snapshot.uri).map(|path| duplicates(project, &path, text)).unwrap_or_default();
+    let mut traced = vec![];
     let mut counts = Counts::default();
-    if shared.hints.matches {
-        let outline = Outline::parse(text);
+
+    for view in views(text) {
+        found.extend(file(registry, project, &view.text));
+        let trace = traces.get(registry, project, &view.text);
+        found.extend(trace.iter().flat_map(|trace| coverage(&view.text, trace)));
+        traced.push(trace);
+
+        if !shared.hints.matches { continue }
+        let outline = Outline::parse(&view.text);
 
         for (place, _) in places(&outline) {
             if !shared.is_current(snapshot) { return }
@@ -321,7 +327,7 @@ fn trace(shared: &Arc<Shared>, registry: &Registry, traces: &mut Traces, snapsho
         }
     }
 
-    shared.traced(snapshot, found, trace, counts);
+    shared.traced(snapshot, found, traced, counts);
 }
 
 fn answer(
@@ -354,7 +360,7 @@ fn answer(
             Response::new_ok(id.clone(), links(wanted, origin, found))
         }
         Work::Places(location) => Response::new_ok(id.clone(), target_places(registry, project, text, &location)),
-        Work::Preview => preview_response(registry, id, uri, project, text),
+        Work::Preview(name) => preview_response(registry, id, uri, project, name, text),
         Work::Operation { configuration: path, open } => {
             let keep_going = || !shared.is_cancelled(id);
             let found = path.map_or_else(|| configuration(project), Ok)
@@ -396,10 +402,10 @@ fn target_places(registry: &Registry, project: &Path, text: &str, location: &str
     found
 }
 
-fn preview_response(registry: &Registry, id: &RequestId, uri: &Uri, project: &Path, text: &str) -> Response {
-    let name = path(uri).and_then(|path| Some(path.file_name()?.to_string_lossy().to_string())).unwrap_or_default();
+fn preview_response(registry: &Registry, id: &RequestId, uri: &Uri, project: &Path, name: Option<String>, text: &str) -> Response {
+    let file = || path(uri).and_then(|path| Some(path.file_name()?.to_string_lossy().to_string())).unwrap_or_default();
 
-    let (target, changes) = match preview(registry, project, &name, text) {
+    let (target, changes) = match preview(registry, project, &name.clone().unwrap_or_else(file), text) {
         Ok(previewed) => previewed,
         Err(error) => return Response::new_err(id.clone(), ErrorCode::RequestFailed as i32, message(&error))
     };
@@ -423,7 +429,7 @@ fn preview_response(registry: &Registry, id: &RequestId, uri: &Uri, project: &Pa
         }
     }
 
-    Response::new_ok(id.clone(), json!({ "matched": matched, "files": files, "errors": errors }))
+    Response::new_ok(id.clone(), json!({ "patch": name, "matched": matched, "files": files, "errors": errors }))
 }
 
 fn operation_response(id: &RequestId, preview: Preview) -> Response {

@@ -14,7 +14,7 @@ use codeshaper::core::shaping::patch::Patch;
 use codeshaper::core::shaping::patch::trace::Trace;
 
 
-const KEPT: usize = 16;
+const KEPT: usize = 64;
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,7 +32,7 @@ impl Default for Limits {
 
 struct Entry {
     project: PathBuf,
-    text: String,
+    patch: Patch,
     stamps: Vec<(PathBuf, Option<SystemTime>)>,
     trace: Arc<Trace>
 }
@@ -63,7 +63,7 @@ impl Traces {
             .collect();
 
         let found = self.entries.iter()
-            .find(|entry| entry.project == project && entry.text == text && entry.stamps == stamps);
+            .find(|entry| entry.project == project && entry.patch == patch && entry.stamps == stamps);
         if let Some(entry) = found {
             return Some(entry.trace.clone())
         }
@@ -71,9 +71,9 @@ impl Traces {
         let keep_going = || self.guard.as_ref().is_none_or(|guard| guard());
         let trace = Arc::new(operation.trace_while(registry, "", &patch, self.limits.samples, &keep_going).ok()?);
 
-        self.entries.retain(|entry| entry.project != project || entry.text != text);
+        self.entries.retain(|entry| entry.project != project || entry.patch != patch);
         if self.entries.len() >= KEPT { self.entries.remove(0); }
-        self.entries.push(Entry { project: project.to_path_buf(), text: text.to_string(), stamps, trace: trace.clone() });
+        self.entries.push(Entry { project: project.to_path_buf(), patch, stamps, trace: trace.clone() });
 
         Some(trace)
     }

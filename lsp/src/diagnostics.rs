@@ -1,5 +1,6 @@
 // Standard Uses
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::ops::Range;
 use std::path::Path;
 
@@ -11,6 +12,7 @@ use crate::options::unknown;
 use crate::paths::check;
 use crate::position::LineIndex;
 use crate::schema::regex_field;
+use crate::section::{sections, views};
 use crate::syntax::{Outline, ACTION_NODES};
 use crate::target::{backends, operation};
 
@@ -18,9 +20,12 @@ use crate::target::{backends, operation};
 use codeshaper::core::registry::Registry;
 use codeshaper::core::shaping::operation::configuration;
 use codeshaper::core::shaping::patch::{pattern, Patch};
+use codeshaper::core::shaping::patch::source::PatchSource;
 use codeshaper::core::shaping::patch::trace::Trace;
 use codeshaper::core::shaping::patch::validation::{validate_source, Diagnostic as PatchDiagnostic, Severity};
+use codeshaper::core::shaping::project::patch_files;
 use codeshaper::core::shaping::project::settings::{self, ProjectSettings};
+use dunce::canonicalize;
 use lsp_types::{Diagnostic, DiagnosticSeverity, DiagnosticTag, NumberOrString};
 use miette::Report;
 
@@ -75,11 +80,20 @@ pub fn problem(index: &LineIndex, range: &Range<usize>, severity: DiagnosticSeve
 fn patch(registry: &Registry, project: &Path, path: &Path, text: &str, index: &LineIndex) -> Vec<Diagnostic> {
     let name = path.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_default();
 
-    let (patch, source) = match Patch::parse(&name, text) {
-        Ok(parsed) => parsed,
-        Err(report) => return parse_errors(&report, index)
+    let mut found = match Patch::parse_all(&name, text) {
+        Ok(_) => vec![],
+        Err(report) => parse_errors(&report, index)
     };
 
+    if PatchSource::parse_all(&name, text).is_ok() {
+        found.extend(views(text).iter().flat_map(|view| block(registry, project, &name, &view.text, index)));
+    }
+
+    found
+}
+
+fn block(registry: &Registry, project: &Path, name: &str, text: &str, index: &LineIndex) -> Vec<Diagnostic> {
+    let Ok((patch, source)) = Patch::parse(name, text) else { return vec![] };
     let backends = backends(registry, project, &Outline::parse(text));
 
     let mut found: Vec<Diagnostic> = validate_source(&patch, &source, backends).into_iter()
@@ -194,6 +208,41 @@ pub fn file(registry: &Registry, project: &Path, text: &str) -> Vec<Diagnostic> 
     let index = LineIndex::new(text);
 
     found.into_iter().flatten().map(|diagnostic| convert(diagnostic, &index)).collect()
+}
+
+pub fn duplicates(project: &Path, path: &Path, text: &str) -> Vec<Diagnostic> {
+    let directory = project.join("patches");
+    let files = patch_files(&directory).unwrap_or_default();
+    let is_own = |other: &Path| other == path || canonicalize(other).ok().zip(canonicalize(path).ok()).is_some_and(|(other, path)| other == path);
+    let Some((own, _)) = files.iter().find(|(_, other)| is_own(other)) else { return vec![] };
+
+    let mut taken: HashMap<String, &str> = HashMap::new();
+    for (file, path) in files.iter().filter(|(file, _)| file != own) {
+        let Ok(text) = fs::read_to_string(path) else { continue };
+
+        for name in names(file, &text) {
+            taken.entry(name).or_insert(file);
+        }
+    }
+
+    let index = LineIndex::new(text);
+    let duplicate = |name: &str, range: Range<usize>| {
+        let message = format!("the project already has a patch named '{name}', in {}", taken.get(name)?);
+
+        Some(problem(&index, &range, DiagnosticSeverity::ERROR, "duplicate-patch", message))
+    };
+
+    match sections(text) {
+        sections if sections.is_empty() => duplicate(own, 0..0).into_iter().collect(),
+        sections => sections.into_iter().filter_map(|section| duplicate(section.name.as_deref()?, section.named)).collect()
+    }
+}
+
+pub fn names(file: &str, text: &str) -> Vec<String> {
+    match sections(text) {
+        sections if sections.is_empty() => vec![file.to_string()],
+        sections => sections.into_iter().filter_map(|section| section.name).collect()
+    }
 }
 
 pub fn coverage(text: &str, trace: &Trace) -> Vec<Diagnostic> {

@@ -1,11 +1,12 @@
 // Standard Uses
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 // Crate Uses
 use crate::completion::{completion, document};
-use crate::diagnostics::{diagnostics, redundant_alias};
+use crate::diagnostics::{diagnostics, names, redundant_alias};
 use crate::document::{kind, DocumentKind};
 use crate::explore;
 use crate::groups::link_at;
@@ -16,6 +17,7 @@ use crate::paths::{self, Opening};
 use crate::position::LineIndex;
 use crate::preview::replacement_counts;
 use crate::schema::LOCATIONS;
+use crate::section::{view_at, views, View};
 use crate::symbols::{folding, symbols};
 use crate::syntax::Outline;
 use crate::target::{self, forget_languages};
@@ -72,12 +74,21 @@ pub struct Server<'c> {
     connection: &'c Connection,
     registry: Registry,
     documents: HashMap<Uri, String>,
+    names: HashMap<Uri, Vec<String>>,
     shared: Arc<Shared>,
     worker: Worker,
     definition_links: bool,
     suggest_again: bool,
     watch: bool,
     hints: Hints
+}
+
+type Edit = (Range, &'static str, WorkspaceEdit);
+
+enum Chosen {
+    One(Option<String>, String),
+    Several(Vec<String>),
+    Unknown(String)
 }
 
 impl<'c> Server<'c> {
@@ -91,6 +102,7 @@ impl<'c> Server<'c> {
             connection,
             registry: own,
             documents: HashMap::new(),
+            names: HashMap::new(),
             shared, worker,
             definition_links: options.definition_links,
             suggest_again: options.suggest_again,
@@ -132,8 +144,8 @@ impl<'c> Server<'c> {
                 let params: CompletionParams = serde_json::from_value(request.params).into_diagnostic()?;
                 let position = params.text_document_position;
                 let uri = position.text_document.uri;
-                let mut items = match self.patch_at(&uri, position.position) {
-                    Some((project, text, offset)) => completion(&self.registry, &project, text, offset),
+                let mut items = match self.patch(&uri) {
+                    Some((project, text)) => completion(&self.registry, &project, text, LineIndex::new(text).offset(position.position)),
                     None => self.documents.get(&uri).zip(path(&uri))
                         .map(|(text, path)| (text, LineIndex::new(text).offset(position.position), path))
                         .map(|(text, offset, path)| document(&self.registry, &path, text, offset))
@@ -187,10 +199,10 @@ impl<'c> Server<'c> {
                     None => {}
                 }
 
-                let found = self.documents.get(&uri).and_then(|text| {
+                let found = self.view(&uri, position.position).and_then(|(view, offset)| {
+                    let text = view.text.as_ref();
                     let index = LineIndex::new(text);
                     let outline = Outline::parse(text);
-                    let offset = index.offset(position.position);
 
                     let here = |range| vec![Location::new(uri.clone(), index.range(range))];
 
@@ -212,10 +224,10 @@ impl<'c> Server<'c> {
             DocumentHighlightRequest::METHOD => {
                 let params: DocumentHighlightParams = serde_json::from_value(request.params).into_diagnostic()?;
                 let position = params.text_document_position_params;
-                let found: Option<Vec<DocumentHighlight>> = self.documents.get(&position.text_document.uri).and_then(|text| {
+                let found: Option<Vec<DocumentHighlight>> = self.view(&position.text_document.uri, position.position).and_then(|(view, offset)| {
+                    let text = view.text.as_ref();
                     let index = LineIndex::new(text);
                     let outline = Outline::parse(text);
-                    let offset = index.offset(position.position);
                     let ranges = link_at(&outline, text, offset)
                         .map(|link| link.ranges())
                         .unwrap_or_else(|| references(&outline, text, offset, true));
@@ -232,21 +244,23 @@ impl<'c> Server<'c> {
                 let position = params.text_document_position;
                 let uri = position.text_document.uri;
 
-                let location = self.patch_at(&uri, position.position).and_then(|(_, text, offset)| {
-                    let outline = Outline::parse(text);
-                    let (node, literal) = outline.literal_at(offset)?;
+                let view = self.view(&uri, position.position);
 
-                    LOCATIONS.contains(&outline.nodes[node].name.as_str()).then(|| literal.value.clone())
+                let location = view.as_ref().and_then(|(view, offset)| {
+                    let outline = Outline::parse(&view.text);
+                    let (node, literal) = outline.literal_at(*offset)?;
+
+                    LOCATIONS.contains(&outline.nodes[node].name.as_str()).then(|| (view.text.to_string(), literal.value.clone()))
                 });
-                if let Some((snapshot, location)) = self.snapshot(&uri).zip(location) {
-                    self.worker.request(request.id, snapshot, Work::Places(location));
+                if let Some((snapshot, (text, location))) = self.snapshot(&uri).zip(location) {
+                    self.worker.request(request.id, Snapshot { text, ..snapshot }, Work::Places(location));
                     return Ok(())
                 }
 
-                let found: Vec<Location> = self.documents.get(&uri).map(|text| {
+                let found: Vec<Location> = view.map(|(view, offset)| {
+                    let text = view.text.as_ref();
                     let index = LineIndex::new(text);
                     let outline = Outline::parse(text);
-                    let offset = index.offset(position.position);
 
                     references(&outline, text, offset, params.context.include_declaration).into_iter()
                         .map(|range| Location::new(uri.clone(), index.range(range)))
@@ -257,10 +271,9 @@ impl<'c> Server<'c> {
             }
             PrepareRenameRequest::METHOD => {
                 let params: TextDocumentPositionParams = serde_json::from_value(request.params).into_diagnostic()?;
-                let found = self.documents.get(&params.text_document.uri).and_then(|text| {
-                    let index = LineIndex::new(text);
-                    let symbol = symbol_at(&Outline::parse(text), text, index.offset(params.position))?;
-                    Some(PrepareRenameResponse::Range(index.range(symbol.range)))
+                let found = self.view(&params.text_document.uri, params.position).and_then(|(view, offset)| {
+                    let symbol = symbol_at(&Outline::parse(&view.text), &view.text, offset)?;
+                    Some(PrepareRenameResponse::Range(LineIndex::new(&view.text).range(symbol.range)))
                 });
 
                 Response::new_ok(request.id, found)
@@ -269,9 +282,9 @@ impl<'c> Server<'c> {
                 let params: RenameParams = serde_json::from_value(request.params).into_diagnostic()?;
                 let position = params.text_document_position;
                 let uri = position.text_document.uri;
-                let found = self.documents.get(&uri).and_then(|text| {
-                    let index = LineIndex::new(text);
-                    let ranges = rename(&Outline::parse(text), text, index.offset(position.position), &params.new_name)?;
+                let found = self.view(&uri, position.position).and_then(|(view, offset)| {
+                    let index = LineIndex::new(&view.text);
+                    let ranges = rename(&Outline::parse(&view.text), &view.text, offset, &params.new_name)?;
                     let edits = ranges.into_iter().map(|range| TextEdit::new(index.range(range), params.new_name.clone())).collect();
 
                     Some(WorkspaceEdit::new(HashMap::from([(uri.clone(), edits)])))
@@ -294,31 +307,42 @@ impl<'c> Server<'c> {
             CodeLensRequest::METHOD => {
                 let params: CodeLensParams = serde_json::from_value(request.params).into_diagnostic()?;
                 let uri = params.text_document.uri;
-                let command = |range, title: String, command: &str| CodeLens {
-                    range,
-                    command: Some(Command::new(title, command.to_string(), Some(vec![json!(uri.as_str())]))),
-                    data: None
+                let lens = |range, title: &str, command: &str, name: Option<&str>| {
+                    let arguments = std::iter::once(uri.as_str()).chain(name).map(|argument| json!(argument)).collect();
+
+                    CodeLens { range, command: Some(Command::new(title.to_string(), command.to_string(), Some(arguments))), data: None }
                 };
-                let lens = |range, title: String| command(range, title, PREVIEW_COMMAND);
+                let operation = lens(Range::default(), "Preview operation", OPERATION_COMMAND, None);
+                let explored = |range, name| lens(range, "Explore target", EXPLORE_COMMAND, name);
+                let is_configuration = path(&uri).is_some_and(|path| kind(&path) == DocumentKind::Configuration);
 
                 let mut lenses = vec![];
-                let is_configuration = path(&uri).is_some_and(|path| kind(&path) == DocumentKind::Configuration);
-                if let Some((_, text, _)) = self.patch_at(&uri, Position::default()) {
-                    lenses.push(lens(Range::default(), "Preview result".to_string()));
+                if let Some((_, text)) = self.patch(&uri) {
+                    let index = LineIndex::new(text);
+                    let traces = self.shared.traces(&uri);
 
-                    if let Some(toggle) = toggle(&Outline::parse(text)) {
-                        lenses.push(command(LineIndex::new(text).range(toggle.node), toggle.title.to_string(), TOGGLE_COMMAND));
-                    }
+                    for (number, view) in views(text).iter().enumerate() {
+                        let name = view.name();
+                        let place = view.section.as_ref().map(|section| index.range(section.whole.start..section.named.end)).unwrap_or_default();
+                        let previewed = lens(place, "Preview result", PREVIEW_COMMAND, name);
 
-                    if let Some(trace) = self.shared.trace(&uri) {
-                        let index = LineIndex::new(text);
-                        lenses.extend(replacement_counts(text, &trace).into_iter().map(|(range, title)| lens(index.range(range), title)));
+                        match &view.section {
+                            Some(_) if number == 0 => lenses.extend([operation.clone(), previewed]),
+                            Some(_) => lenses.push(previewed),
+                            None => lenses.extend([previewed, operation.clone()])
+                        }
+                        lenses.push(explored(place, name));
+
+                        if let Some(toggle) = toggle(&Outline::parse(&view.text)) {
+                            lenses.push(lens(index.range(toggle.node), toggle.title, TOGGLE_COMMAND, name));
+                        }
+                        if let Some(trace) = traces.get(number).cloned().flatten() {
+                            lenses.extend(replacement_counts(&view.text, &trace).into_iter()
+                                .map(|(range, title)| lens(index.range(range), &title, PREVIEW_COMMAND, name)));
+                        }
                     }
-                }
-                if is_configuration || !lenses.is_empty() {
-                    let place = usize::from(!lenses.is_empty());
-                    lenses.insert(place, command(Range::default(), "Preview operation".to_string(), OPERATION_COMMAND));
-                    lenses.insert(place + 1, command(Range::default(), "Explore target".to_string(), EXPLORE_COMMAND));
+                } else if is_configuration {
+                    lenses.extend([operation, explored(Range::default(), None)]);
                 }
 
                 Response::new_ok(request.id, lenses)
@@ -326,8 +350,8 @@ impl<'c> Server<'c> {
             InlayHintRequest::METHOD => {
                 let params: InlayHintParams = serde_json::from_value(request.params).into_diagnostic()?;
                 let uri = params.text_document.uri;
-                let found: Vec<InlayHint> = self.patch_at(&uri, Position::default())
-                    .map(|(_, text, _)| inlay_hints(text, self.hints, &self.shared.counts(&uri)))
+                let found: Vec<InlayHint> = self.patch(&uri)
+                    .map(|(_, text)| inlay_hints(text, self.hints, &self.shared.counts(&uri)))
                     .unwrap_or_default()
                     .into_iter()
                     .filter(|hint| params.range.start <= hint.position && hint.position <= params.range.end)
@@ -338,8 +362,11 @@ impl<'c> Server<'c> {
             CodeActionRequest::METHOD => {
                 let params: CodeActionParams = serde_json::from_value(request.params).into_diagnostic()?;
                 let uri = params.text_document.uri;
-                let found: Vec<CodeActionOrCommand> = self.toggle(&uri).into_iter()
-                    .chain(self.remove_alias(&uri))
+                let found: Vec<CodeActionOrCommand> = self.patch(&uri).into_iter()
+                    .flat_map(|(project, text)| views(text).into_iter()
+                        .flat_map(|view| [toggled(&uri, &view), remove_alias(&uri, &project, text, &view)])
+                        .collect::<Vec<_>>())
+                    .flatten()
                     .filter(|(node, _, _)| node.start.line <= params.range.end.line && params.range.start.line <= node.end.line)
                     .map(|(_, title, edit)| CodeActionOrCommand::CodeAction(CodeAction {
                         title: title.to_string(),
@@ -354,8 +381,9 @@ impl<'c> Server<'c> {
             ExecuteCommand::METHOD => {
                 let params: ExecuteCommandParams = serde_json::from_value(request.params).into_diagnostic()?;
                 let uri = params.arguments.first().and_then(|uri| uri.as_str()?.parse::<Uri>().ok());
+                let name = params.arguments.get(1).and_then(|name| name.as_str());
 
-                match uri.filter(|_| params.command == TOGGLE_COMMAND).and_then(|uri| self.toggle(&uri)) {
+                match uri.filter(|_| params.command == TOGGLE_COMMAND).and_then(|uri| self.toggle(&uri, name)) {
                     Some((_, title, edit)) => {
                         self.shared.ask(ApplyWorkspaceEdit::METHOD, json!(ApplyWorkspaceEditParams { label: Some(title.to_string()), edit }));
                         Response::new_ok(request.id, json!(null))
@@ -365,11 +393,17 @@ impl<'c> Server<'c> {
             }
             PREVIEW_REQUEST => {
                 let uri = request.params.get("uri").and_then(|uri| uri.as_str()?.parse::<Uri>().ok());
+                let name = request.params.get("name").and_then(|name| name.as_str());
+                let position = request.params.get("position").and_then(|position| serde_json::from_value(position.clone()).ok());
 
-                match uri.and_then(|uri| self.snapshot(&uri)) {
-                    Some(snapshot) => {
-                        self.worker.request(request.id, snapshot, Work::Preview);
+                match uri.and_then(|uri| Some((self.snapshot(&uri)?, self.chosen(&uri, name, position)?))) {
+                    Some((snapshot, Chosen::One(name, text))) => {
+                        self.worker.request(request.id, Snapshot { text, ..snapshot }, Work::Preview(name));
                         return Ok(())
+                    }
+                    Some((_, Chosen::Several(names))) => Response::new_ok(request.id, json!({ "patches": names })),
+                    Some((_, Chosen::Unknown(name))) => {
+                        Response::new_err(request.id, ErrorCode::InvalidParams as i32, format!("The file has no patch named '{name}'"))
                     }
                     None => Response::new_err(request.id, ErrorCode::InvalidParams as i32, "Not an open patch document".to_string())
                 }
@@ -429,15 +463,49 @@ impl<'c> Server<'c> {
             .collect()
     }
 
-    fn patch_at(&self, uri: &Uri, position: Position) -> Option<(PathBuf, &str, usize)> {
+    fn patch(&self, uri: &Uri) -> Option<(PathBuf, &str)> {
         let text = self.documents.get(uri)?;
         let DocumentKind::Patch { project } = kind(&path(uri)?) else { return None };
 
-        Some((project, text.as_str(), LineIndex::new(text).offset(position)))
+        Some((project, text.as_str()))
+    }
+
+    fn view(&self, uri: &Uri, position: Position) -> Option<(View<'_>, usize)> {
+        let text = self.documents.get(uri)?;
+        let offset = LineIndex::new(text).offset(position);
+        let view = match self.patch(uri) {
+            Some(_) => view_at(text, offset),
+            None => View { section: None, text: Cow::Borrowed(text) }
+        };
+
+        Some((view, offset))
+    }
+
+    fn chosen(&self, uri: &Uri, name: Option<&str>, position: Option<Position>) -> Option<Chosen> {
+        let (_, text) = self.patch(uri)?;
+        let mut views = views(text);
+        let offset = position.map(|position| LineIndex::new(text).offset(position));
+        let holds = |view: &View| view.section.as_ref().zip(offset)
+            .is_some_and(|(section, offset)| section.whole.start <= offset && offset <= section.whole.end);
+
+        let index = match name {
+            Some(name) => match views.iter().position(|view| view.name() == Some(name)) {
+                None => return Some(Chosen::Unknown(name.to_string())),
+                index => index
+            },
+            None if views.len() == 1 => Some(0),
+            None => views.iter().position(holds)
+        };
+        let Some(index) = index else {
+            return Some(Chosen::Several(views.iter().filter_map(|view| Some(view.name()?.to_string())).collect()))
+        };
+        let view = views.swap_remove(index);
+
+        Some(Chosen::One(view.name().map(str::to_string), view.text.into_owned()))
     }
 
     fn snapshot(&self, uri: &Uri) -> Option<Snapshot> {
-        let (project, text, _) = self.patch_at(uri, Position::default())?;
+        let (project, text) = self.patch(uri)?;
 
         Some(Snapshot { uri: uri.clone(), project, text: text.to_string(), revision: self.shared.revision(uri)? })
     }
@@ -460,6 +528,7 @@ impl<'c> Server<'c> {
                 let uri = params.text_document.uri;
                 self.documents.insert(uri.clone(), params.text_document.text);
                 forget_languages();
+                self.remember_names(&uri);
                 self.update(&uri, true);
                 self.trace(&uri);
             }
@@ -478,7 +547,8 @@ impl<'c> Server<'c> {
                 self.update(&uri, changed);
                 self.trace(&uri);
 
-                if let Some(project) = self.listing(&uri).and_then(|_| self.project(&uri)) {
+                let renamed = self.remember_names(&uri);
+                if let Some(project) = self.project(&uri).filter(|_| renamed || self.listing(&uri).is_some()) {
                     let others: Vec<Uri> = self.documents.keys()
                         .filter(|other| **other != uri && self.project(other).as_ref() == Some(&project))
                         .cloned().collect();
@@ -492,6 +562,7 @@ impl<'c> Server<'c> {
             DidCloseTextDocument::METHOD => {
                 let params: DidCloseTextDocumentParams = serde_json::from_value(notification.params).into_diagnostic()?;
                 self.documents.remove(&params.text_document.uri);
+                self.names.remove(&params.text_document.uri);
                 self.shared.close(&params.text_document.uri);
             }
             Cancel::METHOD => {
@@ -536,27 +607,22 @@ impl<'c> Server<'c> {
         }
     }
 
-    fn toggle(&self, uri: &Uri) -> Option<(Range, &'static str, WorkspaceEdit)> {
-        let (_, text, _) = self.patch_at(uri, Position::default())?;
-        let index = LineIndex::new(text);
-        let toggle = toggle(&Outline::parse(text))?;
-        let edit = TextEdit::new(index.range(toggle.value), toggle.text.to_string());
+    fn remember_names(&mut self, uri: &Uri) -> bool {
+        let Some((_, text)) = self.patch(uri) else { return false };
+        let names = names("", text);
 
-        Some((index.range(toggle.node), toggle.title, WorkspaceEdit::new(HashMap::from([(uri.clone(), vec![edit])]))))
+        self.names.insert(uri.clone(), names.clone()).is_some_and(|known| known != names)
     }
 
-    fn remove_alias(&self, uri: &Uri) -> Option<(Range, &'static str, WorkspaceEdit)> {
-        let (project, text, _) = self.patch_at(uri, Position::default())?;
-        let alias = redundant_alias(&project, text)?;
-        let index = LineIndex::new(text);
-        let start = text[..alias.start].rfind('\n').map(|line| line + 1).unwrap_or(0);
-        let end = text[alias.end..].find('\n').map(|line| alias.end + line + 1).unwrap_or(text.len());
-        let whole = text[start..alias.start].trim().is_empty() && text[alias.end..end].trim().is_empty();
-        let separator = text[alias.end..].len() - text[alias.end..].trim_start_matches([' ', '\t']).trim_start_matches(';').len();
-        let removed = if whole { start..end } else { alias.start..alias.end + separator };
-        let edit = TextEdit::new(index.range(removed), String::new());
+    fn toggle(&self, uri: &Uri, name: Option<&str>) -> Option<Edit> {
+        let (_, text) = self.patch(uri)?;
+        let views = views(text);
+        let view = match name {
+            Some(_) => views.iter().find(|view| view.name() == name),
+            None => views.first().filter(|_| views.len() == 1)
+        };
 
-        Some((index.range(alias), "Remove alias", WorkspaceEdit::new(HashMap::from([(uri.clone(), vec![edit])]))))
+        toggled(uri, view?)
     }
 
     fn project(&self, uri: &Uri) -> Option<PathBuf> {
@@ -579,7 +645,7 @@ impl<'c> Server<'c> {
     }
 
     fn target_files(&self, uri: &Uri, outline: &Outline) -> Vec<Location> {
-        let Some((project, _, _)) = self.patch_at(uri, Position::default()) else { return vec![] };
+        let Some((project, _)) = self.patch(uri) else { return vec![] };
         let Some((directory, files)) = target::files(&self.registry, &project, outline) else { return vec![] };
 
         files.iter()
@@ -597,4 +663,25 @@ fn real(file: &Path) -> PathBuf {
         Some((_, real)) => real,
         None => file.to_path_buf()
     }
+}
+
+fn toggled(uri: &Uri, view: &View) -> Option<Edit> {
+    let index = LineIndex::new(&view.text);
+    let toggle = toggle(&Outline::parse(&view.text))?;
+    let edit = TextEdit::new(index.range(toggle.value), toggle.text.to_string());
+
+    Some((index.range(toggle.node), toggle.title, WorkspaceEdit::new(HashMap::from([(uri.clone(), vec![edit])]))))
+}
+
+fn remove_alias(uri: &Uri, project: &Path, text: &str, view: &View) -> Option<Edit> {
+    let alias = redundant_alias(project, &view.text)?;
+    let index = LineIndex::new(text);
+    let start = text[..alias.start].rfind('\n').map(|line| line + 1).unwrap_or(0);
+    let end = text[alias.end..].find('\n').map(|line| alias.end + line + 1).unwrap_or(text.len());
+    let whole = text[start..alias.start].trim().is_empty() && text[alias.end..end].trim().is_empty();
+    let separator = text[alias.end..].len() - text[alias.end..].trim_start_matches([' ', '\t']).trim_start_matches(';').len();
+    let removed = if whole { start..end } else { alias.start..alias.end + separator };
+    let edit = TextEdit::new(index.range(removed), String::new());
+
+    Some((index.range(alias), "Remove alias", WorkspaceEdit::new(HashMap::from([(uri.clone(), vec![edit])]))))
 }

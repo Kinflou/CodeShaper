@@ -97,7 +97,8 @@ fn field_names_follow_the_enclosing_node() {
     let offset = text.find("            \n").unwrap() + 12;
 
     assert_eq!(labels(text, offset), vec!["prepare", "flags", "make"]);
-    assert_eq!(labels("", 0), vec!["enabled", "alias", "file", "actions"]);
+    assert_eq!(labels("", 0), vec!["enabled", "alias", "file", "actions", "patch"]);
+    assert_eq!(labels("enabled true\n", 13), vec!["enabled", "alias", "file", "actions"]);
 }
 
 #[test]

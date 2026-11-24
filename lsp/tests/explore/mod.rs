@@ -388,7 +388,7 @@ fn languages_without_nodes_have_no_blocks() {
     let mut registry = Registry::default();
     codeshaper_target_text::register(&mut registry);
 
-    assert_eq!(files(&registry, &configuration, &HashMap::new()).unwrap().without, 4);
+    assert_eq!(files(&registry, &configuration, None, &HashMap::new()).unwrap().without, 4);
     assert_eq!(block_at(&[], &(0..0)), None);
     assert_eq!(hints("", &[], Some(4)), vec![]);
 }

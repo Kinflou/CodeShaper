@@ -12,6 +12,7 @@ mod position;
 mod preview;
 mod protocol;
 mod query;
+mod section;
 mod symbols;
 mod syntax;
 mod tokens;

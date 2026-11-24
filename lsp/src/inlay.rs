@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use crate::groups::links;
 use crate::position::LineIndex;
 use crate::schema::LOCATIONS;
+use crate::section::views;
 use crate::syntax::{Outline, ACTION_NODES};
 
 // External Uses
@@ -44,14 +45,21 @@ pub fn places(outline: &Outline) -> Vec<(Place, usize)> {
 }
 
 pub fn inlay_hints(text: &str, hints: Hints, counts: &Counts) -> Vec<InlayHint> {
-    let outline = Outline::parse(text);
     let index = LineIndex::new(text);
+    let mut found: Vec<InlayHint> = views(text).iter().flat_map(|view| view_hints(&view.text, &index, hints, counts)).collect();
+
+    found.sort_by_key(|hint| hint.position);
+    found
+}
+
+fn view_hints(text: &str, index: &LineIndex, hints: Hints, counts: &Counts) -> Vec<InlayHint> {
+    let outline = Outline::parse(text);
     let mut found = vec![];
 
     if hints.groups {
         for (action, _) in outline.nodes.iter().enumerate().filter(|(_, node)| ACTION_NODES.contains(&node.name.as_str())) {
             for (number, link) in links(&outline, text, action).unwrap_or_default().into_iter().enumerate() {
-                found.push(hint(&index, link.group.start, format!("{number}:"), Some(InlayHintKind::PARAMETER)));
+                found.push(hint(index, link.group.start, format!("{number}:"), Some(InlayHintKind::PARAMETER)));
             }
         }
     }
@@ -61,11 +69,10 @@ pub fn inlay_hints(text: &str, hints: Hints, counts: &Counts) -> Vec<InlayHint> 
             let Some(matches) = counts.get(&place) else { continue };
             let label = format!("{} in {}", counted(matches.places, "place"), counted(matches.matched_files, "file"));
 
-            found.push(InlayHint { padding_left: Some(true), ..hint(&index, end, label, None) });
+            found.push(InlayHint { padding_left: Some(true), ..hint(index, end, label, None) });
         }
     }
 
-    found.sort_by_key(|hint| hint.position);
     found
 }
 

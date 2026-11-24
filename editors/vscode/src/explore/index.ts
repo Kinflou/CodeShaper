@@ -1,5 +1,6 @@
 import { commands, languages, window, workspace, ExtensionContext, TextEditor, Uri } from "vscode";
 import { LanguageClient } from "vscode-languageclient/node";
+import { named } from "../arguments";
 import { SECTION } from "../settings";
 import { copy, edit, showKeys, start } from "./actions";
 import { keysOf, COMMANDS } from "./commands";
@@ -41,7 +42,7 @@ export function explore(context: ExtensionContext, client: LanguageClient): Expl
     };
 
     const actions: Record<string, (...given: never[]) => unknown> = {
-        [COMMANDS.start]: (resource?: Uri | string) => start(requests, resource?.toString()),
+        [COMMANDS.start]: (resource?: Uri | string, patch?: unknown) => start(requests, resource?.toString(), named(patch)),
         [COMMANDS.next]: (popup?: number, path?: number) => navigation.step(true, popup, path),
         [COMMANDS.previous]: (popup?: number, path?: number) => navigation.step(false, popup, path),
         [COMMANDS.all]: (popup?: number, path?: number) => navigation.all(popup, path),
