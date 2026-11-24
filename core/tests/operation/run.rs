@@ -8,7 +8,7 @@ use crate::operation::{patch, read, registry, rename, report, run, workspace};
 // External Uses
 use codeshaper_core::shaping::operation::Operation;
 use codeshaper_core::shaping::operation::report::{FileReport, Outcome};
-use codeshaper_core::target::{File, Group, Solution, TargetLoader};
+use codeshaper_core::target::{File, Group, Options, Solution, TargetLoader};
 use miette::Result;
 use tempfile::TempDir;
 
@@ -18,7 +18,7 @@ struct GroupsLoader(Vec<&'static str>);
 impl TargetLoader for GroupsLoader {
     fn name(&self) -> &str { "groups" }
 
-    fn load(&self, path: &Path) -> Result<Solution> {
+    fn load(&self, path: &Path, _options: &Options) -> Result<Solution> {
         let groups = self.0.iter()
             .map(|file| Group {
                 name: file.to_string(),

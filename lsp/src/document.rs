@@ -14,7 +14,6 @@ pub enum DocumentKind {
     Patch { project: PathBuf },
     Settings,
     Configuration,
-    TargetProject,
     Other
 }
 
@@ -30,7 +29,6 @@ pub fn kind(path: &Path) -> DocumentKind {
     match path.file_name().and_then(|name| name.to_str()) {
         Some("settings.kdl") => DocumentKind::Settings,
         Some("configuration.kdl") => DocumentKind::Configuration,
-        Some("project.kdl") => DocumentKind::TargetProject,
         _ => DocumentKind::Other
     }
 }

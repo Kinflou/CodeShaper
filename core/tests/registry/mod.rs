@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 // External Uses
 use codeshaper_core::ast::backend::LanguageBackend;
 use codeshaper_core::registry::Registry;
-use codeshaper_core::target::{Solution, TargetLoader};
+use codeshaper_core::target::{Options, Solution, TargetLoader};
 use miette::Result;
 
 
@@ -26,7 +26,7 @@ struct StubLoader;
 impl TargetLoader for StubLoader {
     fn name(&self) -> &str { "stub" }
 
-    fn load(&self, path: &Path) -> Result<Solution> {
+    fn load(&self, path: &Path, _options: &Options) -> Result<Solution> {
         Ok(Solution { name: "Stub".to_string(), directory: path.to_path_buf(), groups: vec![] })
     }
 }
@@ -51,7 +51,7 @@ fn backends_are_named() {
 
 #[test]
 fn load_target_by_name() {
-    let solution = registry().load_target("stub", Path::new("project/")).unwrap();
+    let solution = registry().load_target("stub", Path::new("project/"), &Options::new()).unwrap();
 
     assert_eq!(solution.name, "Stub");
     assert_eq!(solution.directory, PathBuf::from("project/"));
@@ -59,7 +59,7 @@ fn load_target_by_name() {
 
 #[test]
 fn unknown_target_lists_known() {
-    let error = registry().load_target("vcx", Path::new("project/")).unwrap_err();
+    let error = registry().load_target("vcx", Path::new("project/"), &Options::new()).unwrap_err();
 
     assert!(error.to_string().contains("'vcx'"));
     assert!(error.to_string().contains("stub"));

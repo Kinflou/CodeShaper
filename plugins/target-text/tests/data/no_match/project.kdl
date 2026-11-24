@@ -1,5 +1,0 @@
-name "No Match"
-
-group "root" {
-    include "src/**/*.cpp"
-}

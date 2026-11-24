@@ -1,11 +1,14 @@
 // Standard Uses
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 // Crate Uses
 
 // External Uses
 use miette::Result;
+
+
+pub type Options = BTreeMap<String, Vec<String>>;
 
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -32,6 +35,17 @@ impl Solution {
 
         files
     }
+
+    pub fn retain(&mut self, keep: &dyn Fn(&File) -> bool) {
+        fn filter(groups: &mut [Group], keep: &dyn Fn(&File) -> bool) {
+            for group in groups {
+                group.files.retain(|file| keep(file));
+                filter(&mut group.groups, keep);
+            }
+        }
+
+        filter(&mut self.groups, keep);
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -50,5 +64,6 @@ pub struct File {
 
 pub trait TargetLoader {
     fn name(&self) -> &str;
-    fn load(&self, path: &Path) -> Result<Solution>;
+    fn options(&self) -> &[&str] { &[] }
+    fn load(&self, path: &Path, options: &Options) -> Result<Solution>;
 }

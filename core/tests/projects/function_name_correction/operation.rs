@@ -17,7 +17,7 @@ fn load_configuration() {
     let expected_configuration = OperationConfiguration {
         name: "Function Name Correction".to_string(),
         project: "function_name_correction/shaping_project/".to_string(),
-        target: "function_name_correction/target/origin/".to_string(),
+        target: "function_name_correction/target/origin/".into(),
         output: "function_name_correction/target/expected_result/".to_string(),
         backup: "function_name_correction/target/backup/".to_string(),
         result: ResultOptions::BackupAndReplace

@@ -4,10 +4,10 @@ use std::path::Path;
 
 // Crate Uses
 use crate::ast::backend::LanguageBackend;
-use crate::target::{Solution, TargetLoader};
+use crate::target::{Options, Solution, TargetLoader};
 
 // External Uses
-use miette::{miette, Result};
+use miette::{bail, miette, Result};
 
 
 #[derive(Default)]
@@ -40,14 +40,25 @@ impl Registry {
         self.loaders.get(name).map(|loader| loader.as_ref())
     }
 
-    pub fn load_target(&self, name: &str, path: &Path) -> Result<Solution> {
-        let loader = self.loader(name).ok_or_else(|| {
-            let mut known: Vec<&str> = self.loaders.keys().map(String::as_str).collect();
-            known.sort();
+    pub fn targets(&self) -> Vec<&str> {
+        let mut found: Vec<&str> = self.loaders.keys().map(String::as_str).collect();
+        found.sort();
 
-            miette!("The target type '{}' is not registered, known types are: {}", name, known.join(", "))
+        found
+    }
+
+    pub fn load_target(&self, name: &str, path: &Path, options: &Options) -> Result<Solution> {
+        let loader = self.loader(name).ok_or_else(|| {
+            miette!("The target type '{}' is not registered, known types are: {}", name, self.targets().join(", "))
         })?;
 
-        loader.load(path)
+        if let Some(option) = options.keys().find(|option| !loader.options().contains(&option.as_str())) {
+            match loader.options() {
+                [] => bail!("The target type '{}' takes no options, but has '{}'", name, option),
+                known => bail!("The target type '{}' has no option '{}', its options are: {}", name, option, known.join(", "))
+            }
+        }
+
+        loader.load(path, options)
     }
 }

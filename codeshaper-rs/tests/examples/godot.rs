@@ -77,7 +77,7 @@ fn preview_matches_the_run() {
     assert!(!patched.is_empty());
 
     for file in &preview.files {
-        let written = [&operation.configuration.target, &operation.configuration.output].into_iter()
+        let written = [&operation.configuration.target.value, &operation.configuration.output].into_iter()
             .map(|root| example.join(root).join(&file.path))
             .filter_map(|path| fs::read_to_string(path).ok())
             .collect::<Vec<_>>();

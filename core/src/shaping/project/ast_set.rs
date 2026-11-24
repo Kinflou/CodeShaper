@@ -2,11 +2,12 @@
 
 // Crate Uses
 use crate::registry::Registry;
+use crate::shaping::target::text;
 use crate::target::File;
 
 // External Uses
 use glob::Pattern;
-use knus::ast::{Literal, SpannedNode, Value};
+use knus::ast::SpannedNode;
 use knus::decode::Context;
 use knus::errors::DecodeError;
 use knus::traits::ErrorSpan;
@@ -104,11 +105,4 @@ fn line<S: ErrorSpan>(node: &SpannedNode<S>) -> Result<(String, Vec<Pattern>), D
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok((node.node_name.to_string(), patterns))
-}
-
-fn text<S: ErrorSpan>(value: &Value<S>) -> Result<&str, DecodeError<S>> {
-    match &*value.literal {
-        Literal::String(text) => Ok(text),
-        _ => Err(DecodeError::unexpected(&value.literal, "argument", "expected text in quotes"))
-    }
 }

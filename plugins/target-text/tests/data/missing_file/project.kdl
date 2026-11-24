@@ -1,5 +1,0 @@
-name "Missing File"
-
-group "root" {
-    files "Present.cpp" "Missing.cpp"
-}

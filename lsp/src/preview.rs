@@ -25,7 +25,7 @@ pub fn configuration(project: &Path) -> Result<PathBuf> {
 pub fn preview(registry: &Registry, project: &Path, name: &str, text: &str) -> Result<(PathBuf, Vec<Change>)> {
     let patch = Patch::from_kdl(name, text)?;
     let operation = Operation::from_file(&configuration(project)?)?;
-    let target = operation.directory.join(&operation.configuration.target);
+    let target = operation.directory.join(&operation.configuration.target.value);
 
     Ok((target, operation.preview(registry, name, &patch)?))
 }

@@ -5,7 +5,7 @@ use std::path::{Path, MAIN_SEPARATOR};
 
 // External Uses
 use codeshaper_core::registry::Registry;
-use codeshaper_core::target::{Group, Solution};
+use codeshaper_core::target::{Group, Options, Solution};
 
 
 const PROJECT: &str = "tests/data/project/";
@@ -14,7 +14,7 @@ fn load(path: &str) -> miette::Result<Solution> {
     let mut registry = Registry::default();
     codeshaper_target_godot::register(&mut registry);
 
-    registry.load_target("godot", Path::new(path))
+    registry.load_target("godot", Path::new(path), &Options::new())
 }
 
 fn tree(group: &Group, depth: usize, lines: &mut Vec<String>) {

@@ -19,7 +19,7 @@ fn load_example_configuration() {
     let expected_configuration = OperationConfiguration {
         name: "Function Name Correction".to_string(),
         project: "shaping_project/".to_string(),
-        target: "target/".to_string(),
+        target: "target/".into(),
         output: "target_result/".to_string(),
         backup: "target_backup/".to_string(),
         result: ResultOptions::BackupAndReplace
@@ -34,7 +34,7 @@ fn load_example_project() {
     let project = Project::from_directory(Path::new(&path)).unwrap();
 
     assert_eq!(project.settings.name, "Function Name Correction");
-    assert_eq!(project.settings.target, "text");
+    assert_eq!(project.settings.target, "text".into());
     assert_eq!(project.settings.ast_set.fixed(), Some("cpp"));
 }
 

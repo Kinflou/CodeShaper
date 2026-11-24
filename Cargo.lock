@@ -314,6 +314,7 @@ dependencies = [
  "glob",
  "knus",
  "miette",
+ "tempfile",
 ]
 
 [[package]]

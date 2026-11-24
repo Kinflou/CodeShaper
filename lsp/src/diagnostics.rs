@@ -36,7 +36,6 @@ pub fn diagnostics(registry: &Registry, path: &Path, text: &str) -> Vec<Diagnost
             Err(report) => Err(report)
         },
         DocumentKind::Configuration => configuration::from_kdl(text).map(|_| ()),
-        DocumentKind::TargetProject => codeshaper_target_text::project::from_kdl(text).map(|_| ()),
         DocumentKind::Other => Ok(())
     };
 

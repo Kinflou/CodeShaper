@@ -6,6 +6,7 @@ use std::path::Path;
 // Crate Uses
 use crate::shaping::lines::unix;
 use crate::shaping::project::ast_set::AstSet;
+use crate::shaping::target::Target;
 
 // External Uses
 use miette::{miette, bail, Context, IntoDiagnostic, Report, Result};
@@ -18,8 +19,8 @@ use knus::parse;
 pub struct ProjectSettings {
     #[knus(child, unwrap(argument))]
     pub name: String,
-    #[knus(child, unwrap(argument))]
-    pub target: String,
+    #[knus(child)]
+    pub target: Target,
     #[knus(child)]
     pub ast_set: AstSet,
     #[knus(child, unwrap(argument))]

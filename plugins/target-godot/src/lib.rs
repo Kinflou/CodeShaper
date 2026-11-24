@@ -6,7 +6,7 @@ use std::path::Path;
 
 // External Uses
 use codeshaper_core::registry::Registry;
-use codeshaper_core::target::{File, Group, Solution, TargetLoader};
+use codeshaper_core::target::{File, Group, Options, Solution, TargetLoader};
 use miette::{bail, Context, IntoDiagnostic, Result};
 
 
@@ -20,7 +20,7 @@ pub struct GodotLoader;
 impl TargetLoader for GodotLoader {
     fn name(&self) -> &str { "godot" }
 
-    fn load(&self, path: &Path) -> Result<Solution> {
+    fn load(&self, path: &Path, _options: &Options) -> Result<Solution> {
         let project = path.join("project.godot");
 
         if !project.is_file() {

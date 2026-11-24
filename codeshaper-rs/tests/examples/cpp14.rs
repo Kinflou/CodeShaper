@@ -35,18 +35,19 @@ fn runs_end_to_end() {
     copy_directory(Path::new(EXAMPLE), example);
 
     let operation = Operation::from_file(&example.join("configuration.kdl")).unwrap();
-    let report = operation.run(&registry()).unwrap();
+    let mut files = operation.run(&registry()).unwrap().files;
+    files.sort_by_key(|file| file.path.clone());
 
     let patched = |path: &str, patch: &str| FileReport {
         path: PathBuf::from(path), outcome: Outcome::Patched(vec![patch.to_string()])
     };
     let unchanged = |path: &str| FileReport { path: PathBuf::from(path), outcome: Outcome::Unchanged };
 
-    assert_eq!(report.files, vec![
+    assert_eq!(files, vec![
         patched("CallerModule.cpp", "function_creation.kdl"),
-        patched("ReturnModule.cpp", "function_return_creation.kdl"),
         unchanged("Module.cpp"),
         unchanged("Module.h"),
+        patched("ReturnModule.cpp", "function_return_creation.kdl"),
     ]);
 
     for name in ["CallerModule.cpp", "ReturnModule.cpp"] {
@@ -68,16 +69,19 @@ fn session_walks_back_to_original() {
     let registry = registry();
     let mut session = operation.session(&registry).unwrap();
 
+    let index = |path: &str| session.files().iter().position(|(file, _)| *file == Path::new(path)).unwrap();
+    let (caller, returning) = (index("CallerModule.cpp"), index("ReturnModule.cpp"));
+
     while session.next().is_some() {}
 
     assert_eq!(session.position(), 2);
-    assert_eq!(session.content(0).unwrap().replace("\r\n", "\n"), read(&Path::new(EXAMPLE).join("expected_result/CallerModule.cpp")));
-    assert_eq!(session.content(1).unwrap().replace("\r\n", "\n"), read(&Path::new(EXAMPLE).join("expected_result/ReturnModule.cpp")));
+    assert_eq!(session.content(caller).unwrap().replace("\r\n", "\n"), read(&Path::new(EXAMPLE).join("expected_result/CallerModule.cpp")));
+    assert_eq!(session.content(returning).unwrap().replace("\r\n", "\n"), read(&Path::new(EXAMPLE).join("expected_result/ReturnModule.cpp")));
 
     while session.previous().is_some() {}
 
-    assert_eq!(session.content(0).unwrap().replace("\r\n", "\n"), read(&Path::new(EXAMPLE_TARGET).join("CallerModule.cpp")));
-    assert_eq!(session.content(1).unwrap().replace("\r\n", "\n"), read(&Path::new(EXAMPLE_TARGET).join("ReturnModule.cpp")));
+    assert_eq!(session.content(caller).unwrap().replace("\r\n", "\n"), read(&Path::new(EXAMPLE_TARGET).join("CallerModule.cpp")));
+    assert_eq!(session.content(returning).unwrap().replace("\r\n", "\n"), read(&Path::new(EXAMPLE_TARGET).join("ReturnModule.cpp")));
 }
 
 #[test]
@@ -96,7 +100,7 @@ fn preview_matches_the_run() {
     assert!(!patched.is_empty());
 
     for file in &preview.files {
-        let written = [&operation.configuration.target, &operation.configuration.output].into_iter()
+        let written = [&operation.configuration.target.value, &operation.configuration.output].into_iter()
             .map(|root| example.join(root).join(&file.path))
             .filter_map(|path| fs::read_to_string(path).ok())
             .collect::<Vec<_>>();

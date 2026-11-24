@@ -1,11 +1,13 @@
 // Standard Uses
 use std::fs;
 use std::fs::Metadata;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 // Crate Uses
+use crate::shaping::target::Target;
 
 // External Uses
+use dunce::canonicalize;
 use miette::{bail, Context, IntoDiagnostic, Report, Result};
 
 
@@ -16,8 +18,8 @@ pub struct OperationConfiguration {
     pub name: String,
     #[knus(child, unwrap(argument))]
     pub project: String,
-    #[knus(child, unwrap(argument))]
-    pub target: String,
+    #[knus(child)]
+    pub target: Target,
     #[knus(child, unwrap(argument))]
     pub output: String,
 
@@ -45,6 +47,16 @@ impl OperationConfiguration {
             .wrap_err_with(|| format!("Could not load operation configuration {}", path.display()))?;
 
         from_extension(content.as_str(), extension)
+    }
+
+    pub fn own_folders(&self, directory: &Path) -> Vec<PathBuf> {
+        let Ok(target) = canonicalize(directory.join(&self.target.value)) else { return vec![] };
+
+        [&self.project, &self.output, &self.backup].into_iter()
+            .filter(|folder| !folder.is_empty())
+            .filter_map(|folder| canonicalize(directory.join(folder)).ok()?.strip_prefix(&target).ok().map(Path::to_path_buf))
+            .filter(|folder| !folder.as_os_str().is_empty())
+            .collect()
     }
 
     pub fn get_real_project_directory(&self) -> Result<Metadata> {

@@ -48,5 +48,5 @@ pre-releases named `dev-<number>`. Installed this way it doesn't update itself.
 `npm run package` makes a `.vsix`. It includes a server only if there is one in `server/`.
 
 It registers the `kdl` language for `.kdl` files and starts the server when one is opened.
-Patches inside a project's `patches/` folder get full validation; `settings.kdl`, `configuration.kdl`
-and `project.kdl` get parse errors.
+Patches inside a project's `patches/` folder get full validation; `settings.kdl` and `configuration.kdl`
+get parse errors.

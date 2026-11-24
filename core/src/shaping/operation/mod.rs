@@ -65,6 +65,11 @@ impl Operation {
     }
 
     pub fn configuration_for(project: &Path) -> Result<PathBuf> {
+        Self::configurations_for(project)?.into_iter().next()
+            .ok_or_else(|| miette!("No operation configuration next to {} points at it", project.display()))
+    }
+
+    pub fn configurations_for(project: &Path) -> Result<Vec<PathBuf>> {
         let project = canonicalize(project).into_diagnostic()?;
         let parent = project.parent().ok_or_else(|| miette!("{} has no parent directory", project.display()))?;
 
@@ -74,14 +79,14 @@ impl Operation {
             .collect();
         candidates.sort();
 
-        candidates.into_iter()
-            .find(|path| {
-                let Some(found) = fs::read_to_string(path).ok().and_then(|content| configuration::from_kdl(&content).ok()) else {
-                    return false
-                };
-                canonicalize(parent.join(found.project)).is_ok_and(|directory| directory == project)
-            })
-            .ok_or_else(|| miette!("No operation configuration next to {} points at it", project.display()))
+        candidates.retain(|path| {
+            let Some(found) = fs::read_to_string(path).ok().and_then(|content| configuration::from_kdl(&content).ok()) else {
+                return false
+            };
+            canonicalize(parent.join(found.project)).is_ok_and(|directory| directory == project)
+        });
+
+        Ok(candidates)
     }
 
     pub fn from_configuration(configuration: OperationConfiguration, directory: &Path) -> Result<Self> {
@@ -184,7 +189,15 @@ impl Operation {
     }
 
     pub fn target(&self, registry: &Registry) -> Result<Solution> {
-        registry.load_target(&self.project.settings.target, &self.directory.join(&self.configuration.target))
+        let target = &self.project.settings.target;
+        let mut options = target.options.clone();
+        options.extend(self.configuration.target.options.clone());
+
+        let mut solution = registry.load_target(&target.value, &self.directory.join(&self.configuration.target.value), &options)?;
+        let own = self.configuration.own_folders(&self.directory);
+        solution.retain(&|file| !own.iter().any(|folder| file.path.starts_with(folder)));
+
+        Ok(solution)
     }
 
     pub fn languages<'r>(

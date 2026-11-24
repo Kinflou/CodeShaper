@@ -34,7 +34,6 @@ pub fn operation() -> (TempDir, PathBuf) {
         ("other.kdl", "name \"Other\"\nproject \"elsewhere/\"\ntarget \"target/\"\noutput \"out/\"\nresult \"replace\"\n"),
         ("shaping_project/settings.kdl", "name \"Preview\"\ntarget \"text\"\nast-set \"cpp\"\ndescription \"\"\n"),
         ("shaping_project/patches/rename.kdl", RENAME),
-        ("target/project.kdl", "name \"Target\"\n\ngroup \"root\" {\n    files \"a.cpp\" \"b.cpp\"\n}\n"),
         ("target/a.cpp", "void old() {}\n"),
         ("target/b.cpp", "void keep() {}\n"),
     ];

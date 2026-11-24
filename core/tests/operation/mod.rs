@@ -4,6 +4,7 @@ mod broken;
 mod check;
 mod languages;
 mod lines;
+mod options;
 mod preview;
 mod run;
 mod session;
@@ -21,7 +22,7 @@ use codeshaper_core::ast::backend::LanguageBackend;
 use codeshaper_core::registry::Registry;
 use codeshaper_core::shaping::operation::Operation;
 use codeshaper_core::shaping::operation::report::{FileReport, Outcome};
-use codeshaper_core::target::{File, Group, Solution, TargetLoader};
+use codeshaper_core::target::{File, Group, Options, Solution, TargetLoader};
 use miette::{bail, Result};
 use tempfile::TempDir;
 
@@ -56,7 +57,7 @@ pub struct ListLoader;
 impl TargetLoader for ListLoader {
     fn name(&self) -> &str { "list" }
 
-    fn load(&self, path: &Path) -> Result<Solution> {
+    fn load(&self, path: &Path, _options: &Options) -> Result<Solution> {
         let files = ["a.txt", "nested/b.txt", "c.md"].iter()
             .map(|path| File { path: path.into(), language: None })
             .collect();

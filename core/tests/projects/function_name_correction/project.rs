@@ -20,7 +20,7 @@ fn load_project_settings() {
 
     let expected_settings = ProjectSettings {
         name: "Function Name Correction".to_string(),
-        target: "text".to_string(),
+        target: "text".into(),
         ast_set: AstSet::Language("cpp".to_string()),
         description: "Function Name Correction\n\
             ========================\n\
