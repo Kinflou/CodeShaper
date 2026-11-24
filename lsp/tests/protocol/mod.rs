@@ -761,3 +761,34 @@ fn files_in_targets_elsewhere_are_followed() {
 
     client.stop();
 }
+
+#[cfg(unix)]
+#[test]
+fn targets_behind_links_are_followed() {
+    let (directory, path) = target(&["a.cpp", "b.cpp", "src/c.cpp"]);
+    let links = tempfile::tempdir().unwrap();
+    let link = links.path().join("work");
+    std::os::unix::fs::symlink(directory.path(), &link).unwrap();
+    fs::write(&path, FILES.replace("b.cpp", "late.cpp")).unwrap();
+
+    let client = Client::start();
+    let text = CONFIGURATION.replace("\"code/\"", "\"shaping/../code/\"");
+    let opened = link.join("configuration.kdl");
+    fs::write(&opened, &text).unwrap();
+    client.open(&opened, &text);
+    assert_eq!(client.published(), vec!["file-not-found"]);
+
+    for file in [link.join("code/late.cpp"), directory.path().join("code/late.cpp")] {
+        fs::write(&file, "").unwrap();
+        client.notify(DidChangeWatchedFiles::METHOD, created(&file));
+        assert_eq!(client.published(), Vec::<String>::new());
+
+        fs::remove_file(&file).unwrap();
+        client.notify(DidChangeWatchedFiles::METHOD, to_json!(DidChangeWatchedFilesParams {
+            changes: vec![FileEvent::new(Url::from_file_path(&file).unwrap().as_str().parse().unwrap(), FileChangeType::DELETED)]
+        }));
+        assert_eq!(client.published(), vec!["file-not-found"]);
+    }
+
+    client.stop();
+}

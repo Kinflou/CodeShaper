@@ -70,8 +70,10 @@ impl Operation {
     }
 
     pub fn configurations_for(project: &Path) -> Result<Vec<PathBuf>> {
+        let given = project.parent().filter(|_| project.is_absolute());
         let project = canonicalize(project).into_diagnostic()?;
         let parent = project.parent().ok_or_else(|| miette!("{} has no parent directory", project.display()))?;
+        let parent = given.filter(|given| canonicalize(given).is_ok_and(|given| given == parent)).unwrap_or(parent);
 
         let mut candidates: Vec<PathBuf> = fs::read_dir(parent).into_diagnostic()?
             .filter_map(|entry| entry.ok().map(|entry| entry.path()))

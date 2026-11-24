@@ -487,7 +487,10 @@ impl<'c> Server<'c> {
             DidChangeWatchedFiles::METHOD => {
                 let params: DidChangeWatchedFilesParams = serde_json::from_value(notification.params).into_diagnostic()?;
                 forget_languages();
-                let changed: Vec<PathBuf> = params.changes.iter().filter_map(|change| path(&change.uri)).collect();
+                let changed: Vec<PathBuf> = params.changes.iter()
+                    .filter_map(|change| path(&change.uri))
+                    .flat_map(|file| [real(&file), file])
+                    .collect();
                 let uris: Vec<Uri> = self.documents.keys()
                     .filter(|uri| self.folders(uri).iter().any(|folder| changed.iter().any(|file| file.starts_with(folder))))
                     .cloned().collect();
@@ -567,5 +570,16 @@ impl<'c> Server<'c> {
         files.iter()
             .filter_map(|file| Some(Location::new(file_uri(&directory.join(file))?, Range::default())))
             .collect()
+    }
+}
+
+
+fn real(file: &Path) -> PathBuf {
+    let found = file.ancestors().find_map(|ancestor| Some((ancestor, canonicalize(ancestor).ok()?)));
+
+    match found {
+        Some((ancestor, real)) if ancestor != file => real.join(file.strip_prefix(ancestor).unwrap_or(Path::new(""))),
+        Some((_, real)) => real,
+        None => file.to_path_buf()
     }
 }
