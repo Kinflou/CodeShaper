@@ -29,6 +29,7 @@ use lsp_server::{ErrorCode, Message, Notification, Request, RequestId, Response}
 use lsp_types::notification::{Notification as _, PublishDiagnostics};
 use lsp_types::request::{CodeLensRefresh, InlayHintRefreshRequest, Request as _};
 use lsp_types::{Diagnostic, Hover, HoverContents, Location, MarkupContent, MarkupKind, PublishDiagnosticsParams, Range, Uri};
+use miette::{SourceCode, SourceSpan};
 use serde_json::json;
 use url::Url;
 
@@ -446,7 +447,29 @@ pub fn file_uri(path: &Path) -> Option<Uri> {
 
 fn message(error: &miette::Report) -> String {
     let cause = error.chain().map(|cause| cause.to_string()).collect::<Vec<_>>().join(": ");
-    let related: Vec<String> = error.related().into_iter().flatten().map(|related| related.to_string()).collect();
+    let related: Vec<String> = error.related().into_iter().flatten()
+        .map(|related| match place(related, related.source_code().or(error.source_code())) {
+            Some(place) => format!("{place}: {related}"),
+            None => related.to_string()
+        })
+        .collect();
 
     if related.is_empty() { cause } else { format!("{cause}: {}", related.join("; ")) }
+}
+
+fn place(error: &dyn miette::Diagnostic, source: Option<&dyn SourceCode>) -> Option<String> {
+    let label = error.labels().and_then(|mut labels| labels.next());
+    let end = label.as_ref().map(|label| label.offset()).unwrap_or_default();
+    let contents = source?.read_span(&SourceSpan::from(0..end), 0, 0).ok()?;
+    let name = contents.name()?;
+
+    if label.is_none() {
+        return Some(name.to_string())
+    }
+
+    let before = String::from_utf8_lossy(contents.data().get(..end)?);
+    let line = before.matches('\n').count() + 1;
+    let column = before.rsplit('\n').next().unwrap_or_default().chars().count() + 1;
+
+    Some(format!("{name}:{line}:{column}"))
 }

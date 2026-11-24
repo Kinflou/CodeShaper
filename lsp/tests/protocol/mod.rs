@@ -507,6 +507,38 @@ fn refused_operations_say_why() {
     client.stop();
 }
 
+#[test]
+fn failed_previews_say_where() {
+    let (_directory, project) = operation();
+    let mut client = Client::start();
+    let broken = [
+        (RENAME.replace("enabled false", "enabled false }"), "rename.kdl:1:15: found `}`"),
+        (RENAME.replace("file \"*.cpp\"", "file \"*.é.cpp\" }"), "rename.kdl:3:16: found `}`"),
+        (RENAME.replace('\n', "\r\n").replace("enabled false", "enabled 1"), "rename.kdl:1:9: "),
+        (RENAME.replace("enabled false", ""), "rename.kdl: child node `enabled` is required")
+    ];
+
+    for (text, expected) in broken {
+        let uri = client.open(&project.join("patches/rename.kdl"), &text);
+        let response = client.request("codeshaper/preview", serde_json::json!({ "uri": uri.as_str() }));
+        let message = response.response_result.unwrap_err().message;
+        assert!(message.starts_with(&format!("error parsing KDL: {expected}")), "{message}");
+    }
+
+    let uri = client.open(&project.join("patches/rename.kdl"), RENAME);
+    let settings = fs::read_to_string(project.join("settings.kdl")).unwrap();
+    fs::write(project.join("settings.kdl"), format!("{}\nname \"B\" }}\n", settings.trim_end())).unwrap();
+    let line = settings.trim_end().lines().count() + 1;
+
+    for method in ["codeshaper/preview", "codeshaper/previewOperation"] {
+        let response = client.request(method, serde_json::json!({ "uri": uri.as_str() }));
+        let message = response.response_result.unwrap_err().message;
+        assert!(message.contains(&format!("settings.kdl:{line}:10: found `}}`")), "{message}");
+    }
+
+    client.stop();
+}
+
 const FILES: &str = "name \"A\"\ntarget \"text\" {\n    files {\n        \"a.cpp\"\n        \"b.cpp\"\n        \"src/*.cpp\"\n    }\n}\nast-set \"cpp\"\ndescription \"\"\n";
 const CONFIGURATION: &str = "name \"A\"\nproject \"shaping/\"\ntarget \"code/\"\noutput \"out/\"\nresult \"replace\"\n";
 
