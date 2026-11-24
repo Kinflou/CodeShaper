@@ -45,6 +45,14 @@ pre-releases named `dev-<number>`. Installed this way it doesn't update itself.
 3. Run it: open this folder in VS Code and press F5, or start VS Code with
    `code --extensionDevelopmentPath=editors/vscode <workspace>`.
 
+| In `src/` | What it does |
+| --- | --- |
+| `extension.ts` | Starts everything |
+| `server.ts`, `settings.ts` | The language server and the settings |
+| `preview/` | Patch and operation previews |
+
+In each folder, `index.ts` is where commands and providers are registered.
+
 `npm run package` makes a `.vsix`. It includes a server only if there is one in `server/`.
 
 It registers the `kdl` language for `.kdl` files and starts the server when one is opened.

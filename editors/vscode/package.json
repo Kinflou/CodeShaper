@@ -57,7 +57,8 @@
     "commands": [
       {
         "command": "codeshaper.preview",
-        "title": "CodeShaper: Preview Patch Result",
+        "title": "Preview Patch Result",
+        "category": "CodeShaper",
         "icon": {
           "light": "images/preview-light.png",
           "dark": "images/preview-dark.png"
@@ -65,7 +66,8 @@
       },
       {
         "command": "codeshaper.previewOperation",
-        "title": "CodeShaper: Preview Operation Result",
+        "title": "Preview Operation Result",
+        "category": "CodeShaper",
         "icon": {
           "light": "images/preview-light.png",
           "dark": "images/preview-dark.png"
@@ -137,7 +139,8 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
+    "clean": "node -e \"require('fs').rmSync('out', { recursive: true, force: true })\"",
+    "compile": "npm run clean && tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "vsce package"
   },
