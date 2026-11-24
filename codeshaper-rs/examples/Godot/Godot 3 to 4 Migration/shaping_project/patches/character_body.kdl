@@ -1,0 +1,29 @@
+patch "body_scene" {
+    enabled true
+    file "**/*.tscn"
+
+    actions {
+        replacers {
+            replacer {
+                location r#"(section (identifier) @kind (attribute (identifier) @key (_) @target) (#eq? @kind "node") (#eq? @key "type"))"#
+                from r"KinematicBody2D"
+                to "CharacterBody2D"
+            }
+        }
+    }
+}
+
+patch "body_script" {
+    enabled true
+    file "**/*.gd"
+
+    actions {
+        replacers {
+            replacer {
+                location "ExtendsStatement"
+                from r"KinematicBody2D"
+                to "CharacterBody2D"
+            }
+        }
+    }
+}

@@ -29,9 +29,9 @@ fn runs_end_to_end() {
         .map(|file| file.outcome.clone());
 
     assert_eq!(outcome("player.gd"), Some(Outcome::Patched(vec![
-        "character_body_script.kdl".to_string(), "export_annotations.kdl".to_string()
+        "body_script".to_string(), "export_annotations.kdl".to_string()
     ])));
-    assert_eq!(outcome("player.tscn"), Some(Outcome::Patched(vec!["character_body_scene.kdl".to_string()])));
+    assert_eq!(outcome("player.tscn"), Some(Outcome::Patched(vec!["body_scene".to_string()])));
     assert_eq!(outcome("project.godot"), Some(Outcome::Unchanged));
     assert_eq!(outcome("notes/draft.gd"), None);
     assert_eq!(report.files.len(), 3);
