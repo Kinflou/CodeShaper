@@ -1,5 +1,6 @@
 // Standard Uses
 use std::collections::HashMap;
+use std::ops::Range;
 
 // Crate Uses
 
@@ -10,6 +11,8 @@ use std::collections::HashMap;
 pub struct ListenerController {
     pub location_content: HashMap<String, String>,
     pub location_contents: HashMap<String, Vec<String>>,
+    pub location_range: HashMap<String, Option<Range<usize>>>,
+    pub location_ranges: HashMap<String, Vec<Range<usize>>>,
     // pub locations: Vec<String>,
     // pub contents: Vec<String>,
 
@@ -25,6 +28,8 @@ impl ListenerController {
         Self {
             location_content: Default::default(),
             location_contents: Default::default(),
+            location_range: Default::default(),
+            location_ranges: Default::default(),
             state: Default::default(),
             index: 0,
             processing: false,

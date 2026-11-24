@@ -133,7 +133,7 @@ y"
 fn run(actions: &[(&str, ActionTrace)]) -> Option<Arc<Trace>> {
     let actions = actions.iter().map(|(path, action)| (path.to_string(), action.clone())).collect();
 
-    Some(Arc::new(Trace { limit: 3, files: 2, actions }))
+    Some(Arc::new(Trace { limit: 3, files: 2, actions, ..Trace::default() }))
 }
 
 fn shown(traces: &[Option<Arc<Trace>>]) -> String {

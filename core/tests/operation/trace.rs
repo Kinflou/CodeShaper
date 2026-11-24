@@ -31,7 +31,8 @@ fn replacers_record_each_match() {
         input: "old one".to_string(),
         matched: true,
         groups: vec![Some("one".to_string())],
-        output: "new one".to_string()
+        output: "new one".to_string(),
+        place: Some(0..7)
     }]);
 }
 

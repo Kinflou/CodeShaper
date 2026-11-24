@@ -7,7 +7,7 @@ use crate::shaping::patch::controller::PatchController;
 use crate::shaping::operation::actions::{Action, composer};
 use crate::shaping::operation::actions::composer::Composer;
 use crate::shaping::patch::pattern::regex_builder;
-use crate::shaping::patch::trace::{groups, Sample};
+use crate::shaping::patch::trace::{groups, Found, Sample};
 use crate::expressions::visitor;
 
 // External Uses
@@ -93,8 +93,12 @@ impl Action for BuilderAction {
                 return set_current(self)
             };
 
-            let built: Vec<String> = contents.iter()
-                .filter_map(|content| self.process_input(patch_controller, content.clone()))
+            let ranges = patch_controller.listener_controller.location_ranges.get(location);
+            let built: Vec<String> = contents.iter().enumerate()
+                .filter_map(|(index, content)| {
+                    let start = ranges.and_then(|ranges| ranges.get(index)).map(|range| range.start);
+                    self.process_at(patch_controller, content.clone(), start)
+                })
                 .collect();
 
             return Some(built.join(&self.builder.separator))
@@ -107,7 +111,7 @@ impl Action for BuilderAction {
                 return set_current(&self)
             };
 
-            return self.process_input(patch_controller, context.clone())
+            return self.process_at(patch_controller, context.clone(), patch_controller.start(ref_location))
         }
 
         let Some(context) = patch_controller.listener_controller.location_content
@@ -116,7 +120,7 @@ impl Action for BuilderAction {
             return set_current(&self)
         };
 
-        self.process_input(patch_controller, context.clone())
+        self.process_at(patch_controller, context.clone(), patch_controller.start(&self.builder.location))
     }
 }
 
@@ -125,6 +129,12 @@ impl Action for BuilderAction {
 impl BuilderAction {
     pub fn process_input(
         &self, controller: &PatchController, input: String
+    ) -> Option<String> {
+        self.process_at(controller, input, None)
+    }
+
+    fn process_at(
+        &self, controller: &PatchController, input: String, start: Option<usize>
     ) -> Option<String> {
         let locals = composer::capture_locals(
             Some(&self.builder.r#match), &self.builder.flags, &input
@@ -139,19 +149,23 @@ impl BuilderAction {
 
         if controller.tracing() {
             let regex = regex_builder(&self.builder.r#match, &self.builder.flags).build().ok();
-            let matched = regex.as_ref().is_some_and(|regex| regex.is_match(&input));
+            let captures = regex.as_ref().and_then(|regex| regex.captures(&input));
             let sample = Sample {
-                groups: regex.map(|regex| groups(&regex, &input)).unwrap_or_default(),
-                input,
+                groups: captures.as_ref().map(groups).unwrap_or_default(),
+                input: input.clone(),
                 output: result.clone().unwrap_or_default(),
-                matched,
+                matched: captures.is_some(),
+                place: controller.place(start, 0..input.len()),
                 ..Sample::default()
             };
 
             controller.record(*self.self_id(), |trace, limit| {
-                trace.input(usize::from(matched));
+                trace.input(usize::from(captures.is_some()));
                 trace.built += usize::from(result.is_some());
                 trace.sample(limit, sample);
+                if let Some(captures) = &captures {
+                    trace.found(limit, || Found::new(captures, |range| controller.place(start, range)));
+                }
             });
         }
 

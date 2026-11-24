@@ -9,6 +9,7 @@ pub mod inlay;
 pub mod navigation;
 pub mod options;
 pub mod paths;
+pub mod places;
 pub mod position;
 pub mod preview;
 pub mod query;

@@ -5,7 +5,7 @@ use crate::shaping::patch::replacer::Replacer;
 use crate::shaping::patch::controller::PatchController;
 use crate::shaping::operation::actions::Action;
 use crate::shaping::operation::actions::composer::{Composer, Locals};
-use crate::shaping::patch::trace::Sample;
+use crate::shaping::patch::trace::{groups, Found, Sample};
 use crate::expressions::visitor;
 
 // External Uses
@@ -31,7 +31,7 @@ impl ReplacerAction {
 
     pub fn replacer(&self) -> &Replacer { &self.replacer }
 
-    pub fn replace_input(&self, controller: &PatchController, input: &str) -> Option<String> {
+    pub fn replace_input(&self, controller: &PatchController, input: &str, start: Option<usize>) -> Option<String> {
         let from = self.replacer.from_regex().ok()?;
         let composer = self.composer.as_ref()?;
 
@@ -52,12 +52,16 @@ impl ReplacerAction {
             if controller.tracing() {
                 let sample = Sample {
                     input: found.as_str().to_string(),
-                    groups: captures.iter().skip(1).map(|group| group.map(|group| group.as_str().to_string())).collect(),
+                    groups: groups(&captures),
                     output: replacement.clone(),
                     matched: true,
+                    place: controller.place(start, found.range()),
                     ..Sample::default()
                 };
-                controller.record(*self.self_id(), |trace, limit| trace.sample(limit, sample));
+                controller.record(*self.self_id(), |trace, limit| {
+                    trace.sample(limit, sample);
+                    trace.found(limit, || Found::new(&captures, |range| controller.place(start, range)));
+                });
             }
 
             result.push_str(&input[last..found.start()]);
@@ -80,9 +84,9 @@ impl Action for ReplacerAction {
     fn parent_id(&self) -> &Option<NodeId> { &self.parent_id }
 
     fn process(&self, patch_controller: &PatchController) -> Option<String> {
-        let input = patch_controller.listener_controller.location_content
-            .get(self.replacer.target_location())?;
+        let target = self.replacer.target_location();
+        let input = patch_controller.listener_controller.location_content.get(target)?;
 
-        self.replace_input(patch_controller, input)
+        self.replace_input(patch_controller, input, patch_controller.start(target))
     }
 }

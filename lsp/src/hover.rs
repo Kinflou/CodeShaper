@@ -7,6 +7,7 @@ use std::sync::Arc;
 // Crate Uses
 use crate::groups::{arguments, group_number, groups, locals};
 use crate::navigation::{calls, symbol_at, Symbol};
+use crate::places::Places;
 use crate::query::{is_query, part_at, Part, PREDICATES};
 use crate::schema::{regex_field, LOCATIONS};
 use crate::section::{view_at, View};
@@ -19,13 +20,14 @@ use codeshaper::core::ast::backend::LanguageBackend;
 use codeshaper::core::registry::Registry;
 use codeshaper::core::shaping::operation::LocationMatches;
 use codeshaper::core::shaping::patch::pattern::{Group, FLAGS};
-use codeshaper::core::shaping::patch::trace::{ActionTrace, Trace};
+use codeshaper::core::shaping::patch::trace::{ActionTrace, Found, Trace};
 use codeshaper::core::shaping::project::ast_set::AstSet;
 use codeshaper::core::shaping::project::settings::from_kdl;
 use url::Url;
 
 
 const LISTED: usize = 10;
+const ARGUMENTS: &str = "first argument(s)";
 
 
 pub fn hover(
@@ -82,9 +84,11 @@ pub fn hover(
         let pattern = outline.field(action, regex_field(kind)?).map(|literal| literal.value.clone()).unwrap_or_default();
         let groups = groups(&outline, action);
         let trace = traced(registry, project, traces, text, &outline, action);
-        let samples = trace.as_ref().and_then(|(trace, path)| trace.action(path));
+        let found = trace.as_ref().and_then(|(trace, path)| {
+            Some((trace.action(path)?, Places::new(&trace.directory, &traces.limits)))
+        });
 
-        return Some((local(&variable, regex_field(kind)?, &pattern, &groups, samples), range))
+        return Some((local(&variable, regex_field(kind)?, &pattern, &groups, found), range))
     }
 
     let value = match (kind, field) {
@@ -95,11 +99,11 @@ pub fn hover(
         }
         ("replacer", "from") => {
             let (trace, path) = traced(registry, project, traces, text, &outline, action)?;
-            pattern(&literal.value, &groups(&outline, action), "located content(s)", trace.action(&path), trace.files)
+            pattern(&literal.value, &groups(&outline, action), "located content(s)", Some((&trace, &path)), &language, &traces.limits)
         }
         ("builder", "match") => {
             let (trace, path) = traced(registry, project, traces, text, &outline, action)?;
-            pattern(&literal.value, &groups(&outline, action), "input(s)", trace.action(&path), trace.files)
+            pattern(&literal.value, &groups(&outline, action), "input(s)", Some((&trace, &path)), &language, &traces.limits)
         }
         ("builder", "build") => {
             let (trace, path) = traced(registry, project, traces, text, &outline, action)?;
@@ -113,8 +117,8 @@ pub fn hover(
         }
         ("maker", "prepare") => {
             let traced = traced(registry, project, traces, text, &outline, action);
-            let (used, files) = traced.as_ref().map(|(trace, path)| (trace.action(path), trace.files)).unwrap_or_default();
-            pattern(&literal.value, &groups(&outline, action), "first argument(s)", used, files)
+            let traced = traced.as_ref().map(|(trace, path)| (trace.as_ref(), path.as_str()));
+            pattern(&literal.value, &groups(&outline, action), ARGUMENTS, traced, &language, &traces.limits)
         }
         ("maker", "make") => {
             let (trace, path) = traced(registry, project, traces, text, &outline, action)?;
@@ -310,7 +314,9 @@ fn traced(
     Some((traces.get(registry, project, text)?, path))
 }
 
-fn local(variable: &str, field: &str, pattern: &str, groups: &[Group], samples: Option<&ActionTrace>) -> String {
+fn local(
+    variable: &str, field: &str, pattern: &str, groups: &[Group], found: Option<(&ActionTrace, Places)>
+) -> String {
     let Some(number) = group_number(groups, variable) else {
         return format!("`$[{variable}]` has no capture group in `{field}`")
     };
@@ -319,10 +325,12 @@ fn local(variable: &str, field: &str, pattern: &str, groups: &[Group], samples: 
         "`$[{variable}]` is group {} of `{field}`: {}", number + 1, inline(&pattern[groups[number].range.clone()])
     );
 
-    let seen: Vec<String> = samples.into_iter()
-        .flat_map(|samples| &samples.samples)
-        .filter_map(|sample| sample.groups.get(number).cloned().flatten())
-        .map(|value| inline(&value))
+    let seen: Vec<String> = found.into_iter()
+        .flat_map(|(action, mut places)| {
+            action.found.iter()
+                .filter_map(|found| Some(places.value(&found.file, found.groups.get(number)?.as_ref()?)))
+                .collect::<Vec<_>>()
+        })
         .collect();
     if !seen.is_empty() {
         value += &format!("\n\nSeen as {}", seen.join(", "));
@@ -374,16 +382,19 @@ fn replacements(action: Option<&ActionTrace>, trace: &Trace, limits: &Limits) ->
     };
 
     let mut value = format!("**{} replacement(s)** across {} target file(s)", action.matches, trace.files);
+    let mut places = Places::new(&trace.directory, limits);
     for sample in &action.samples {
-        value += &format!("\n\n`{}`\n{}", sample.file.display(), diff(&sample.input, &sample.output, limits));
+        value += &format!("\n\n{}\n{}", places.file(&sample.file, sample.place.as_ref()), diff(&sample.input, &sample.output, limits));
     }
 
     value
 }
 
-fn pattern(pattern: &str, groups: &[Group], inputs: &str, action: Option<&ActionTrace>, files: usize) -> String {
-    let mut value = match groups.is_empty() {
-        true => "No capture groups".to_string(),
+fn pattern(
+    pattern: &str, groups: &[Group], inputs: &str, traced: Option<(&Trace, &str)>, language: &str, limits: &Limits
+) -> String {
+    let captures = match groups.is_empty() {
+        true => "None".to_string(),
         false => groups.iter().enumerate()
             .map(|(index, group)| {
                 let name = group.name.as_ref().map(|name| format!(", `$[{name}]`")).unwrap_or_default();
@@ -392,21 +403,36 @@ fn pattern(pattern: &str, groups: &[Group], inputs: &str, action: Option<&Action
             .collect::<Vec<_>>()
             .join("\n")
     };
+    let mut value = format!("**Captures**\n\n{captures}");
 
-    let Some(action) = action else { return value };
+    let Some((trace, action)) = traced.and_then(|(trace, path)| Some((trace, trace.action(path)?))) else { return value };
     value += &format!(
-        "\n\nMatches in {} of {} {inputs} across {} target file(s), {} match(es) in all",
-        action.matched, action.inputs, files, action.matches
+        "\n\n**Matches**\n\nIn {} of {} {inputs} across {} target file(s), {} in all",
+        action.matched, action.inputs, trace.files, action.matches
     );
 
-    if let Some(sample) = action.samples.iter().find(|sample| sample.matched) {
-        value += &format!("\n\nFirst match in `{}`: {}", sample.file.display(), inline(&sample.input));
-        for (index, group) in sample.groups.iter().enumerate() {
-            value += &format!("\n- `$[{index}]` = {}", group.as_deref().map(inline).unwrap_or_else(|| "unset".to_string()));
+    let mut places = Places::new(&trace.directory, limits);
+    for Found { file, matched, groups } in &action.found {
+        let place = match inputs {
+            ARGUMENTS => format!("`{}`", file.display()),
+            _ => places.file(file, matched.place.as_ref())
+        };
+
+        value += &format!("\n\n{}", snippet(&place, &matched.text, language, limits));
+        for (index, group) in groups.iter().enumerate() {
+            let group = group.as_ref().map(|group| places.capture(file, group, language));
+            value += &format!("\n- `$[{index}]`{}", group.unwrap_or_else(|| " = unset".to_string()));
         }
     }
 
     value
+}
+
+fn snippet(place: &str, text: &str, language: &str, limits: &Limits) -> String {
+    match text {
+        "" => format!("{place}: empty"),
+        _ => format!("{place}\n{}", fenced(language, &truncate(text, limits)))
+    }
 }
 
 fn built(action: Option<&ActionTrace>, trace: &Trace, language: &str, limits: &Limits) -> String {
@@ -415,9 +441,11 @@ fn built(action: Option<&ActionTrace>, trace: &Trace, language: &str, limits: &L
     };
 
     let mut value = format!("**Built from {} input(s)** across {} target file(s)", action.inputs, trace.files);
+    let mut places = Places::new(&trace.directory, limits);
     for sample in &action.samples {
         value += &format!(
-            "\n\n`{}`: {}\n{}", sample.file.display(), inline(&truncate(&sample.input, limits)),
+            "\n\n{}\n\nBuilds\n{}",
+            snippet(&places.file(&sample.file, sample.place.as_ref()), &sample.input, language, limits),
             fenced(language, &truncate(&sample.output, limits))
         );
     }

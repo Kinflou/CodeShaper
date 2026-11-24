@@ -334,12 +334,12 @@ impl Operation {
         let (directory, files) = self.matching_files(registry, name, patch)?;
         self.check_patch(registry, name, patch, &files)?;
         let patch = Rc::new(patch.clone());
-        let mut trace = Trace::new(limit);
+        let mut trace = Trace { directory, ..Trace::new(limit) };
 
         for file in &files {
             if !keep_going() { bail!("Tracing patch {} was stopped", name) }
 
-            let Ok(source) = fs::read_to_string(directory.join(&file.path)) else { continue };
+            let Ok(source) = fs::read_to_string(trace.directory.join(&file.path)) else { continue };
             let Ok(backend) = self.backend(registry, &patch, file) else { continue };
 
             let mut controller = PatchController::traced(patch.clone(), limit);

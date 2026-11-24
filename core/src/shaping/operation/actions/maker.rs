@@ -7,7 +7,7 @@ use crate::shaping::operation::actions::{Action, composer};
 use crate::shaping::patch::controller::PatchController;
 use crate::shaping::patch::maker::Maker;
 use crate::shaping::patch::pattern::regex_builder;
-use crate::shaping::patch::trace::{groups, Sample};
+use crate::shaping::patch::trace::{groups, Found, Sample};
 
 // External Uses
 use indextree::NodeId;
@@ -63,18 +63,19 @@ impl MakerAction {
 
         if let (Some((prepare, input)), true) = (prepared, controller.tracing()) {
             let regex = regex_builder(prepare, &self.maker.flags).build().ok();
-            let matched = regex.as_ref().is_some_and(|regex| regex.is_match(input));
+            let captures = regex.as_ref().and_then(|regex| regex.captures(input));
             let sample = Sample {
-                groups: regex.map(|regex| groups(&regex, input)).unwrap_or_default(),
+                groups: captures.as_ref().map(groups).unwrap_or_default(),
                 input: input.clone(),
                 output: result.clone().unwrap_or_default(),
-                matched,
+                matched: captures.is_some(),
                 ..Sample::default()
             };
 
             controller.record(*self.self_id(), |trace, limit| {
-                trace.input(usize::from(matched));
+                trace.input(usize::from(captures.is_some()));
                 trace.sample(limit, sample);
+                if let Some(captures) = &captures { trace.found(limit, || Found::new(captures, |_| None)); }
             });
         }
 

@@ -6,6 +6,7 @@ mod languages;
 mod lines;
 mod located;
 mod options;
+mod places;
 mod preview;
 mod run;
 mod session;

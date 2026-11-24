@@ -10,6 +10,7 @@ use crate::ast::backend::LanguageBackend;
 use crate::ast::listener::ListenerController;
 use crate::shaping::lines::{restore, unix};
 use crate::shaping::patch::{Actions, Patch};
+use crate::shaping::patch::origin::Origin;
 use crate::shaping::patch::trace::{ActionTrace, Trace};
 use crate::shaping::operation::actions::{Action, ActionOf};
 use crate::shaping::operation::actions::builder::BuilderAction;
@@ -28,7 +29,8 @@ pub struct PatchController {
     pub actions: Arena<ActionOf>,
     pub listener_controller: ListenerController,
     pub trace: Option<RefCell<Trace>>,
-    paths: HashMap<NodeId, String>
+    paths: HashMap<NodeId, String>,
+    origin: Option<Origin>
 }
 
 #[allow(unused)]
@@ -40,7 +42,7 @@ impl PatchController {
     pub fn with_listener(patch: Rc<Patch>, listener_controller: ListenerController) -> Self {
         let (actions, paths) = Self::make_actions(patch.clone());
 
-        Self { patch, actions, listener_controller, trace: None, paths }
+        Self { patch, actions, listener_controller, trace: None, paths, origin: None }
     }
 
     pub fn traced(patch: Rc<Patch>, limit: usize) -> Self {
@@ -61,6 +63,16 @@ impl PatchController {
         let limit = trace.limit;
 
         record(trace.actions.entry(path.clone()).or_default(), limit);
+    }
+
+    pub(crate) fn place(&self, start: Option<usize>, range: Range<usize>) -> Option<Range<usize>> {
+        let start = start?;
+
+        self.origin.as_ref()?.place(start + range.start..start + range.end)
+    }
+
+    pub(crate) fn start(&self, location: &str) -> Option<usize> {
+        self.listener_controller.location_range.get(location)?.as_ref().map(|range| range.start)
     }
 
     fn make_actions(patch: Rc<Patch>) -> (Arena<ActionOf>, HashMap<NodeId, String>) {
@@ -148,6 +160,7 @@ impl PatchController {
 
     pub fn apply(&mut self, backend: &dyn LanguageBackend, source: &str) -> Result<String> {
         let unix = unix(source);
+        self.origin = self.tracing().then(|| Origin::new(source));
         let result = self.shape(backend, &unix)?;
 
         Ok(match unix {
@@ -187,6 +200,14 @@ impl PatchController {
                             ranges.iter().map(|range| source[range.clone()].to_string()).collect()
                         ))
                         .collect();
+                    if self.tracing() {
+                        self.listener_controller.location_ranges = located.iter()
+                            .map(|(location, ranges)| (location.to_string(), ranges.clone()))
+                            .collect();
+                        self.listener_controller.location_range = located.keys()
+                            .map(|location| (location.to_string(), None))
+                            .collect();
+                    }
 
                     located
                 }
@@ -199,7 +220,9 @@ impl PatchController {
                 let mut target = None;
 
                 for (location, ranges) in &located {
-                    let Some(range) = scoped_range(ranges, trigger) else { continue };
+                    let scoped = scoped_range(ranges, trigger);
+                    if let Some(range) = self.listener_controller.location_range.get_mut(*location) { *range = scoped.cloned(); }
+                    let Some(range) = scoped else { continue };
 
                     if *location == replacer.target_location() {
                         target = Some(range.clone());
@@ -222,6 +245,10 @@ impl PatchController {
             for edit in edits {
                 if applied.last().is_some_and(|(last, _)| edit.0.start < last.end) { continue }
                 applied.push(edit);
+            }
+
+            if let Some(origin) = &mut self.origin {
+                origin.edit(applied.iter().map(|(range, text)| (range.start, &source[range.clone()], text.as_str())));
             }
 
             let mut changed = false;

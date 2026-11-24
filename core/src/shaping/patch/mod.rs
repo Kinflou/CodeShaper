@@ -7,6 +7,7 @@ pub mod maker;
 pub mod resolver;
 pub mod validation;
 pub mod source;
+pub mod origin;
 pub mod trace;
 pub mod pattern;
 

@@ -90,7 +90,17 @@ fn hovered(patch: &str, needle: &str, shift: usize) -> (String, String) {
     let offset = patch.find(needle).unwrap() + shift;
     let (text, range) = hover(&codeshaper::registry(), &project, &mut Traces::default(), patch, offset).unwrap();
 
-    (text, patch[range].to_string())
+    (plain(&text), patch[range].to_string())
+}
+
+fn plain(text: &str) -> String {
+    text.split("<file:").enumerate()
+        .map(|(index, part)| match part.split_once("/target/").filter(|_| index > 0 && part.contains('#')) {
+            Some((_, rest)) => format!("<{rest}"),
+            None if index > 0 => format!("<file:{part}"),
+            None => part.to_string()
+        })
+        .collect()
 }
 
 fn traced(needle: &str, shift: usize) -> (String, String) {
@@ -145,17 +155,18 @@ fn replacements_show_samples_as_diffs() {
 
     assert_eq!(range, "\"int $[0]() /* #[names] */\"");
     assert_eq!(text, "**2 replacement(s)** across 2 target file(s)\n\n\
-        `a.cpp`\n```diff\n- void old()\n+ int old() /* old */\n```\n\n\
-        `b.cpp`\n```diff\n- void keep()\n+ int keep() /* keep */\n```");
+        [`a.cpp:1:1-11`](<a.cpp#L1,1-L1,11>)\n```diff\n- void old()\n+ int old() /* old */\n```\n\n\
+        [`b.cpp:1:1-12`](<b.cpp#L1,1-L1,12>)\n```diff\n- void keep()\n+ int keep() /* keep */\n```");
 }
 
 #[test]
 fn from_shows_groups_and_matches() {
     let (text, _) = traced(r"void (\w+)\(", 1);
 
-    assert_eq!(text, "- `$[0]` = `(\\w+)`\n\n\
-        Matches in 2 of 2 located content(s) across 2 target file(s), 2 match(es) in all\n\n\
-        First match in `a.cpp`: `void old()`\n- `$[0]` = `old`");
+    assert_eq!(text, "**Captures**\n\n- `$[0]` = `(\\w+)`\n\n\
+        **Matches**\n\nIn 2 of 2 located content(s) across 2 target file(s), 2 in all\n\n\
+        [`a.cpp:1:1-11`](<a.cpp#L1,1-L1,11>)\n```cpp\nvoid old()\n```\n- `$[0]` = `old` [`1:6-9`](<a.cpp#L1,6-L1,9>)\n\n\
+        [`b.cpp:1:1-12`](<b.cpp#L1,1-L1,12>)\n```cpp\nvoid keep()\n```\n- `$[0]` = `keep` [`1:6-10`](<b.cpp#L1,6-L1,10>)");
 }
 
 #[test]
@@ -163,7 +174,8 @@ fn locals_show_their_group_and_values() {
     let (text, range) = traced("$[0]()", 2);
 
     assert_eq!(range, "$[0]");
-    assert_eq!(text, "`$[0]` is group 1 of `from`: `(\\w+)`\n\nSeen as `old`, `keep`");
+    assert_eq!(text, "`$[0]` is group 1 of `from`: `(\\w+)`\n\n\
+        Seen as [`old`](<a.cpp#L1,6-L1,9>), [`keep`](<b.cpp#L1,6-L1,10>)");
 }
 
 #[test]
@@ -187,12 +199,15 @@ fn called_actions_show_a_result() {
 #[test]
 fn builder_match_and_build_show_inputs() {
     let (text, _) = traced(r#"void (\w+)""#, 1);
-    assert!(text.starts_with("- `$[0]` = `(\\w+)`\n\nMatches in 2 of 2 input(s) across 2 target file(s)"), "{text}");
+    assert_eq!(text, "**Captures**\n\n- `$[0]` = `(\\w+)`\n\n\
+        **Matches**\n\nIn 2 of 2 input(s) across 2 target file(s), 2 in all\n\n\
+        [`a.cpp:1:1-9`](<a.cpp#L1,1-L1,9>)\n```cpp\nvoid old\n```\n- `$[0]` = `old` [`1:6-9`](<a.cpp#L1,6-L1,9>)\n\n\
+        [`b.cpp:1:1-10`](<b.cpp#L1,1-L1,10>)\n```cpp\nvoid keep\n```\n- `$[0]` = `keep` [`1:6-10`](<b.cpp#L1,6-L1,10>)");
 
     let (text, _) = traced("\"$[0]\"", 0);
     assert_eq!(text, "**Built from 2 input(s)** across 2 target file(s)\n\n\
-        `a.cpp`: `void old() {}`\n```cpp\nold\n```\n\n\
-        `b.cpp`: `void keep() {}`\n```cpp\nkeep\n```");
+        [`a.cpp:1:1-14`](<a.cpp#L1,1-L1,14>)\n```cpp\nvoid old() {}\n```\n\nBuilds\n```cpp\nold\n```\n\n\
+        [`b.cpp:1:1-15`](<b.cpp#L1,1-L1,15>)\n```cpp\nvoid keep() {}\n```\n\nBuilds\n```cpp\nkeep\n```");
 }
 
 #[test]
@@ -214,8 +229,8 @@ fn makers_show_results_with_their_arguments() {
         `b.cpp`, with `keep`, `current`:\n```cpp\nkeep_current\n```");
 
     let (text, _) = hovered(INDEXED, "(\\w+)=", 1);
-    assert_eq!(text, "- `$[0]` = `(\\w+)`\n- `$[1]` = `(\\w+)`\n\n\
-        Matches in 0 of 2 first argument(s) across 2 target file(s), 0 match(es) in all");
+    assert_eq!(text, "**Captures**\n\n- `$[0]` = `(\\w+)`\n- `$[1]` = `(\\w+)`\n\n\
+        **Matches**\n\nIn 0 of 2 first argument(s) across 2 target file(s), 0 in all");
 }
 
 #[test]
@@ -273,16 +288,94 @@ fn half_typed_patches_never_panic() {
 fn named_groups_are_shown() {
     let named = TRACED.replace(r"void (\w+)\(\)", r"void (?P<name>\w+)\(\)").replace("int $[0]", "int $[name]");
 
-    assert!(hovered(&named, r"void (?P", 1).0.starts_with("- `$[0]`, `$[name]` = `(?P<name>\\w+)`"));
-    assert_eq!(hovered(&named, "$[name]", 2).0, "`$[name]` is group 1 of `from`: `(?P<name>\\w+)`\n\nSeen as `old`, `keep`");
+    assert!(hovered(&named, r"void (?P", 1).0.starts_with("**Captures**\n\n- `$[0]`, `$[name]` = `(?P<name>\\w+)`"));
+    assert_eq!(hovered(&named, "$[name]", 2).0, "`$[name]` is group 1 of `from`: `(?P<name>\\w+)`\n\n\
+        Seen as [`old`](<a.cpp#L1,6-L1,9>), [`keep`](<b.cpp#L1,6-L1,10>)");
 }
 
 #[test]
-fn first_matches_are_shown_without_groups() {
+fn matches_are_shown_without_groups() {
     let plain = TRACED.replace(r"void (\w+)\(\)", "void old").replace("int $[0]", "int x");
     let (text, _) = hovered(&plain, "void old", 1);
 
-    assert!(text.ends_with("Matches in 1 of 2 located content(s) across 2 target file(s), 1 match(es) in all\n\nFirst match in `a.cpp`: `void old`"), "{text}");
+    assert!(text.ends_with("**Matches**\n\nIn 1 of 2 located content(s) across 2 target file(s), 1 in all\n\n[`a.cpp:1:1-9`](<a.cpp#L1,1-L1,9>)\n```cpp\nvoid old\n```"), "{text}");
+}
+
+#[test]
+fn first_arguments_have_no_place() {
+    let matching = INDEXED.replace(r"(\w+)=(\w+)", r"^(\w)(\d)?");
+    let (text, _) = hovered(&matching, r"^(\w)", 1);
+
+    assert!(text.ends_with("2 in all\n\n\
+        `a.cpp`\n```cpp\no\n```\n- `$[0]` = `o`\n- `$[1]` = unset\n\n\
+        `b.cpp`\n```cpp\nk\n```\n- `$[0]` = `k`\n- `$[1]` = unset"), "{text}");
+}
+
+#[test]
+fn earlier_replacers_leave_no_place() {
+    let earlier = TRACED.replace("    replacers {\n", r##"    replacers {
+        replacer {
+            location "FunctionDefinition"
+            from "old"
+            to "renamed"
+        }
+"##);
+    let (text, _) = hovered(&earlier, r"void (\w+)\(", 1);
+
+    assert!(text.ends_with("\n\n\
+        `a.cpp`, changed by an earlier replacer\n```cpp\nvoid renamed()\n```\n- `$[0]` = `renamed`\n\n\
+        [`b.cpp:1:1-12`](<b.cpp#L1,1-L1,12>)\n```cpp\nvoid keep()\n```\n- `$[0]` = `keep` [`1:6-10`](<b.cpp#L1,6-L1,10>)"), "{text}");
+}
+
+#[test]
+fn places_follow_the_saved_file() {
+    let (directory, project) = crate::preview::operation();
+    let offset = TRACED.find(r#"void (\w+)""#).unwrap() + 1;
+    let hovered = || hover(&codeshaper::registry(), &project, &mut Traces::default(), TRACED, offset).unwrap().0;
+
+    std::fs::write(directory.path().join("target/a.cpp"), "// é𝄞\r\n/* é𝄞 */ void\r\nold()\r\n{}\r\n").unwrap();
+    std::fs::write(directory.path().join("target/b (1).cpp"), "").unwrap();
+    let spread = TRACED.replace(r"void (\w+)\(\)", r"void\s(\w+)").replace(r#"void (\w+)""#, r#"void\s(\w+)\(\)\n""#);
+    let offset_spread = spread.find(r"void\s(\w+)\(\)\n").unwrap() + 1;
+    let text = hover(&codeshaper::registry(), &project, &mut Traces::default(), &spread, offset_spread).unwrap().0;
+    let text = plain(&text);
+
+    assert!(text.contains("[`a.cpp:2:11-4:1`](<a.cpp#L2,11-L4,1>)\n```cpp\nvoid\nold()\n```\n- `$[0]` = `old` [`3:1-4`](<a.cpp#L3,1-L3,4>)"), "{text}");
+
+    std::fs::write(directory.path().join("target/b (1).cpp"), "\n  void other() {}\n").unwrap();
+    assert!(hovered().contains("/target/b%20(1).cpp#L2,3-L2,13>)\n```cpp\nvoid other\n```"), "{}", hovered());
+}
+
+#[test]
+fn empty_matches_have_a_place() {
+    let empty = TRACED.replace(r#"void (\w+)""#, r#"(x?)""#);
+    let (text, _) = hovered(&empty, "(x?)", 1);
+
+    assert!(text.contains("[`a.cpp:1:1-1`](<a.cpp#L1,1-L1,1>): empty\n- `$[0]` = empty [`1:1-1`](<a.cpp#L1,1-L1,1>)"), "{text}");
+}
+
+#[test]
+fn captures_over_several_lines_are_snippets() {
+    let (directory, project) = crate::preview::operation();
+    std::fs::write(directory.path().join("target/a.cpp"), "void old()\r\n{\r\n\treturn;\r\n}\r\n").unwrap();
+    let spread = TRACED.replace(r#"void (\w+)""#, r#"(?s)void (\w+)\(\)\s(.*)""#);
+    let offset = spread.find("(?s)").unwrap() + 1;
+    let (text, _) = hover(&codeshaper::registry(), &project, &mut Traces::default(), &spread, offset).unwrap();
+
+    assert!(plain(&text).contains("[`a.cpp:1:1-4:2`](<a.cpp#L1,1-L4,2>)\n\
+        ```cpp\nvoid old()\n{\n\treturn;\n}\n```\n\
+        - `$[0]` = `old` [`1:6-9`](<a.cpp#L1,6-L1,9>)\n\
+        - `$[1]` [`2:1-4:2`](<a.cpp#L2,1-L4,2>)\n  ```cpp\n  {\n  \treturn;\n  }\n  ```"), "{text}");
+}
+
+#[test]
+fn places_are_the_same_in_patch_blocks() {
+    let block = format!("patch \"first\" {{\n{TRACED}}}\npatch \"second\" {{\n{TRACED}}}\n");
+    let offset = block.rfind(r#"void (\w+)""#).unwrap() + 1;
+    let (_directory, project) = crate::preview::operation();
+    let (text, _) = hover(&codeshaper::registry(), &project, &mut Traces::default(), &block, offset).unwrap();
+
+    assert_eq!(plain(&text), traced(r#"void (\w+)""#, 1).0);
 }
 
 #[test]

@@ -1,11 +1,12 @@
 // Standard Uses
 use std::collections::{BTreeSet, HashMap};
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 // Crate Uses
 
 // External Uses
-use regex::Regex;
+use regex::{Captures, Match};
 
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -14,7 +15,21 @@ pub struct Sample {
     pub input: String,
     pub matched: bool,
     pub groups: Vec<Option<String>>,
-    pub output: String
+    pub output: String,
+    pub place: Option<Range<usize>>
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Found {
+    pub file: PathBuf,
+    pub matched: Capture,
+    pub groups: Vec<Option<Capture>>
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Capture {
+    pub text: String,
+    pub place: Option<Range<usize>>
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -25,6 +40,7 @@ pub struct ActionTrace {
     pub built: usize,
     pub matched_files: usize,
     pub samples: Vec<Sample>,
+    pub found: Vec<Found>,
     pub calls: usize,
     pub passed: Vec<usize>,
     pub results: Vec<Sample>,
@@ -34,6 +50,7 @@ pub struct ActionTrace {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Trace {
     pub limit: usize,
+    pub directory: PathBuf,
     pub files: usize,
     pub actions: HashMap<String, ActionTrace>
 }
@@ -48,6 +65,13 @@ impl ActionTrace {
 
     pub fn sample(&mut self, limit: usize, sample: Sample) {
         if self.samples.len() < limit { self.samples.push(sample) }
+    }
+
+    pub fn found(&mut self, limit: usize, found: impl FnOnce() -> Found) {
+        if self.found.len() >= limit { return }
+
+        let found = found();
+        if !self.found.contains(&found) { self.found.push(found) }
     }
 
     pub fn call(&mut self, limit: usize, result: Sample) {
@@ -77,6 +101,9 @@ impl ActionTrace {
         for sample in other.samples {
             self.sample(limit, Sample { file: file.to_path_buf(), ..sample });
         }
+        for found in other.found {
+            if self.found.len() < limit { self.found.push(Found { file: file.to_path_buf(), ..found }) }
+        }
         for result in other.results {
             if self.results.len() < limit { self.results.push(Sample { file: file.to_path_buf(), ..result }) }
         }
@@ -102,8 +129,17 @@ impl Trace {
 }
 
 
-pub fn groups(regex: &Regex, input: &str) -> Vec<Option<String>> {
-    regex.captures(input)
-        .map(|captures| captures.iter().skip(1).map(|group| group.map(|group| group.as_str().to_string())).collect())
-        .unwrap_or_default()
+impl Found {
+    pub fn new(captures: &Captures, place: impl Fn(Range<usize>) -> Option<Range<usize>>) -> Self {
+        let capture = |group: Match| Capture { text: group.as_str().to_string(), place: place(group.range()) };
+        let mut groups: Vec<Option<Capture>> = captures.iter().map(|group| group.map(capture)).collect();
+        let matched = groups.remove(0).unwrap_or_default();
+
+        Self { file: PathBuf::new(), matched, groups }
+    }
+}
+
+
+pub fn groups(captures: &Captures) -> Vec<Option<String>> {
+    captures.iter().skip(1).map(|group| group.map(|group| group.as_str().to_string())).collect()
 }
