@@ -3,12 +3,10 @@ patch "body_scene" {
     file "**/*.tscn"
 
     actions {
-        replacers {
-            replacer {
-                location r#"(section (identifier) @kind (attribute (identifier) @key (_) @target) (#eq? @kind "node") (#eq? @key "type"))"#
-                from r"KinematicBody2D"
-                to "CharacterBody2D"
-            }
+        replacer {
+            location r#"(section (identifier) @kind (attribute (identifier) @key (_) @target) (#eq? @kind "node") (#eq? @key "type"))"#
+            from r"KinematicBody2D"
+            to "CharacterBody2D"
         }
     }
 }
@@ -18,12 +16,10 @@ patch "body_script" {
     file "**/*.gd"
 
     actions {
-        replacers {
-            replacer {
-                location "ExtendsStatement"
-                from r"KinematicBody2D"
-                to "CharacterBody2D"
-            }
+        replacer {
+            location "ExtendsStatement"
+            from r"KinematicBody2D"
+            to "CharacterBody2D"
         }
     }
 }

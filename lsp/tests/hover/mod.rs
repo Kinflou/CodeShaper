@@ -12,17 +12,13 @@ use codeshaper_lsp::trace::Traces;
 
 const PATCH: &str = r##"alias ""
 actions {
-    makers {
-        maker "pair" {
-            make "@[0]=@[1]"
-        }
+    maker "pair" {
+        make "@[0]=@[1]"
     }
-    replacers {
-        replacer {
-            location "FunctionDefinition.body"
-            reference-location "Nope"
-            to "#[pair](a, b)"
-        }
+    replacer {
+        location "FunctionDefinition.body"
+        reference-location "Nope"
+        to "#[pair](a, b)"
     }
 }
 "##;
@@ -32,22 +28,18 @@ alias ""
 file "*.cpp"
 
 actions {
-    builders {
-        builder "names" {
-            location "FunctionDefinition"
-            match r"void (\w+)"
-            build "$[0]"
-            collect true
-            separator ", "
-        }
+    builder "names" {
+        location "FunctionDefinition"
+        match r"void (\w+)"
+        build "$[0]"
+        collect true
+        separator ", "
     }
-    replacers {
-        replacer {
-            location "FunctionDefinition"
-            from r"void (\w+)\(\)"
-            to "int $[0]() /* #[names] */"
-            flags "i"
-        }
+    replacer {
+        location "FunctionDefinition"
+        from r"void (\w+)\(\)"
+        to "int $[0]() /* #[names] */"
+        flags "i"
     }
 }
 "##;
@@ -57,30 +49,22 @@ alias ""
 file "*.cpp"
 
 actions {
-    makers {
-        maker "pair" {
-            prepare r"(\w+)=(\w+)"
-            make "@[0]_@[1]"
-        }
+    maker "pair" {
+        prepare r"(\w+)=(\w+)"
+        make "@[0]_@[1]"
     }
-    switchers {
-        switch "kind" {
-            cases old="legacy" keep="current" gone="removed"
-            index "@[0]"
-        }
+    switch "kind" {
+        cases old="legacy" keep="current" gone="removed"
+        index "@[0]"
     }
-    lists {
-        list "order" {
-            values "first" "second"
-            index "@[0]"
-        }
+    list "order" {
+        values "first" "second"
+        index "@[0]"
     }
-    replacers {
-        replacer {
-            location "FunctionDefinition"
-            from r"void (\w+)\(\)"
-            to "void #[pair]($[0], #[kind]($[0]))_#[order](\"1\")()"
-        }
+    replacer {
+        location "FunctionDefinition"
+        from r"void (\w+)\(\)"
+        to "void #[pair]($[0], #[kind]($[0]))_#[order](\"1\")()"
     }
 }
 "##;
@@ -313,12 +297,12 @@ fn first_arguments_have_no_place() {
 
 #[test]
 fn earlier_replacers_leave_no_place() {
-    let earlier = TRACED.replace("    replacers {\n", r##"    replacers {
-        replacer {
-            location "FunctionDefinition"
-            from "old"
-            to "renamed"
-        }
+    let earlier = TRACED.replace("    replacer {\n", r##"    replacer {
+        location "FunctionDefinition"
+        from "old"
+        to "renamed"
+    }
+    replacer {
 "##);
     let (text, _) = hovered(&earlier, r"void (\w+)\(", 1);
 

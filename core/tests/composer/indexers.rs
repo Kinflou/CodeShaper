@@ -17,11 +17,11 @@ fn composition_list_index_with_args() {
         alias: "".to_string(),
         file: "".to_string(),
         actions: Actions {
-            builders: None,
-            replacers: None,
-            makers: None,
-            switchers: None,
-            lists: Some(vec![
+            builders: vec![],
+            replacers: vec![],
+            makers: vec![],
+            switches: vec![],
+            lists: vec![
                 List {
                     name: "liquid_list".to_string(),
                     values: vec![
@@ -30,7 +30,7 @@ fn composition_list_index_with_args() {
                     index: Some("@[0]".to_owned()),
                     default: None,
                 }
-            ])
+            ]
         },
     };
     let liquid_patch = Rc::new(liquid_patch);
@@ -56,10 +56,10 @@ fn composition_switch_with_args() {
         alias: "".to_string(),
         file: "".to_string(),
         actions: Actions {
-            builders: None,
-            replacers: None,
-            makers: None,
-            switchers: Some(vec![
+            builders: vec![],
+            replacers: vec![],
+            makers: vec![],
+            switches: vec![
                 Switch {
                     name: "number_switch".to_string(),
                     cases: HashMap::from([
@@ -70,8 +70,8 @@ fn composition_switch_with_args() {
                     index: "@[0]".to_owned(),
                     default: None,
                 }
-            ]),
-            lists: None
+            ],
+            lists: vec![]
         },
     };
     let number_patch = Rc::new(number_patch);

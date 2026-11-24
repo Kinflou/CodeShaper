@@ -37,7 +37,7 @@ pub static EXPECTED_PATCH: LazyLock<Patch> = LazyLock::new(|| {
         alias: "text".to_owned(),
         file: "test.txt".to_owned(),
         actions: Actions {
-            builders: Some(vec![
+            builders: vec![
                 Builder {
                     name: "hello_builder".to_owned(),
                     location: "*".to_string(),
@@ -49,17 +49,17 @@ pub static EXPECTED_PATCH: LazyLock<Patch> = LazyLock::new(|| {
                     separator: String::new(),
                     actions: Default::default(),
                 }
-            ]),
+            ],
             replacers: Default::default(),
-            makers: Some(vec![
+            makers: vec![
                 Maker {
                     name: "code_maker".to_owned(),
                     prepare: None,
                     flags: String::new(),
                     make: "@[0] Library".to_owned(),
                 }
-            ]),
-            switchers: Default::default(),
+            ],
+            switches: Default::default(),
             lists: Default::default(),
         },
     }

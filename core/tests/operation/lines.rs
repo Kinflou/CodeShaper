@@ -36,7 +36,7 @@ fn files_without_a_match_keep_mixed_endings() {
 
 #[test]
 fn windows_patches_match_and_write_like_unix_ones() {
-    let content = "enabled true\nalias \"\"\nfile \"a.txt\"\nactions {\n    replacers {\n        replacer {\n            location \"\"\n            from \"a\nb\"\n            to r#\"c\nd\"#\n        }\n    }\n}\n";
+    let content = "enabled true\nalias \"\"\nfile \"a.txt\"\nactions {\n    replacer {\n        location \"\"\n        from \"a\nb\"\n        to r#\"c\nd\"#\n    }\n}\n";
 
     assert_eq!(Patch::from_kdl("", &content.replace('\n', "\r\n")).unwrap(), Patch::from_kdl("", content).unwrap());
 }

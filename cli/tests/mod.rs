@@ -106,12 +106,10 @@ alias "cpp"
 file "*.cpp"
 
 actions {
-    replacers {
-        replacer {
-            location "FunctionBody"
-            from r"old ("
-            to "#[missing]"
-        }
+    replacer {
+        location "FunctionBody"
+        from r"old ("
+        to "#[missing]"
     }
 }
 "##).unwrap();
@@ -123,7 +121,7 @@ actions {
     assert!(text.contains("error[location-not-found] broken.kdl › replacer #1 › location"));
     assert!(text.contains("error[incorrect-regex] broken.kdl › replacer #1 › from"));
     assert!(text.contains("error[action-not-found] broken.kdl › replacer #1 › to"));
-    assert!(text.contains("[broken.kdl:9:24]"));
+    assert!(text.contains("[broken.kdl:8:20]"));
     assert!(text.contains(r#"from r"old (""#));
     assert!(text.contains("3 error(s), 0 warning(s)"));
 }
@@ -192,7 +190,7 @@ fn apply_uses_the_projects_language() {
 fn check_says_when_locations_were_not_checked() {
     let directory = tempfile::tempdir().unwrap();
     let patch = directory.path().join("alone.kdl");
-    fs::write(&patch, "enabled true\nfile \"a\"\nactions {\n    replacers {\n        replacer {\n            location \"Nothing\"\n            from \"a\"\n            to \"b\"\n        }\n    }\n}\n").unwrap();
+    fs::write(&patch, "enabled true\nfile \"a\"\nactions {\n    replacer {\n        location \"Nothing\"\n        from \"a\"\n        to \"b\"\n    }\n}\n").unwrap();
     let path = patch.display().to_string();
 
     let output = codeshaper(&["check", "--patch", &path]);
@@ -206,8 +204,8 @@ fn check_says_when_locations_were_not_checked() {
 
 fn block(name: &str, from: &str, to: &str) -> String {
     format!(
-        "patch \"{name}\" {{\n    enabled true\n    alias \"cpp\"\n    file \"*\"\n    actions {{\n        replacers {{\n            \
-        replacer {{\n                location \"Identifier\"\n                from r\"{from}\"\n                to \"{to}\"\n            }}\n        }}\n    }}\n}}\n"
+        "patch \"{name}\" {{\n    enabled true\n    alias \"cpp\"\n    file \"*\"\n    actions {{\n        \
+        replacer {{\n            location \"Identifier\"\n            from r\"{from}\"\n            to \"{to}\"\n        }}\n    }}\n}}\n"
     )
 }
 
@@ -252,8 +250,8 @@ fn check_reports_every_patch_of_a_file() {
     assert!(!output.status.success());
     assert!(text.contains("error[action-not-found] one › replacer #1 › to"));
     assert!(text.contains("error[incorrect-regex] two › replacer #1 › from"));
-    assert!(text.contains("[first.kdl:10:21]"), "{text}");
-    assert!(text.contains("[first.kdl:23:"), "{text}");
-    assert!(text.contains("[second.kdl:12:21]"), "{text}");
+    assert!(text.contains("[first.kdl:9:17]"), "{text}");
+    assert!(text.contains("[first.kdl:20:"), "{text}");
+    assert!(text.contains("[second.kdl:11:17]"), "{text}");
     assert!(text.contains("3 error(s), 0 warning(s)"));
 }

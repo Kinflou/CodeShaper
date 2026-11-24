@@ -36,12 +36,10 @@ alias ""
 file "*.cpp"
 
 actions {
-    replacers {
-        replacer {
-            location "FunctionBody"
-            from r"old ("
-            to "#[missing]"
-        }
+    replacer {
+        location "FunctionBody"
+        from r"old ("
+        to "#[missing]"
     }
 }
 "##;

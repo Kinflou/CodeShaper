@@ -102,7 +102,7 @@ fn raw_strings_and_comments_are_not_blocks() {
 
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].name.as_deref(), Some("one"));
-    assert_eq!(found[0].patch.actions.replacers.as_ref().unwrap()[0].from, "} patch \"two\" {");
+    assert_eq!(found[0].patch.actions.replacers[0].from, "} patch \"two\" {");
 }
 
 #[test]

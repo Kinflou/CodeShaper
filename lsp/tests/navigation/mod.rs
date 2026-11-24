@@ -8,21 +8,15 @@ use codeshaper_lsp::syntax::Outline;
 
 
 const PATCH: &str = r##"actions {
-    builders {
-        builder "names" {
-            match r"(\w+)"
-            build "$[0] #[pair]($[0])"
-        }
+    builder "names" {
+        match r"(\w+)"
+        build "$[0] #[pair]($[0])"
     }
-    makers {
-        maker "pair" {
-            make "@[0]=#[names]"
-        }
+    maker "pair" {
+        make "@[0]=#[names]"
     }
-    replacers {
-        replacer {
-            to "#[pair](x) #[names]"
-        }
+    replacer {
+        to "#[pair](x) #[names]"
     }
 }
 "##;

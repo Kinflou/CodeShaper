@@ -15,7 +15,7 @@ fn linked(patch: &str, needle: &str, shift: usize) -> Option<(String, Vec<String
 }
 
 fn replacer(from: &str, to: &str, flags: &str) -> String {
-    format!("actions {{\n    replacers {{\n        replacer {{\n            from {from}\n            to {to}\n            flags \"{flags}\"\n        }}\n    }}\n}}\n")
+    format!("actions {{\n    replacer {{\n        from {from}\n        to {to}\n        flags \"{flags}\"\n    }}\n}}\n")
 }
 
 

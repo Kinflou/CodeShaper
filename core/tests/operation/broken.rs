@@ -18,7 +18,7 @@ fn preview(content: &str) -> Result<String> {
 }
 
 fn with_actions(to: &str, actions: &str) -> String {
-    patch("lines", "Line", r"old (\w+)", to).replace("    replacers {", &format!("{actions}\n    replacers {{"))
+    patch("lines", "Line", r"old (\w+)", to).replace("    replacer {", &format!("{actions}\n    replacer {{"))
 }
 
 
@@ -31,13 +31,11 @@ fn unset_groups_are_empty_text() {
 
 #[test]
 fn inputs_that_do_not_match_are_not_collected() {
-    let content = with_actions("new #[names]", r#"    builders {
-        builder "names" {
-            location "Line"
-            match r"old (\w+)"
-            build "<$[0]>"
-            collect true
-        }
+    let content = with_actions("new #[names]", r#"    builder "names" {
+        location "Line"
+        match r"old (\w+)"
+        build "<$[0]>"
+        collect true
     }"#);
 
     assert_eq!(preview(&content).unwrap(), "new <one>\nkeep\n");
@@ -64,23 +62,19 @@ fn broken_patches_are_not_traced() {
 
 #[test]
 fn switches_without_a_matching_case_use_the_default() {
-    let content = with_actions("new #[kind]", r#"    switchers {
-        switch "kind" {
-            cases a="x"
-            index "z"
-            default "other"
-        }
+    let content = with_actions("new #[kind]", r#"    switch "kind" {
+        cases a="x"
+        index "z"
+        default "other"
     }"#);
 
     assert_eq!(preview(&content).unwrap(), "new other\nkeep\n");
 }
 
 fn getter(to: &str) -> String {
-    with_actions(to, r#"    makers {
-        maker "getter" {
-            prepare r"(\w+) (\w+)"
-            make "$[0] get_$[1]()"
-        }
+    with_actions(to, r#"    maker "getter" {
+        prepare r"(\w+) (\w+)"
+        make "$[0] get_$[1]()"
     }"#)
 }
 
@@ -105,13 +99,11 @@ fn prepared_makers_need_an_argument() {
 
 #[test]
 fn recursive_actions_are_refused() {
-    let content = with_actions("new #[a]", r##"    makers {
-        maker "a" {
-            make "#[b]"
-        }
-        maker "b" {
-            make "#[a]"
-        }
+    let content = with_actions("new #[a]", r##"    maker "a" {
+        make "#[b]"
+    }
+    maker "b" {
+        make "#[a]"
     }"##);
 
     assert!(preview(&content).unwrap_err().to_string().contains("calls back to this action"));
@@ -119,12 +111,10 @@ fn recursive_actions_are_refused() {
 
 #[test]
 fn lists_past_the_end_use_the_default() {
-    let content = with_actions("new #[order]", r#"    lists {
-        list "order" {
-            values "x"
-            index "9"
-            default "other"
-        }
+    let content = with_actions("new #[order]", r#"    list "order" {
+        values "x"
+        index "9"
+        default "other"
     }"#);
 
     assert_eq!(preview(&content).unwrap(), "new other\nkeep\n");
@@ -140,19 +130,17 @@ fn named_groups_are_locals() {
 
 #[test]
 fn flags_apply_to_match_and_prepare() {
-    let builder = with_actions("new #[names]", r#"    builders {
-        builder "names" {
-            location "Line"
-            match r"OLD (\w+)"
-            flags "i"
-            build "<$[0]>"
-            collect true
-        }
+    let builder = with_actions("new #[names]", r#"    builder "names" {
+        location "Line"
+        match r"OLD (\w+)"
+        flags "i"
+        build "<$[0]>"
+        collect true
     }"#);
     assert_eq!(preview(&builder).unwrap(), "new <one>\nkeep\n");
 
     let maker = getter("#[getter]($[0])").replace(r"old (\w+)", r"(old \w+)")
-        .replace(r#"prepare r"(\w+) (\w+)""#, "prepare r\"(OLD) (\\w+)\"\n            flags \"i\"");
+        .replace(r#"prepare r"(\w+) (\w+)""#, "prepare r\"(OLD) (\\w+)\"\n        flags \"i\"");
     assert_eq!(preview(&maker).unwrap(), "old get_one()\nkeep\n");
 
     assert!(preview(&builder.replace("flags \"i\"", "flags \"q\"")).unwrap_err().to_string().contains("Unknown regex flag 'q'"));

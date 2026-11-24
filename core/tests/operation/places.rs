@@ -24,7 +24,7 @@ fn traced(source: &str, builders: &str, replacers: &[(&str, &str, &str)], limit:
         .map(|(location, from, to)| format!("replacer {{\nlocation \"{location}\"\nfrom r#\"{from}\"#\nto \"{to}\"\n}}\n"))
         .collect();
     let content = format!(
-        "enabled true\nfile \"*.txt\"\nactions {{\nbuilders {{\n{builders}\n}}\nreplacers {{\n{replacers}}}\n}}\n"
+        "enabled true\nfile \"*.txt\"\nactions {{\n{builders}\n{replacers}}}\n"
     );
     let patch = Patch::from_kdl("", &content).unwrap();
     let operation = Operation::from_file(&directory.path().join("configuration.kdl")).unwrap();

@@ -14,12 +14,10 @@ alias ""
 file "*.cpp"
 
 actions {
-    replacers {
-        replacer {
-            location "FunctionDefinition"
-            from r"old"
-            to "new"
-        }
+    replacer {
+        location "FunctionDefinition"
+        from r"old"
+        to "new"
     }
 }
 "#;

@@ -12,42 +12,36 @@ use codeshaper_core::shaping::patch::trace::Trace;
 
 
 const ACTIONS: &str = r##"
-builders {
-    builder "around" {
-        location "Line"
-        match r"(?P<first>\w)(\d)?"
-        build "<$[first]$[1]>"
-    }
-    builder "all" {
-        location "Line"
-        match r"^(B)"
-        flags "i"
-        build "$[0]"
-        collect true
-        separator "+"
-    }
+builder "around" {
+    location "Line"
+    match r"(?P<first>\w)(\d)?"
+    build "<$[first]$[1]>"
 }
-makers {
-    maker "pair" {
-        prepare r"(\w)(\d)"
-        make "$[1]$[0]@[0]"
-    }
-    maker "plain" {
-        make "(@[0])"
-    }
+builder "all" {
+    location "Line"
+    match r"^(B)"
+    flags "i"
+    build "$[0]"
+    collect true
+    separator "+"
 }
-replacers {
-    replacer {
-        location "Line"
-        from r"(\w+)=(\w+)"
-        to "$[0]:#[pair]($[0])#[around]"
-    }
-    replacer {
-        location "Line"
-        from r"^(b\w*)"
-        flags "im"
-        to "#[plain]($[0])#[all]"
-    }
+maker "pair" {
+    prepare r"(\w)(\d)"
+    make "$[1]$[0]@[0]"
+}
+maker "plain" {
+    make "(@[0])"
+}
+replacer {
+    location "Line"
+    from r"(\w+)=(\w+)"
+    to "$[0]:#[pair]($[0])#[around]"
+}
+replacer {
+    location "Line"
+    from r"^(b\w*)"
+    flags "im"
+    to "#[plain]($[0])#[all]"
 }
 "##;
 

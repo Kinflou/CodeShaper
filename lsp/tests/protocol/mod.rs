@@ -174,10 +174,10 @@ fn lenses_are_refreshed_after_tracing() {
 fn completion_offers_fields() {
     let (_directory, project) = project(&[("partial.kdl", "")]);
     let mut client = Client::start();
-    let uri = client.open(&project.join("patches/partial.kdl"), "actions {\n    makers {\n        maker \"m\" {\n            ma\n");
+    let uri = client.open(&project.join("patches/partial.kdl"), "actions {\n    maker \"m\" {\n        ma\n");
 
     let params = CompletionParams {
-        text_document_position: at(&uri, Position::new(3, 14)),
+        text_document_position: at(&uri, Position::new(2, 10)),
         work_done_progress_params: Default::default(),
         partial_result_params: Default::default(),
         context: None
@@ -217,13 +217,13 @@ fn semantic_tokens_for_expressions() {
 
 #[test]
 fn definition_and_references_of_actions() {
-    let text = "actions {\n    makers {\n        maker \"pair\" {\n            make \"x\"\n        }\n    }\n    replacers {\n        replacer {\n            to \"#[pair] #[pair]\"\n        }\n    }\n}\n";
+    let text = "actions {\n    maker \"pair\" {\n        make \"x\"\n    }\n    replacer {\n        to \"#[pair] #[pair]\"\n    }\n}\n";
     let (_directory, project) = project(&[("navigation.kdl", "")]);
     let mut client = Client::start();
     let uri = client.open(&project.join("patches/navigation.kdl"), text);
 
     let params = GotoDefinitionParams {
-        text_document_position_params: at(&uri, Position::new(8, 19)),
+        text_document_position_params: at(&uri, Position::new(5, 15)),
         work_done_progress_params: Default::default(),
         partial_result_params: Default::default()
     };
@@ -232,10 +232,10 @@ fn definition_and_references_of_actions() {
         panic!("expected a definition")
     };
     let location = &locations[0];
-    assert_eq!((location.range.start, location.range.end), (Position::new(2, 15), Position::new(2, 19)));
+    assert_eq!((location.range.start, location.range.end), (Position::new(1, 11), Position::new(1, 15)));
 
     let params = ReferenceParams {
-        text_document_position: at(&uri, Position::new(2, 16)),
+        text_document_position: at(&uri, Position::new(1, 12)),
         context: ReferenceContext { include_declaration: false },
         work_done_progress_params: Default::default(),
         partial_result_params: Default::default()
@@ -243,7 +243,7 @@ fn definition_and_references_of_actions() {
     let response = client.request(References::METHOD, to_json!(params));
     let locations: Vec<Location> = serde_json::from_value(response.response_result.unwrap()).unwrap();
     assert_eq!(locations.iter().map(|location| location.range.start).collect::<Vec<_>>(), vec![
-        Position::new(8, 18), Position::new(8, 26)
+        Position::new(5, 14), Position::new(5, 22)
     ]);
 
     client.stop();
@@ -251,19 +251,19 @@ fn definition_and_references_of_actions() {
 
 #[test]
 fn rename_edits_every_use() {
-    let text = "actions {\n    makers {\n        maker \"pair\" {\n            make \"x\"\n        }\n    }\n    replacers {\n        replacer {\n            to \"#[pair] #[pair]\"\n        }\n    }\n}\n";
+    let text = "actions {\n    maker \"pair\" {\n        make \"x\"\n    }\n    replacer {\n        to \"#[pair] #[pair]\"\n    }\n}\n";
     let (_directory, project) = project(&[("rename.kdl", "")]);
     let mut client = Client::start();
     let uri = client.open(&project.join("patches/rename.kdl"), text);
 
-    let response = client.request(PrepareRenameRequest::METHOD, to_json!(at(&uri, Position::new(8, 19))));
+    let response = client.request(PrepareRenameRequest::METHOD, to_json!(at(&uri, Position::new(5, 15))));
     let Some(PrepareRenameResponse::Range(range)) = serde_json::from_value(response.response_result.unwrap()).unwrap() else {
         panic!("expected a rename range")
     };
-    assert_eq!((range.start, range.end), (Position::new(8, 18), Position::new(8, 22)));
+    assert_eq!((range.start, range.end), (Position::new(5, 14), Position::new(5, 18)));
 
     let params = RenameParams {
-        text_document_position: at(&uri, Position::new(2, 16)),
+        text_document_position: at(&uri, Position::new(1, 12)),
         new_name: "couple".to_string(),
         work_done_progress_params: Default::default()
     };
@@ -279,13 +279,13 @@ fn rename_edits_every_use() {
 
 #[test]
 fn hover_describes_locations() {
-    let text = "alias \"\"\nactions {\n    replacers {\n        replacer {\n            location \"FunctionDefinition\"\n        }\n    }\n}\n";
+    let text = "alias \"\"\nactions {\n    replacer {\n        location \"FunctionDefinition\"\n    }\n}\n";
     let (_directory, project) = project(&[("hover.kdl", "")]);
     let mut client = Client::start();
     let uri = client.open(&project.join("patches/hover.kdl"), text);
 
     let params = HoverParams {
-        text_document_position_params: at(&uri, Position::new(4, 24)),
+        text_document_position_params: at(&uri, Position::new(3, 20)),
         work_done_progress_params: Default::default()
     };
     let response = client.request(HoverRequest::METHOD, to_json!(params));
@@ -294,7 +294,7 @@ fn hover_describes_locations() {
     };
 
     assert_eq!(markup.value, "cpp: node kind `function_definition`");
-    assert_eq!(range.map(|range| (range.start, range.end)), Some((Position::new(4, 21), Position::new(4, 41))));
+    assert_eq!(range.map(|range| (range.start, range.end)), Some((Position::new(3, 17), Position::new(3, 37))));
 
     client.stop();
 }
@@ -333,7 +333,7 @@ fn preview_lens_and_request() {
 
     let counted = lenses[4].command.clone().unwrap();
     assert_eq!(counted.title, "1 replacement(s) in 1 file(s)");
-    assert_eq!(lenses[4].range.start, Position::new(6, 8));
+    assert_eq!(lenses[4].range.start, Position::new(5, 4));
 
     let response = client.request("codeshaper/preview", serde_json::json!({ "uri": uri.as_str() }));
     let result = response.response_result.unwrap();
@@ -366,7 +366,7 @@ fn file_and_location_lead_to_the_target() {
     assert!(files[0].uri.as_str().ends_with("/target/a.cpp"));
 
     let params = ReferenceParams {
-        text_document_position: at(&uri, Position::new(7, 25)),
+        text_document_position: at(&uri, Position::new(6, 21)),
         context: ReferenceContext { include_declaration: false },
         work_done_progress_params: Default::default(),
         partial_result_params: Default::default()
@@ -410,21 +410,21 @@ fn patches_are_toggled() {
 
 #[test]
 fn groups_are_highlighted_and_reached() {
-    let text = "actions {\n    replacers {\n        replacer {\n            from r\"(a)(b)\"\n            to \"$[1] $[0] $[1]\"\n        }\n    }\n}\n";
+    let text = "actions {\n    replacer {\n        from r\"(a)(b)\"\n        to \"$[1] $[0] $[1]\"\n    }\n}\n";
     let (_directory, project) = project(&[("groups.kdl", "")]);
     let mut client = Client::start();
     let uri = client.open(&project.join("patches/groups.kdl"), text);
 
-    let place = serde_json::json!({ "textDocument": { "uri": uri.as_str() }, "position": { "line": 4, "character": 18 } });
+    let place = serde_json::json!({ "textDocument": { "uri": uri.as_str() }, "position": { "line": 3, "character": 14 } });
     let found = client.request("textDocument/documentHighlight", place.clone()).response_result.unwrap();
     let starts: Vec<(u64, u64)> = found.as_array().unwrap().iter()
         .map(|highlight| &highlight["range"]["start"])
         .map(|start| (start["line"].as_u64().unwrap(), start["character"].as_u64().unwrap()))
         .collect();
-    assert_eq!(starts, vec![(3, 22), (4, 16), (4, 26)]);
+    assert_eq!(starts, vec![(2, 18), (3, 12), (3, 22)]);
 
     let definition = client.request("textDocument/definition", place).response_result.unwrap();
-    assert_eq!(definition[0]["range"]["start"], serde_json::json!({ "line": 3, "character": 22 }));
+    assert_eq!(definition[0]["range"]["start"], serde_json::json!({ "line": 2, "character": 18 }));
 
     client.stop();
 }
@@ -434,7 +434,7 @@ fn definition_links_cover_the_whole_text() {
     let text = RENAME
         .replace("from r\"old\"", "from r\"(old)\"")
         .replace("to \"new\"", "to \"$[0] #[to-upper]\"")
-        .replace("    replacers {", "    makers {\n        maker \"to-upper\" {\n            make \"x\"\n        }\n    }\n    replacers {")
+        .replace("    replacer {", "    maker \"to-upper\" {\n        make \"x\"\n    }\n    replacer {")
         .replace("*.cpp", "a.cpp");
     let (_directory, project) = operation();
     let mut params = InitializeParams::default();

@@ -21,20 +21,16 @@ const MATCHES: Hints = Hints { groups: false, matches: true };
 const PATCH: &str = r##"alias "cpp"
 file "*.cpp"
 actions {
-    builders {
-        builder "b" {
-            location "Class"
-            match "é\\w(\\d)"
-            build "x"
-        }
+    builder "b" {
+        location "Class"
+        match "é\\w(\\d)"
+        build "x"
     }
-    replacers {
-        replacer {
-            location "Function"
-            from r#"(a)(?:b)
+    replacer {
+        location "Function"
+        from r#"(a)(?:b)
 (c)"#
-            to "x"
-        }
+        to "x"
     }
 }
 "##;
@@ -85,47 +81,37 @@ fn hints_are_off_by_default() {
 const ACTIONS: &str = r##"enabled true
 file "*.cpp"
 actions {
-    builders {
-        builder "b" {
-            location "Function"
-            match r#"(a)
+    builder "b" {
+        location "Function"
+        match r#"(a)
 (b)"#
-            build "x
+        build "x
 y"
-            actions {
-                makers { maker "inner" { make "z"; }; }
-            }
+        actions {
+            maker "inner" { make "z"; }
         }
     }
-    makers {
-        maker "m" {
-            prepare "(p)"
-            make "x"
-        }
+    maker "m" {
+        prepare "(p)"
+        make "x"
     }
-    switchers {
-        switch "s" {
-            cases a="b"
-            index "@[0]"
-        }
+    switch "s" {
+        cases a="b"
+        index "@[0]"
     }
-    lists {
-        list "l" {
-            values "a" "b"
-            index "@[1]"
-        }
+    list "l" {
+        values "a" "b"
+        index "@[1]"
     }
-    replacers {
-        replacer {
-            location "Function"
-            from "(a)"
-            to "#[b]"
-        }
-        replacer {
-            location "Class"
-            from "c"
-            to "d"
-        }
+    replacer {
+        location "Function"
+        from "(a)"
+        to "#[b]"
+    }
+    replacer {
+        location "Class"
+        from "c"
+        to "d"
     }
 }
 "##;
@@ -157,6 +143,21 @@ fn results_follow_their_fields() {
         "index \"@[0]\"‹1 call›\n", "index \"@[1]\"‹5 calls›\n", "from \"(a)\"‹1 match in 1 of 2›\n", "from \"c\"‹6 matches in 2 of 4›\n",
         "to \"#[b]\"\n", "to \"d\"\n", "values \"a\" \"b\"\n", "cases a=\"b\"\n"
     ] {
+        assert!(text.contains(line), "{line}\n{text}");
+    }
+}
+
+#[test]
+fn results_follow_mixed_actions() {
+    let patch = "file \"*\"\nactions {\n    replacer {\n        from \"a\"\n        actions {\n            maker \"m\" { make \"z\"; }\n        }\n    }\n    \
+        maker \"n\" {\n        make \"y\"\n    }\n    replacer {\n        from \"b\"\n    }\n}\n";
+    let matches = |matches: usize| ActionTrace { inputs: 9, matched: 1, matches, ..ActionTrace::default() };
+    let calls = |calls: usize| ActionTrace { calls, ..ActionTrace::default() };
+    let text = traced(patch, MATCHES, &Counts::default(), &[run(&[
+        ("replacer #1", matches(1)), ("replacer #2", matches(2)), ("replacer #1/m", calls(3)), ("n", calls(4))
+    ])]);
+
+    for line in ["from \"a\"‹1 match in 1 of 9›\n", "from \"b\"‹2 matches in 1 of 9›\n", "make \"z\"‹3 calls›; }", "make \"y\"‹4 calls›\n"] {
         assert!(text.contains(line), "{line}\n{text}");
     }
 }

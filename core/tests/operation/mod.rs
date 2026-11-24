@@ -86,12 +86,10 @@ alias "{alias}"
 file "**/*.txt"
 
 actions {{
-    replacers {{
-        replacer {{
-            location "{location}"
-            from r"{from}"
-            to "{to}"
-        }}
+    replacer {{
+        location "{location}"
+        from r"{from}"
+        to "{to}"
     }}
 }}
 "#)

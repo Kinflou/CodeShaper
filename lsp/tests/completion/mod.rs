@@ -24,51 +24,41 @@ fn schema_matches_the_models() {
 alias ""
 file "*.cpp"
 actions {
-    builders {
-        builder "b" {
-            location "Identifier"
-            reference-location "Identifier"
-            match "x"
-            flags "i"
-            build "x"
-            collect true
-            separator ","
-            actions {
-            }
+    builder "b" {
+        location "Identifier"
+        reference-location "Identifier"
+        match "x"
+        flags "i"
+        build "x"
+        collect true
+        separator ","
+        actions {
         }
     }
-    replacers {
-        replacer {
-            location "Identifier"
-            from "x"
-            to "x"
-            flags "g"
-            reference-location "Identifier"
-            reference "x"
-            actions {
-            }
+    replacer {
+        location "Identifier"
+        from "x"
+        to "x"
+        flags "g"
+        reference-location "Identifier"
+        reference "x"
+        actions {
         }
     }
-    makers {
-        maker "m" {
-            prepare "x"
-            flags "i"
-            make "x"
-        }
+    maker "m" {
+        prepare "x"
+        flags "i"
+        make "x"
     }
-    switchers {
-        switch "s" {
-            cases a="b"
-            index "x"
-            default "x"
-        }
+    switch "s" {
+        cases a="b"
+        index "x"
+        default "x"
     }
-    lists {
-        list "l" {
-            values "a" "b"
-            index "x"
-            default "x"
-        }
+    list "l" {
+        values "a" "b"
+        index "x"
+        default "x"
     }
 }
 "##;
@@ -93,8 +83,8 @@ actions {
 
 #[test]
 fn field_names_follow_the_enclosing_node() {
-    let text = "actions {\n    makers {\n        maker \"m\" {\n            \n        }\n    }\n}\n";
-    let offset = text.find("            \n").unwrap() + 12;
+    let text = "actions {\n    maker \"m\" {\n        \n    }\n}\n";
+    let offset = text.find("        \n").unwrap() + 8;
 
     assert_eq!(labels(text, offset), vec!["prepare", "flags", "make"]);
     assert_eq!(labels("", 0), vec!["enabled", "alias", "file", "actions", "patch"]);
@@ -102,8 +92,20 @@ fn field_names_follow_the_enclosing_node() {
 }
 
 #[test]
+fn actions_offer_every_type() {
+    let types = vec!["builder", "replacer", "maker", "switch", "list"];
+    let place = |text: &str| labels(&text.replace('|', ""), text.find('|').unwrap());
+
+    assert_eq!(place("actions {\n    |\n}\n"), types);
+    assert_eq!(place("actions {\n    maker \"m\" {\n    }\n    bui|\n    replacer {\n    }\n}\n"), types);
+    assert_eq!(place("actions {\n    builder \"b\" {\n        actions {\n            |"), types);
+    assert_eq!(place("actions {\n    switch \"s\" {\n        |\n    }\n}\n"), vec!["cases", "index", "default"]);
+    assert_eq!(place("actions {\n    builders {\n        |\n    }\n}\n"), Vec::<String>::new());
+}
+
+#[test]
 fn locations_come_from_the_backend() {
-    let text = "alias \"\"\nactions {\n    replacers {\n        replacer {\n            location \"Function";
+    let text = "alias \"\"\nactions {\n    replacer {\n        location \"Function";
     let kinds = labels(text, text.len());
 
     assert!(kinds.contains(&"FunctionDefinition".to_string()));
@@ -115,7 +117,7 @@ fn locations_come_from_the_backend() {
 
 #[test]
 fn action_names_inside_expressions() {
-    let text = "actions {\n    makers {\n        maker \"pair\" {\n            make \"x\"\n        }\n    }\n    replacers {\n        replacer {\n            to \"#[p";
+    let text = "actions {\n    maker \"pair\" {\n        make \"x\"\n    }\n    replacer {\n        to \"#[p";
 
     assert_eq!(labels(text, text.len()), vec!["pair"]);
     assert_eq!(labels(&format!("{text}air] "), text.len() + 5), Vec::<String>::new());
@@ -123,7 +125,7 @@ fn action_names_inside_expressions() {
 
 #[test]
 fn locals_offer_the_regex_groups() {
-    let text = "actions {\n    replacers {\n        replacer {\n            from r\"(\\w+) (?:x) (?P<n>\\d)\"\n            to \"a $[\"\n        }\n    }\n}\n";
+    let text = "actions {\n    replacer {\n        from r\"(\\w+) (?:x) (?P<n>\\d)\"\n        to \"a $[\"\n    }\n}\n";
     let offset = text.find("$[").unwrap() + 2;
     let (_directory, project) = project(&[]);
 

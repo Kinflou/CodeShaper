@@ -49,12 +49,7 @@ pub fn top(has_blocks: bool, has_fields: bool) -> Vec<&'static str> {
 pub fn children(parent: Option<&str>) -> &'static [&'static str] {
     match parent {
         None => &["enabled", "alias", "file", "actions"],
-        Some("actions") => &["builders", "replacers", "makers", "switchers", "lists"],
-        Some("builders") => &["builder"],
-        Some("replacers") => &["replacer"],
-        Some("makers") => &["maker"],
-        Some("switchers") => &["switch"],
-        Some("lists") => &["list"],
+        Some("actions") => &["builder", "replacer", "maker", "switch", "list"],
         Some("builder") => &["location", "reference-location", "match", "flags", "build", "collect", "separator", "actions"],
         Some("replacer") => &["location", "from", "to", "flags", "reference-location", "reference", "actions"],
         Some("maker") => &["prepare", "flags", "make"],

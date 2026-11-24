@@ -48,7 +48,7 @@ fn builder(location: &str) -> String {
 
 fn applied(builders: &str, replacers: &[String], source: &str) -> (Result<String>, Vec<String>, Vec<String>) {
     let content = format!(
-        "enabled true\nfile \"*\"\nactions {{\nbuilders {{\n{builders}}}\nreplacers {{\n{}}}\n}}\n", replacers.concat()
+        "enabled true\nfile \"*\"\nactions {{\n{builders}{}}}\n", replacers.concat()
     );
     let backend = CountingBackend::default();
     let result = PatchController::with(Rc::new(Patch::from_kdl("", &content).unwrap())).apply(&backend, source);
@@ -82,7 +82,7 @@ fn changed_text_is_located_again() {
 
 #[test]
 fn every_location_is_asked_for_together() {
-    let content = format!("enabled true\nfile \"*\"\nactions {{\nbuilders {{\n{}}}\nreplacers {{\n{}}}\n}}\n", builder("File"), replacer("Line", "a", "b"));
+    let content = format!("enabled true\nfile \"*\"\nactions {{\n{}{}}}\n", builder("File"), replacer("Line", "a", "b"));
     let backend = CountingBackend::default();
     PatchController::with(Rc::new(Patch::from_kdl("", &content).unwrap())).apply(&backend, "a\n").unwrap();
 

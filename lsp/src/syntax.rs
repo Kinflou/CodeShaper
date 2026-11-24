@@ -107,9 +107,7 @@ impl Outline {
     }
 
     pub fn owner(&self, index: usize) -> Option<usize> {
-        self.nodes[index].parent
-            .and_then(|container| self.nodes[container].parent)
-            .and_then(|actions| self.nodes[actions].parent)
+        self.nodes[index].parent.and_then(|actions| self.nodes[actions].parent)
     }
 
     pub fn enclosing(&self, offset: usize) -> Option<usize> {

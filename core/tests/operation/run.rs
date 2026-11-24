@@ -128,17 +128,15 @@ fn unregistered_alias_fails() {
 #[test]
 fn invalid_patches_stop_the_run() {
     let duplicate = patch("lines", "Line", r"old (\w+)", "new $[0]").replace("actions {", r#"actions {
-    builders {
-        builder "word" {
-            location "Line"
-            match r"(\w+)"
-            build "$[0]"
-        }
-        builder "word" {
-            location "Line"
-            match r"(\w+)"
-            build "$[0]"
-        }
+    builder "word" {
+        location "Line"
+        match r"(\w+)"
+        build "$[0]"
+    }
+    builder "word" {
+        location "Line"
+        match r"(\w+)"
+        build "$[0]"
     }"#);
     let directory = workspace("replace", &[("duplicate.kdl", duplicate), ("rename.kdl", rename("lines", "Line"))]);
 
@@ -154,12 +152,10 @@ fn invalid_patches_stop_the_run() {
 #[test]
 fn warnings_do_not_stop_the_run() {
     let unused = rename("lines", "Line").replace("actions {", r#"actions {
-    builders {
-        builder "unused" {
-            location "Line"
-            match r"(\w+)"
-            build "$[0]"
-        }
+    builder "unused" {
+        location "Line"
+        match r"(\w+)"
+        build "$[0]"
     }"#);
     let directory = workspace("replace", &[("rename.kdl", unused)]);
 

@@ -20,7 +20,7 @@ fn part(needle: &str, shift: usize) -> Option<(Part, &'static str)> {
 }
 
 fn patch(query: &str) -> String {
-    format!("alias \"\"\nfile \"*.cpp\"\nactions {{\n    replacers {{\n        replacer {{\n            location r#\"{query}\"#\n        }}\n    }}\n}}\n")
+    format!("alias \"\"\nfile \"*.cpp\"\nactions {{\n    replacer {{\n        location r#\"{query}\"#\n    }}\n}}\n")
 }
 
 fn completed(query: &str) -> Vec<(String, String)> {

@@ -28,10 +28,10 @@ fn builder_expression() {
         alias: "".to_string(),
         file: "".to_string(),
         actions: patch::Actions {
-            builders: Some(vec![hello_builder]),
+            builders: vec![hello_builder],
             replacers: Default::default(),
             makers: Default::default(),
-            switchers: Default::default(),
+            switches: Default::default(),
             lists: Default::default(),
         },
     };

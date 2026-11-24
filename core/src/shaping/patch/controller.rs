@@ -94,73 +94,63 @@ impl PatchController {
         let parent_path = parent.and_then(|parent| paths.get(parent)).cloned().unwrap_or_default();
         let path = |name: &str| if parent_path.is_empty() { name.to_string() } else { format!("{parent_path}/{name}") };
 
-        if let Some(builders) = &actions.builders {
-            for builder in builders.iter() {
-                let action = ActionOf::BuilderAction(
-                    BuilderAction::with_ref(builder.clone(), parent.cloned())
-                );
-                let id = arena.new_node(action);
-                arena.get_mut(id).unwrap().get_mut().builder_mut().unwrap().post_new(id);
-                paths.insert(id, path(&builder.name));
+        for builder in &actions.builders {
+            let action = ActionOf::BuilderAction(
+                BuilderAction::with_ref(builder.clone(), parent.cloned())
+            );
+            let id = arena.new_node(action);
+            arena.get_mut(id).unwrap().get_mut().builder_mut().unwrap().post_new(id);
+            paths.insert(id, path(&builder.name));
 
-                if let Some(parent) = parent { parent.append(id, arena); }
+            if let Some(parent) = parent { parent.append(id, arena); }
 
-                Self::make_inner_actions(arena, paths, &builder.actions, Some(&id));
-            }
+            Self::make_inner_actions(arena, paths, &builder.actions, Some(&id));
         }
 
-        if let Some(replacers) = &actions.replacers {
-            for (index, replacer) in replacers.iter().enumerate() {
-                let action = ActionOf::ReplacerAction(
-                    ReplacerAction::with_ref(replacer.clone(), parent.cloned())
-                );
-                let id = arena.new_node(action);
-                arena.get_mut(id).unwrap().get_mut().replacer_mut().unwrap().post_new(id);
-                paths.insert(id, path(&format!("replacer #{}", index + 1)));
+        for (index, replacer) in actions.replacers.iter().enumerate() {
+            let action = ActionOf::ReplacerAction(
+                ReplacerAction::with_ref(replacer.clone(), parent.cloned())
+            );
+            let id = arena.new_node(action);
+            arena.get_mut(id).unwrap().get_mut().replacer_mut().unwrap().post_new(id);
+            paths.insert(id, path(&format!("replacer #{}", index + 1)));
 
-                if let Some(parent) = parent { parent.append(id, arena); }
+            if let Some(parent) = parent { parent.append(id, arena); }
 
-                Self::make_inner_actions(arena, paths, &replacer.actions, Some(&id));
-            }
+            Self::make_inner_actions(arena, paths, &replacer.actions, Some(&id));
         }
 
-        if let Some(makers) = &actions.makers {
-            for maker in makers.iter() {
-                let action = ActionOf::MakerAction(
-                    MakerAction::with_ref(maker.clone(), parent.cloned())
-                );
-                let id = arena.new_node(action);
-                arena.get_mut(id).unwrap().get_mut().maker_mut().unwrap().post_new(id);
-                paths.insert(id, path(&maker.name));
+        for maker in &actions.makers {
+            let action = ActionOf::MakerAction(
+                MakerAction::with_ref(maker.clone(), parent.cloned())
+            );
+            let id = arena.new_node(action);
+            arena.get_mut(id).unwrap().get_mut().maker_mut().unwrap().post_new(id);
+            paths.insert(id, path(&maker.name));
 
-                if let Some(parent) = parent { parent.append(id, arena); }
-            }
+            if let Some(parent) = parent { parent.append(id, arena); }
         }
 
-        if let Some(lists) = &actions.lists {
-            for list in lists.iter() {
-                let action = ActionOf::ListAction(
-                    ListAction::with_ref(list.clone(), parent.cloned())
-                );
-                let id = arena.new_node(action);
-                arena.get_mut(id).unwrap().get_mut().list_mut().unwrap().post_new(id);
-                paths.insert(id, path(&list.name));
+        for list in &actions.lists {
+            let action = ActionOf::ListAction(
+                ListAction::with_ref(list.clone(), parent.cloned())
+            );
+            let id = arena.new_node(action);
+            arena.get_mut(id).unwrap().get_mut().list_mut().unwrap().post_new(id);
+            paths.insert(id, path(&list.name));
 
-                if let Some(parent) = parent { parent.append(id, arena); }
-            }
+            if let Some(parent) = parent { parent.append(id, arena); }
         }
 
-        if let Some(switchers) = &actions.switchers {
-            for switch in switchers.iter() {
-                let action = ActionOf::SwitchAction(
-                    SwitchAction::with_ref(switch.clone(), parent.cloned())
-                );
-                let id = arena.new_node(action);
-                arena.get_mut(id).unwrap().get_mut().switch_mut().unwrap().post_new(id);
-                paths.insert(id, path(&switch.name));
+        for switch in &actions.switches {
+            let action = ActionOf::SwitchAction(
+                SwitchAction::with_ref(switch.clone(), parent.cloned())
+            );
+            let id = arena.new_node(action);
+            arena.get_mut(id).unwrap().get_mut().switch_mut().unwrap().post_new(id);
+            paths.insert(id, path(&switch.name));
 
-                if let Some(parent) = parent { parent.append(id, arena); }
-            }
+            if let Some(parent) = parent { parent.append(id, arena); }
         }
     }
 
@@ -318,13 +308,13 @@ impl PatchController {
 
 
 fn collect_locations(actions: &Actions, locations: &mut Vec<String>) {
-    for builder in actions.builders.iter().flatten() {
+    for builder in &actions.builders {
         locations.push(builder.location.clone());
         locations.extend(builder.reference_location.clone());
         collect_locations(&builder.actions, locations);
     }
 
-    for replacer in actions.replacers.iter().flatten() {
+    for replacer in &actions.replacers {
         locations.push(replacer.location.clone());
         locations.push(replacer.reference_location.clone());
         collect_locations(&replacer.actions, locations);

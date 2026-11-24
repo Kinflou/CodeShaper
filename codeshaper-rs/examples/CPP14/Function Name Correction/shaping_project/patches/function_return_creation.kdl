@@ -2,40 +2,35 @@ enabled true
 file "ReturnModule.cpp"
 
 actions {
-    builders {
-        builder "function_header_builder" {
-            location "FunctionDefinition.body"
-            reference-location "FunctionDefinition"
-            match r"void Method(\w+)\("
-            build "#[function_type_builder] Method$[0]"
-            actions {
-                builders {
-                    builder "function_type_builder" {
-                        location "FunctionDefinition.body"
-                        match r#"std::string type = "(.+?)";"#
-                        build "#[function_type_switch]($[0])"
-                    }
-                }
-                switchers {
-                    switch "function_type_switch" {
-                        index "@[0]"
-                        cases integer="int" boolean="bool"
-                    }
-                }
+    builder "function_header_builder" {
+        location "FunctionDefinition.body"
+        reference-location "FunctionDefinition"
+        match r"void Method(\w+)\("
+        build "#[function_type_builder] Method$[0]"
+        actions {
+            builder "function_type_builder" {
+                location "FunctionDefinition.body"
+                match r#"std::string type = "(.+?)";"#
+                build "#[function_type_switch]($[0])"
+            }
+
+            switch "function_type_switch" {
+                index "@[0]"
+                cases integer="int" boolean="bool"
             }
         }
     }
-    replacers {
-        replacer {
-            location "FunctionDefinition.body"
-            reference-location "FunctionDefinition"
-            from r"void Method\w+"
-            to "#[function_header_builder]"
-        }
-        replacer {
-            location "FunctionDefinition.body"
-            from r"(int (\w+) = \d+;)\n\}"
-            to "$[0]\n\t\n\treturn $[1];\n}"
-        }
+
+    replacer {
+        location "FunctionDefinition.body"
+        reference-location "FunctionDefinition"
+        from r"void Method\w+"
+        to "#[function_header_builder]"
+    }
+
+    replacer {
+        location "FunctionDefinition.body"
+        from r"(int (\w+) = \d+;)\n\}"
+        to "$[0]\n\t\n\treturn $[1];\n}"
     }
 }

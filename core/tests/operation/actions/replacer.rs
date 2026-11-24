@@ -29,13 +29,11 @@ alias "whole"
 file "*"
 
 actions {{
-    replacers {{
-        replacer {{
-            location "All"
-            from r"{from}"
-            to "<$[0]>"
-            flags "{flags}"
-        }}
+    replacer {{
+        location "All"
+        from r"{from}"
+        to "<$[0]>"
+        flags "{flags}"
     }}
 }}"#);
 
@@ -58,7 +56,7 @@ fn flags_shape_the_from_regex() {
 
 #[test]
 fn unknown_flags_are_errors() {
-    let replacer = patch("iq", "(a)").actions.replacers.unwrap().remove(0);
+    let replacer = patch("iq", "(a)").actions.replacers.remove(0);
 
     let error = replacer.from_regex().unwrap_err();
     assert_eq!(error.to_string(), "Unknown regex flag 'q', expected any of 'i', 'm', 's' or 'x'");

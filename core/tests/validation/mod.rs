@@ -62,21 +62,17 @@ fn kinds(diagnostics: &[Diagnostic]) -> Vec<(DiagnosticKind, &str, &str)> {
 }
 
 fn replacer(location: &str, from: &str, to: &str) -> String {
-    format!(r#"replacers {{
-        replacer {{
-            location "{location}"
-            from r"{from}"
-            to "{to}"
-        }}
+    format!(r#"replacer {{
+        location "{location}"
+        from r"{from}"
+        to "{to}"
     }}"#)
 }
 
-const NAMES_BUILDER: &str = r#"builders {
-        builder "names" {
-            location "Line"
-            match r"(\w+)"
-            build "$[0]"
-        }
+const NAMES_BUILDER: &str = r#"builder "names" {
+        location "Line"
+        match r"(\w+)"
+        build "$[0]"
     }"#;
 
 
@@ -149,13 +145,11 @@ fn arguments_outside_makers_and_indexes() {
 
 #[test]
 fn makers_take_arguments_but_need_prepare_for_locals() {
-    let actions = format!(r#"makers {{
-        maker "wrap" {{
-            make "<@[0]>"
-        }}
-        maker "local" {{
-            make "$[0]"
-        }}
+    let actions = format!(r#"maker "wrap" {{
+        make "<@[0]>"
+    }}
+    maker "local" {{
+        make "$[0]"
     }}
     {}"#, replacer("Line", r"old (\w+)", "#[wrap]($[0]) #[local]"));
 
@@ -166,15 +160,13 @@ fn makers_take_arguments_but_need_prepare_for_locals() {
 fn duplicate_and_unused_actions() {
     let actions = format!(r#"{NAMES_BUILDER}
     {}"#, replacer("Line", "old", "new").replace("from", r#"actions {
-                builders {
-                    builder "names" {
-                        location "Line"
-                        match r"(\w+)"
-                        build "$[0]"
-                    }
-                }
+            builder "names" {
+                location "Line"
+                match r"(\w+)"
+                build "$[0]"
             }
-            from"#));
+        }
+        from"#));
 
     let diagnostics = check(&actions);
 
@@ -203,15 +195,13 @@ fn spans_point_at_values() {
 fn duplicate_points_at_the_second_definition() {
     let actions = format!(r#"{NAMES_BUILDER}
     {}"#, replacer("Line", "old", "new").replace("from", r#"actions {
-                builders {
-                    builder "names" {
-                        location "Line"
-                        match r"(\w+)"
-                        build "$[0]"
-                    }
-                }
+            builder "names" {
+                location "Line"
+                match r"(\w+)"
+                build "$[0]"
             }
-            from"#));
+        }
+        from"#));
 
     let (content, diagnostics) = check_source(&actions);
     let first = content.find(r#""names""#).unwrap();
@@ -224,10 +214,8 @@ fn duplicate_points_at_the_second_definition() {
 #[test]
 fn calls_pass_enough_arguments() {
     let actions = format!(r#"{NAMES_BUILDER}
-    makers {{
-        maker "pair" {{
-            make "@[0]=@[1]"
-        }}
+    maker "pair" {{
+        make "@[0]=@[1]"
     }}
     {}"#, replacer("Line", r"old (\w+)", "#[pair]($[0], $[0]) #[pair]($[0]) #[names]($[0])"));
 

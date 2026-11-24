@@ -38,16 +38,14 @@ fn replacers_record_each_match() {
 
 #[test]
 fn builders_record_inputs_and_calls() {
-    let content = patch("lines", "Line", r"old (\w+)", "new $[0] #[names]").replace("    replacers {", r#"    builders {
-        builder "names" {
-            location "Line"
-            match r"(\w+)"
-            build "<$[0]>"
-            collect true
-            separator ","
-        }
+    let content = patch("lines", "Line", r"old (\w+)", "new $[0] #[names]").replace("    replacer {", r#"    builder "names" {
+        location "Line"
+        match r"(\w+)"
+        build "<$[0]>"
+        collect true
+        separator ","
     }
-    replacers {"#);
+    replacer {"#);
     let trace = trace(&content, 1);
     let builder = trace.action("names").unwrap();
 
@@ -60,14 +58,12 @@ fn builders_record_inputs_and_calls() {
 
 #[test]
 fn nested_actions_are_keyed_by_path() {
-    let content = patch("lines", "Line", r"old (\w+)", "new #[inner]").replace("            to \"new #[inner]\"", r#"            to "new #[inner]"
-            actions {
-                makers {
-                    maker "inner" {
-                        make "made"
-                    }
-                }
-            }"#);
+    let content = patch("lines", "Line", r"old (\w+)", "new #[inner]").replace("        to \"new #[inner]\"", r#"        to "new #[inner]"
+        actions {
+            maker "inner" {
+                make "made"
+            }
+        }"#);
     let trace = trace(&content, 3);
 
     assert_eq!(trace.action("replacer #1/inner").unwrap().results[0].output, "made");
@@ -75,13 +71,11 @@ fn nested_actions_are_keyed_by_path() {
 
 #[test]
 fn prepared_makers_record_their_input() {
-    let content = patch("lines", "Line", r"(old \w+)", "#[getter]($[0])").replace("    replacers {", r#"    makers {
-        maker "getter" {
-            prepare r"(\w+) (\w+)"
-            make "get_$[1]"
-        }
+    let content = patch("lines", "Line", r"(old \w+)", "#[getter]($[0])").replace("    replacer {", r#"    maker "getter" {
+        prepare r"(\w+) (\w+)"
+        make "get_$[1]"
     }
-    replacers {"#);
+    replacer {"#);
     let trace = trace(&content, 3);
     let maker = trace.action("getter").unwrap();
 
@@ -91,8 +85,8 @@ fn prepared_makers_record_their_input() {
 }
 
 fn built(builder: &str, from: &str, to: &str) -> (usize, usize, usize, usize) {
-    let builder = format!("    builders {{\n        builder \"b\" {{\n{builder}\n        }}\n    }}\n    replacers {{");
-    let trace = trace(&patch("lines", "Line", from, to).replace("    replacers {", &builder), 1);
+    let builder = format!("    builder \"b\" {{\n{builder}\n    }}\n    replacer {{");
+    let trace = trace(&patch("lines", "Line", from, to).replace("    replacer {", &builder), 1);
     let found = trace.action("b").cloned().unwrap_or_default();
 
     (found.inputs, found.matched, found.built, found.calls)

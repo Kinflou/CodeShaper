@@ -30,29 +30,23 @@ const PATCH: &str = r##"enabled false
 file "*.cpp"
 
 actions {
-    builders {
-        builder "outer" {
-            location "FunctionDefinition.Body"
-            match r"(.*)"
-            build "$[0]"
-            actions {
-                builders {
-                    builder "inner" {
-                        location "FunctionDefinition"
-                        match r"(.*)"
-                        build "$[0]"
-                    }
-                }
+    builder "outer" {
+        location "FunctionDefinition.Body"
+        match r"(.*)"
+        build "$[0]"
+        actions {
+            builder "inner" {
+                location "FunctionDefinition"
+                match r"(.*)"
+                build "$[0]"
             }
         }
     }
-    replacers {
-        replacer {
-            location "FunctionDeclarator.Declarator"
-            reference-location "FunctionDefinition"
-            from r"one"
-            to "two"
-        }
+    replacer {
+        location "FunctionDeclarator.Declarator"
+        reference-location "FunctionDefinition"
+        from r"one"
+        to "two"
     }
 }
 "##;
@@ -139,7 +133,7 @@ fn files_come_from_the_configuration_or_the_patch() {
 #[test]
 fn broken_patches_do_not_stop_exploring() {
     let (directory, configuration, patch) = workspace();
-    write(&directory, "shaping/patches/second.kdl", "enabled true\nfile \"*.cpp\"\nactions {\n    replacers {\n        replacer {\n            location \"FunctionDefinition\"\n            from r\"");
+    write(&directory, "shaping/patches/second.kdl", "enabled true\nfile \"*.cpp\"\nactions {\n    replacer {\n        location \"FunctionDefinition\"\n        from r\"");
     let mut client = Client::start();
 
     for start in [&configuration, &patch] {
@@ -194,7 +188,7 @@ fn blocks_are_described() {
         ("first.kdl", "outer", "location", false), ("first.kdl", "outer/inner", "location", false), ("first.kdl", "replacer #1", "reference-location", false)
     ]);
     assert_eq!((&found["used"][0]["whole"], &found["used"][1]["whole"]), (&json!(true), &json!(false)));
-    assert_eq!(found["used"][0]["range"]["start"], json!({ "line": 6, "character": 21 }));
+    assert_eq!(found["used"][0]["range"]["start"], json!({ "line": 5, "character": 17 }));
 
     let found = block("two()", 0);
     assert_eq!(locations(&found)[0], ("FunctionDeclarator.Declarator", 2, 2));

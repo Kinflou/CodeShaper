@@ -25,7 +25,7 @@ fn composition_builder_with_undefined_action() {
         alias: "".to_string(),
         file: "".to_string(),
         actions: Actions {
-            builders: Some(vec![
+            builders: vec![
                 Builder {
                     name: "hello_builder".to_string(),
                     location: "Any".to_string(),
@@ -37,11 +37,11 @@ fn composition_builder_with_undefined_action() {
                     separator: String::new(),
                     actions: Default::default(),
                 }
-            ]),
-            replacers: None,
-            makers: None,
-            switchers: None,
-            lists: None
+            ],
+            replacers: vec![],
+            makers: vec![],
+            switches: vec![],
+            lists: vec![]
         },
     };
     let hello_builder = Rc::new(hello_builder);
@@ -70,7 +70,7 @@ fn simple_composition_with_build_action_expression() {
         alias: "".to_string(),
         file: "".to_string(),
         actions: Actions {
-            builders: Some(vec![
+            builders: vec![
                 Builder {
                     name: "hello_builder".to_owned(),
                     location: "Any".to_owned(),
@@ -81,23 +81,23 @@ fn simple_composition_with_build_action_expression() {
                     collect: false,
                     separator: String::new(),
                     actions: Actions {
-                        builders: None,
-                        replacers: None,
-                        makers: Some(vec![
+                        builders: vec![],
+                        replacers: vec![],
+                        makers: vec![
                             patch::maker::Maker {
                                 name: "greet_maker".to_owned(),
                                 prepare: None,
                                 flags: String::new(),
                                 make: "Maker @[0]".to_owned(),
                             }
-                        ]),
-                        switchers: None, lists: None
+                        ],
+                        switches: vec![], lists: vec![]
                     }
                 }
-            ]),
-            replacers: None,
-            makers: None,
-            switchers: None, lists: None
+            ],
+            replacers: vec![],
+            makers: vec![],
+            switches: vec![], lists: vec![]
         },
     };
     let hello_builder = Rc::new(hello_builder);

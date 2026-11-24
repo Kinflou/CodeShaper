@@ -16,33 +16,27 @@ alias ""
 file "*.cpp"
 
 actions {
-    makers {
-        maker "unused_here" {
-            make "x"
-        }
+    maker "unused_here" {
+        make "x"
     }
-    switchers {
-        switch "kind" {
-            cases old="legacy" gone="removed"
-            index "@[0]"
-        }
+    switch "kind" {
+        cases old="legacy" gone="removed"
+        index "@[0]"
     }
-    replacers {
-        replacer {
-            location "ClassSpecifier"
-            from r"x"
-            to "y"
-        }
-        replacer {
-            location "FunctionDefinition"
-            from r"nothing"
-            to "#[unused_here]"
-        }
-        replacer {
-            location "FunctionDefinition"
-            from r"void (old)"
-            to "#[kind]($[0])"
-        }
+    replacer {
+        location "ClassSpecifier"
+        from r"x"
+        to "y"
+    }
+    replacer {
+        location "FunctionDefinition"
+        from r"nothing"
+        to "#[unused_here]"
+    }
+    replacer {
+        location "FunctionDefinition"
+        from r"void (old)"
+        to "#[kind]($[0])"
     }
 }
 "##;
@@ -66,7 +60,7 @@ fn patch_diagnostics_point_at_values() {
     let found = diagnostics(&codeshaper::registry(), &path, BROKEN);
 
     assert_eq!(codes(&found), vec!["location-not-found", "incorrect-regex", "action-not-found"]);
-    assert_eq!(found[1].range, Range::new(Position::new(8, 23), Position::new(8, 24)));
+    assert_eq!(found[1].range, Range::new(Position::new(7, 19), Position::new(7, 20)));
     assert_eq!(found[1].severity, Some(DiagnosticSeverity::ERROR));
     assert!(found[1].message.starts_with("replacer #1 › from: "));
 }
@@ -119,7 +113,7 @@ fn coverage_reports_what_matches_nothing() {
         ("location-unmatched".to_string(), Some(DiagnosticSeverity::WARNING), "replacer #1 › location: matches nothing in 2 target file(s)"),
         ("from-unmatched".to_string(), Some(DiagnosticSeverity::WARNING), "replacer #2 › from: never matches in the 2 located content(s)"),
     ]);
-    assert_eq!(found[1].range, Range::new(Position::new(12, 36), Position::new(12, 45)));
+    assert_eq!(found[1].range, Range::new(Position::new(9, 32), Position::new(9, 41)));
 }
 
 #[test]
@@ -138,7 +132,7 @@ fn unmatched_files_are_reported_once() {
 
 fn hints(kind: &str, fields: &str) -> Vec<(String, String)> {
     let (_directory, project) = project(&[]);
-    let text = format!("enabled true\nalias \"\"\nfile \"*.cpp\"\nactions {{\n{kind}s {{\n{kind} {fields}\n}}\n}}\n");
+    let text = format!("enabled true\nalias \"\"\nfile \"*.cpp\"\nactions {{\n{kind} {fields}\n}}\n");
 
     let found = diagnostics(&codeshaper::registry(), &project.join("patches/hints.kdl"), &text);
 

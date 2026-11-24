@@ -19,7 +19,7 @@ fn composition_with_single_builder_in_root_builder() {
         alias: "".to_owned(),
         file: "".to_owned(),
         actions: Actions {
-            builders: Some(vec![
+            builders: vec![
                 Builder {
                     name: "pool_builder".to_owned(),
                     location: "Area".to_owned(),
@@ -30,7 +30,7 @@ fn composition_with_single_builder_in_root_builder() {
                     collect: false,
                     separator: String::new(),
                     actions: Actions {
-                        builders: Some(vec![
+                        builders: vec![
                             Builder {
                                 name: "pool_mud_builder".to_owned(),
                                 location: "Pool".to_owned(),
@@ -42,18 +42,18 @@ fn composition_with_single_builder_in_root_builder() {
                                 separator: String::new(),
                                 actions: Default::default(),
                             }
-                        ]),
-                        replacers: None,
-                        makers: None,
-                        switchers: None,
-                        lists: None,
+                        ],
+                        replacers: vec![],
+                        makers: vec![],
+                        switches: vec![],
+                        lists: vec![],
                     },
                 }
-            ]),
-            replacers: None,
-            makers: None,
-            switchers: None,
-            lists: None
+            ],
+            replacers: vec![],
+            makers: vec![],
+            switches: vec![],
+            lists: vec![]
         },
     };
     let hello_builder = Rc::new(hello_builder);
@@ -85,7 +85,7 @@ fn composition_with_single_builder_in_root_builder_missing_location() {
         alias: "".to_owned(),
         file: "".to_owned(),
         actions: Actions {
-            builders: Some(vec![
+            builders: vec![
                 Builder {
                     name: "pool_builder".to_owned(),
                     location: "Area".to_owned(),
@@ -96,7 +96,7 @@ fn composition_with_single_builder_in_root_builder_missing_location() {
                     collect: false,
                     separator: String::new(),
                     actions: Actions {
-                        builders: Some(vec![
+                        builders: vec![
                             Builder {
                                 name: "pool_mud_builder".to_owned(),
                                 location: "Pool".to_owned(),
@@ -108,18 +108,18 @@ fn composition_with_single_builder_in_root_builder_missing_location() {
                                 separator: String::new(),
                                 actions: Default::default(),
                             }
-                        ]),
-                        replacers: None,
-                        makers: None,
-                        switchers: None,
-                        lists: None,
+                        ],
+                        replacers: vec![],
+                        makers: vec![],
+                        switches: vec![],
+                        lists: vec![],
                     },
                 }
-            ]),
-            replacers: None,
-            makers: None,
-            switchers: None,
-            lists: None
+            ],
+            replacers: vec![],
+            makers: vec![],
+            switches: vec![],
+            lists: vec![]
         },
     };
     let hello_builder = Rc::new(hello_builder);

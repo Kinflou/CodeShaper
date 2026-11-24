@@ -12,25 +12,19 @@ const PATCH: &str = r##"enabled true
 alias ""
 
 actions {
-    builders {
-        builder "names" {
-            build "x"
-            actions {
-                makers {
-                    maker "inner" {
-                        make "y"
-                    }
-                }
+    builder "names" {
+        build "x"
+        actions {
+            maker "inner" {
+                make "y"
             }
         }
     }
-    replacers {
-        replacer {
-            to "#[names]"
-        }
-        replacer {
-            to "z"
-        }
+    replacer {
+        to "#[names]"
+    }
+    replacer {
+        to "z"
     }
 }
 "##;
@@ -59,13 +53,22 @@ fn symbols_follow_the_action_tree() {
         format!("replacer #1 ({:?})", SymbolKind::METHOD),
         format!("replacer #2 ({:?})", SymbolKind::METHOD),
     ]);
-    assert_eq!((found[2].range.start.line, found[2].range.end.line), (5, 14));
-    assert_eq!(found[2].selection_range.start.character, 16);
+    assert_eq!((found[2].range.start.line, found[2].range.end.line), (4, 11));
+    assert_eq!(found[2].selection_range.start.character, 12);
+}
+
+#[test]
+fn symbols_keep_the_written_order() {
+    let text = "actions {\n    replacer {\n        actions {\n            list \"l\" {\n            }\n            maker \"m\" {\n            }\n        }\n    }\n    \
+        switch \"s\" {\n    }\n    replacer {\n    }\n    builder \"b\" {\n    }\n}\n";
+    let names: Vec<String> = tree(&symbols(text)).iter().map(|line| line.split(" (").next().unwrap().to_string()).collect();
+
+    assert_eq!(names, vec!["replacer #1", "  l", "  m", "s", "replacer #2", "b"]);
 }
 
 #[test]
 fn folding_covers_multiline_blocks() {
     let lines: Vec<(u32, u32)> = folding(PATCH).iter().map(|range| (range.start_line, range.end_line)).collect();
 
-    assert_eq!(lines, vec![(3, 24), (4, 15), (5, 14), (7, 13), (8, 12), (9, 11), (16, 23), (17, 19), (20, 22)]);
+    assert_eq!(lines, vec![(3, 18), (4, 11), (6, 10), (7, 9), (12, 14), (15, 17)]);
 }

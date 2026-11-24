@@ -3,18 +3,15 @@ alias "text"
 file "test.txt"
 
 actions {
-    builders {
-        builder "hello_builder" {
-            location "*"
-            match "Lets greet (.+)!"
-            build "Hello #[code_maker]($[0]) World!"
-        }
+    builder "hello_builder" {
+        location "*"
+        match "Lets greet (.+)!"
+        build "Hello #[code_maker]($[0]) World!"
     }
-    makers {
-        maker "code_maker" {
-            prepare ""
-            make "@[0] Library"
-        }
+
+    maker "code_maker" {
+        prepare ""
+        make "@[0] Library"
     }
 }
 

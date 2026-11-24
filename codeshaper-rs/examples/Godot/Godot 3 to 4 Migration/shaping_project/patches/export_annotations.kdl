@@ -2,11 +2,9 @@ enabled true
 file "**/*.gd"
 
 actions {
-    replacers {
-        replacer {
-            location "ExportVariableStatement"
-            from r"^export var (\w+)"
-            to "@export var $[0]"
-        }
+    replacer {
+        location "ExportVariableStatement"
+        from r"^export var (\w+)"
+        to "@export var $[0]"
     }
 }

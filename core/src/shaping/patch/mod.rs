@@ -47,20 +47,20 @@ pub struct Patch {
 #[derive(Default, Clone, Debug, PartialEq)]
 #[derive(knus::Decode)]
 pub struct Actions {
-    #[knus(child, unwrap(children(name="builder")))]
-    pub builders: Option<Vec<Builder>>,
+    #[knus(children(name="builder"))]
+    pub builders: Vec<Builder>,
 
-    #[knus(child, unwrap(children(name="replacer")))]
-    pub replacers: Option<Vec<Replacer>>,
+    #[knus(children(name="replacer"))]
+    pub replacers: Vec<Replacer>,
 
-    #[knus(child, unwrap(children(name="maker")))]
-    pub makers: Option<Vec<Maker>>,
+    #[knus(children(name="maker"))]
+    pub makers: Vec<Maker>,
 
-    #[knus(child, unwrap(children(name="switch")))]
-    pub switchers: Option<Vec<Switch>>,
+    #[knus(children(name="switch"))]
+    pub switches: Vec<Switch>,
 
-    #[knus(child, unwrap(children(name="list")))]
-    pub lists: Option<Vec<List>>,
+    #[knus(children(name="list"))]
+    pub lists: Vec<List>,
 }
 
 #[allow(unused)]

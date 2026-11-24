@@ -2,12 +2,10 @@ enabled false
 file "Module.*"
 
 actions {
-    replacers {
-        replacer {
-            location "FunctionDefinition"
-            reference-location "FunctionDefinition"
-            from r"void\s+?__(.*?)\("
-            to "void _$[0]("
-        }
+    replacer {
+        location "FunctionDefinition"
+        reference-location "FunctionDefinition"
+        from r"void\s+?__(.*?)\("
+        to "void _$[0]("
     }
 }

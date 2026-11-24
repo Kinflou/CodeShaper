@@ -24,17 +24,13 @@ alias "cpp"
 file "a.cpp"
 
 actions {
-    makers {
-        maker "shared" {
-            make "fresh"
-        }
+    maker "shared" {
+        make "fresh"
     }
-    replacers {
-        replacer {
-            location "FunctionDeclarator.Declarator"
-            from r"(old)"
-            to "#[shared]"
-        }
+    replacer {
+        location "FunctionDeclarator.Declarator"
+        from r"(old)"
+        to "#[shared]"
     }
 }
 "##;
@@ -298,7 +294,7 @@ fn names_are_completed_for_their_place() {
     assert_eq!(complete(&text, text.len()), vec!["patch"]);
     assert_eq!(complete("patch \"one\" {\n    \n}\n", 18), vec!["enabled", "alias", "file", "actions"]);
     assert_eq!(complete("patch \"é\" { ", 13), vec!["enabled", "alias", "file", "actions"]);
-    assert_eq!(complete("patch \"one\" {\n    actions {\n        ", 37)[0], "builders");
+    assert_eq!(complete("patch \"one\" {\n    actions {\n        ", 37)[0], "builder");
 
     let called = text.rfind("#[shared").unwrap() + 2;
     assert_eq!(complete(&text.replace("#[shared]", "#["), called), vec!["shared"]);
@@ -378,9 +374,9 @@ fn lenses_belong_to_their_patch() {
     assert_eq!(lenses(&mut client, &uri), vec![
         ("Preview operation".to_string(), 0, vec![]),
         named("Preview result", 1, "é"), named("Explore target", 1, "é"),
-        named("Enable patch", 2, "é"), named("1 replacement(s) in 1 file(s)", 8, "é"),
-        named("Preview result", 17, "two"), named("Explore target", 17, "two"),
-        named("Disable patch", 18, "two"), named("1 replacement(s) in 1 file(s)", 29, "two")
+        named("Enable patch", 2, "é"), named("1 replacement(s) in 1 file(s)", 7, "é"),
+        named("Preview result", 15, "two"), named("Explore target", 15, "two"),
+        named("Disable patch", 16, "two"), named("1 replacement(s) in 1 file(s)", 24, "two")
     ]);
 
     client.stop();
@@ -422,7 +418,7 @@ fn preview_errors_point_into_the_file() {
 
     let error = client.request("codeshaper/preview", json!({ "uri": uri.as_str(), "name": "two" })).response_result.err().unwrap();
     let line = text[..text.find("from 1").unwrap()].matches('\n').count() + 1;
-    assert!(error.message.contains(&format!("two:{line}:18")), "{}", error.message);
+    assert!(error.message.contains(&format!("two:{line}:14")), "{}", error.message);
 
     client.stop();
 }
@@ -450,7 +446,7 @@ fn patches_are_toggled_by_name() {
     };
 
     let edit = toggle(json!([uri.as_str(), "two"])).unwrap();
-    assert_eq!((edit["newText"].as_str(), edit["range"]["start"]["line"].as_u64()), (Some("false"), Some(18)));
+    assert_eq!((edit["newText"].as_str(), edit["range"]["start"]["line"].as_u64()), (Some("false"), Some(16)));
     let edit = toggle(json!([uri.as_str(), "é"])).unwrap();
     assert_eq!((edit["newText"].as_str(), edit["range"]["start"]["line"].as_u64()), (Some("true"), Some(2)));
     assert_eq!(toggle(json!([uri.as_str()])), None);
@@ -499,8 +495,8 @@ fn hints_count_for_their_patch() {
         .collect();
 
     assert_eq!(shown.iter().map(|(line, label)| (*line, label.as_str())).collect::<Vec<_>>(), vec![
-        (9, "2 places in 2 files"), (10, "1 match in 1 of 2"), (25, "1 call"),
-        (30, "1 place in 1 file"), (31, "0:"), (31, "1 match in 1 of 1")
+        (8, "2 places in 2 files"), (9, "1 match in 1 of 2"), (22, "1 call"),
+        (25, "1 place in 1 file"), (26, "0:"), (26, "1 match in 1 of 1")
     ]);
 
     client.stop();

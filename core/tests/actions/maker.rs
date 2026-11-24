@@ -19,18 +19,18 @@ fn maker_call() {
         alias: "".to_string(),
         file: "".to_string(),
         actions: Actions {
-            builders: None,
-            replacers: None,
-            makers: Some(vec![
+            builders: vec![],
+            replacers: vec![],
+            makers: vec![
                 Maker {
                     name: "hello_maker".to_owned(),
                     prepare: Some("Lets reverse the name (.+) and (.+)\\?".to_owned()),
                     flags: String::new(),
                     make: "We reversed to $[1] and $[0]".to_owned(),
                 }
-            ]),
-            switchers: None,
-            lists: None
+            ],
+            switches: vec![],
+            lists: vec![]
         },
     };
     let hello_maker_patch = Rc::new(hello_maker_patch);

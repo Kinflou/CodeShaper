@@ -31,7 +31,7 @@ pub struct ActionSpans {
     pub builders: Vec<NodeSpans>,
     pub replacers: Vec<NodeSpans>,
     pub makers: Vec<NodeSpans>,
-    pub switchers: Vec<NodeSpans>,
+    pub switches: Vec<NodeSpans>,
     pub lists: Vec<NodeSpans>
 }
 
@@ -145,22 +145,20 @@ fn named_spans(node: &SpannedNode<Span>) -> NodeSpans {
     spans
 }
 
-fn action_spans(containers: &[SpannedNode<Span>]) -> ActionSpans {
+fn action_spans(nodes: &[SpannedNode<Span>]) -> ActionSpans {
     let mut spans = ActionSpans::default();
 
-    for container in containers {
-        let (list, item) = match &**container.node_name {
-            "builders" => (&mut spans.builders, "builder"),
-            "replacers" => (&mut spans.replacers, "replacer"),
-            "makers" => (&mut spans.makers, "maker"),
-            "switchers" => (&mut spans.switchers, "switch"),
-            "lists" => (&mut spans.lists, "list"),
+    for node in nodes {
+        let list = match &**node.node_name {
+            "builder" => &mut spans.builders,
+            "replacer" => &mut spans.replacers,
+            "maker" => &mut spans.makers,
+            "switch" => &mut spans.switches,
+            "list" => &mut spans.lists,
             _ => continue
         };
 
-        for node in children(container).iter().filter(|node| &**node.node_name == item) {
-            list.push(named_spans(node));
-        }
+        list.push(named_spans(node));
     }
 
     spans

@@ -215,7 +215,7 @@ impl<'a> Validator<'a> {
     }
 
     fn actions(&mut self, actions: &Actions, parent: &str, spans: Option<&'a ActionSpans>) {
-        for (index, builder) in actions.builders.iter().flatten().enumerate() {
+        for (index, builder) in actions.builders.iter().enumerate() {
             self.enter(spans.map(|spans| spans.builders.as_slice()), index);
             let nested = self.current.map(|current| &current.actions);
             let path = self.name(parent, &builder.name);
@@ -231,7 +231,7 @@ impl<'a> Validator<'a> {
             self.actions(&builder.actions, &path, nested);
         }
 
-        for (index, replacer) in actions.replacers.iter().flatten().enumerate() {
+        for (index, replacer) in actions.replacers.iter().enumerate() {
             self.enter(spans.map(|spans| spans.replacers.as_slice()), index);
             let nested = self.current.map(|current| &current.actions);
             let path = join(parent, &format!("replacer #{}", index + 1));
@@ -247,7 +247,7 @@ impl<'a> Validator<'a> {
             self.actions(&replacer.actions, &path, nested);
         }
 
-        for (index, maker) in actions.makers.iter().flatten().enumerate() {
+        for (index, maker) in actions.makers.iter().enumerate() {
             self.enter(spans.map(|spans| spans.makers.as_slice()), index);
             let path = self.name(parent, &maker.name);
             self.receivers.insert(maker.name.clone());
@@ -260,7 +260,7 @@ impl<'a> Validator<'a> {
             self.expression(&path, "make", &maker.make, &locals, Some(&maker.name));
         }
 
-        for (index, list) in actions.lists.iter().flatten().enumerate() {
+        for (index, list) in actions.lists.iter().enumerate() {
             self.enter(spans.map(|spans| spans.lists.as_slice()), index);
             let path = self.name(parent, &list.name);
             self.receivers.insert(list.name.clone());
@@ -269,8 +269,8 @@ impl<'a> Validator<'a> {
             }
         }
 
-        for (index, switch) in actions.switchers.iter().flatten().enumerate() {
-            self.enter(spans.map(|spans| spans.switchers.as_slice()), index);
+        for (index, switch) in actions.switches.iter().enumerate() {
+            self.enter(spans.map(|spans| spans.switches.as_slice()), index);
             let path = self.name(parent, &switch.name);
             self.receivers.insert(switch.name.clone());
             self.expression(&path, "index", &switch.index, &Locals::Unavailable("'index' has no regex"), Some(&switch.name));
