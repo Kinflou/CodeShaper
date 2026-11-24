@@ -1,6 +1,6 @@
 // Standard Uses
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -13,15 +13,16 @@ use crate::{project, BROKEN};
 use codeshaper::core::registry::Registry;
 use codeshaper_lsp::position::LineIndex;
 use lsp_server::{Connection, Message, Notification, Request, RequestId, Response};
-use lsp_types::notification::{DidChangeTextDocument, DidOpenTextDocument, DidSaveTextDocument, Exit, Initialized, Notification as _, PublishDiagnostics};
-use lsp_types::request::{CodeLensRefresh, CodeLensRequest, PrepareRenameRequest, Rename, Completion, GotoDefinition, HoverRequest, Initialize, References, Request as _, SemanticTokensFullRequest, Shutdown};
+use lsp_types::notification::{DidChangeTextDocument, DidChangeWatchedFiles, DidOpenTextDocument, DidSaveTextDocument, Exit, Initialized, Notification as _, PublishDiagnostics};
+use lsp_types::request::{CodeLensRefresh, CodeLensRequest, PrepareRenameRequest, Rename, Completion, GotoDefinition, HoverRequest, Initialize, References, RegisterCapability, Request as _, SemanticTokensFullRequest, Shutdown};
 use lsp_types::{
-    GotoCapability, LocationLink, TextDocumentClientCapabilities,
+    CompletionItemKind, DidChangeWatchedFilesClientCapabilities, DidChangeWatchedFilesParams, FileChangeType, FileEvent, GotoCapability, LocationLink, TextDocumentClientCapabilities,
     CodeLens, CodeLensParams, PrepareRenameResponse, RenameParams, WorkspaceEdit, CodeLensWorkspaceClientCapabilities, WorkspaceClientCapabilities, CompletionParams, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams, Location, NumberOrString, ReferenceContext, ReferenceParams, CompletionResponse, DidOpenTextDocumentParams, InitializeParams, InitializedParams, Position,
     DidChangeTextDocumentParams, DidSaveTextDocumentParams, PublishDiagnosticsParams, SemanticTokensParams,
     TextDocumentContentChangeEvent, VersionedTextDocumentIdentifier, SemanticTokensResult, TextDocumentIdentifier, TextDocumentItem,
     TextDocumentPositionParams, Uri
 };
+use tempfile::TempDir;
 use url::Url;
 
 
@@ -506,6 +507,127 @@ fn refused_operations_say_why() {
     client.stop();
 }
 
+const FILES: &str = "name \"A\"\ntarget \"text\" {\n    files {\n        \"a.cpp\"\n        \"b.cpp\"\n        \"src/*.cpp\"\n    }\n}\nast-set \"cpp\"\ndescription \"\"\n";
+const CONFIGURATION: &str = "name \"A\"\nproject \"shaping/\"\ntarget \"code/\"\noutput \"out/\"\nresult \"replace\"\n";
+
+fn target(files: &[&str]) -> (TempDir, PathBuf) {
+    let directory = tempfile::tempdir().unwrap();
+
+    for file in files {
+        let path = directory.path().join("code").join(file);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, "").unwrap();
+    }
+
+    let settings = directory.path().join("shaping/settings.kdl");
+    fs::create_dir(directory.path().join("shaping")).unwrap();
+    fs::write(&settings, FILES).unwrap();
+    fs::write(directory.path().join("configuration.kdl"), CONFIGURATION).unwrap();
+    (directory, settings)
+}
+
+fn created(path: &Path) -> serde_json::Value {
+    let uri = Url::from_file_path(path).unwrap().as_str().parse().unwrap();
+
+    to_json!(DidChangeWatchedFilesParams { changes: vec![FileEvent::new(uri, FileChangeType::CREATED)] })
+}
+
+
+#[test]
+fn created_files_clear_their_errors() {
+    let (directory, path) = target(&["a.cpp"]);
+    let client = Client::start();
+    client.open(&path, FILES);
+
+    assert_eq!(client.published(), vec!["file-not-found"]);
+    assert_eq!(client.published(), vec!["file-not-found", "pattern-unmatched"]);
+
+    client.notify(DidChangeWatchedFiles::METHOD, created(&std::env::temp_dir().join("elsewhere.cpp")));
+    for file in ["b.cpp", "src/c.cpp"] {
+        let file = directory.path().join("code").join(file);
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(&file, "").unwrap();
+    }
+    client.notify(DidChangeWatchedFiles::METHOD, created(&directory.path().join("code/b.cpp")));
+
+    assert_eq!(client.published(), vec!["pattern-unmatched"]);
+    assert_eq!(client.published(), Vec::<String>::new());
+
+    client.stop();
+}
+
+#[test]
+fn pattern_errors_follow_edits() {
+    let (_directory, path) = target(&["a.cpp", "b.cpp"]);
+    let client = Client::start();
+    let uri = client.open(&path, FILES);
+
+    assert_eq!(client.published(), Vec::<String>::new());
+    assert_eq!(client.published(), vec!["pattern-unmatched"]);
+
+    let change = DidChangeTextDocumentParams {
+        text_document: VersionedTextDocumentIdentifier::new(uri, 2),
+        content_changes: vec![TextDocumentContentChangeEvent { range: None, range_length: None, text: FILES.replace("src/*", "*") }]
+    };
+    client.notify(DidChangeTextDocument::METHOD, to_json!(change));
+    assert_eq!(client.published(), Vec::<String>::new());
+
+    client.stop();
+}
+
+#[test]
+fn watching_is_asked_for_when_supported() {
+    let watched = DidChangeWatchedFilesClientCapabilities { dynamic_registration: Some(true), ..Default::default() };
+    let client = Client::start_with(InitializeParams {
+        capabilities: lsp_types::ClientCapabilities {
+            workspace: Some(WorkspaceClientCapabilities { did_change_watched_files: Some(watched), ..Default::default() }),
+            ..Default::default()
+        },
+        ..InitializeParams::default()
+    });
+
+    let Message::Request(request) = client.receive() else { panic!("expected a request") };
+    assert_eq!(request.method, RegisterCapability::METHOD);
+    assert_eq!(request.params["registrations"][0]["method"], DidChangeWatchedFiles::METHOD);
+
+    client.stop();
+}
+
+#[test]
+fn target_paths_are_suggested_opened_and_explained() {
+    let (directory, path) = target(&["a.cpp", "b.cpp", "src/c.cpp", "src/d.cpp"]);
+    let mut client = Client::start_with(InitializeParams {
+        initialization_options: Some(serde_json::json!({ "suggestAgain": true })),
+        ..InitializeParams::default()
+    });
+    let uri = client.open(&path, FILES);
+    let file = |name: &str| Url::from_file_path(directory.path().join("code").join(name)).unwrap().to_string();
+
+    let mut ask = |method: &str, line: u32, character: u32| client.request(method, to_json!(at(&uri, Position::new(line, character)))).response_result.unwrap();
+
+    let items: CompletionResponse = serde_json::from_value(ask(Completion::METHOD, 4, 9)).unwrap();
+    let CompletionResponse::Array(items) = items else { panic!("expected an array") };
+    let folder = items.iter().find(|item| item.label == "src/").unwrap();
+    assert_eq!(folder.kind, Some(CompletionItemKind::FOLDER));
+    assert_eq!(folder.command.as_ref().unwrap().command, "editor.action.triggerSuggest");
+    assert!(items.iter().all(|item| item.label != "a.cpp"));
+
+    let opened: GotoDefinitionResponse = serde_json::from_value(ask(GotoDefinition::METHOD, 3, 12)).unwrap();
+    let GotoDefinitionResponse::Array(opened) = opened else { panic!("expected locations") };
+    assert_eq!(opened.iter().map(|location| location.uri.to_string()).collect::<Vec<_>>(), vec![file("a.cpp")]);
+
+    let opened: GotoDefinitionResponse = serde_json::from_value(ask(GotoDefinition::METHOD, 5, 12)).unwrap();
+    let GotoDefinitionResponse::Array(opened) = opened else { panic!("expected locations") };
+    assert_eq!(opened.iter().map(|location| location.uri.to_string()).collect::<Vec<_>>(), vec![file("src/c.cpp"), file("src/d.cpp")]);
+
+    let hover: Hover = serde_json::from_value(ask(HoverRequest::METHOD, 5, 12)).unwrap();
+    let HoverContents::Markup(markup) = hover.contents else { panic!("expected markup") };
+    assert!(markup.value.starts_with("Matches 2 file(s)"));
+    assert!(ask(HoverRequest::METHOD, 3, 12).is_null());
+
+    client.stop();
+}
+
 #[test]
 fn redundant_aliases_are_removed() {
     let (_directory, project) = operation();
@@ -545,6 +667,65 @@ fn saved_settings_recheck_open_patches() {
 
     let mut seen = vec![];
     while !seen.contains(&"language-not-found".to_string()) { seen.extend(client.published()); }
+
+    client.stop();
+}
+
+#[test]
+fn saved_configurations_recheck_open_settings() {
+    let (directory, path) = target(&["a.cpp", "src/c.cpp"]);
+    let client = Client::start();
+    client.open(&path, FILES);
+    assert_eq!(client.published(), vec!["file-not-found"]);
+
+    let configuration = directory.path().join("configuration.kdl");
+    let text = CONFIGURATION.replace("\"code/\"", "\"code/\" {\n    files \"a.cpp\"\n}");
+    fs::write(&configuration, &text).unwrap();
+    let uri = client.open(&configuration, &text);
+    assert_eq!(client.published(), Vec::<String>::new());
+    let save = DidSaveTextDocumentParams { text_document: TextDocumentIdentifier::new(uri), text: None };
+    client.notify(DidSaveTextDocument::METHOD, to_json!(save));
+    assert_eq!(client.published(), Vec::<String>::new());
+    assert_eq!(client.published(), Vec::<String>::new());
+
+    client.stop();
+}
+
+#[test]
+fn saved_settings_recheck_open_configurations() {
+    let (directory, path) = target(&["a.cpp", "b.cpp", "src/c.cpp"]);
+    let client = Client::start();
+    client.open(&directory.path().join("configuration.kdl"), CONFIGURATION);
+    assert_eq!(client.published(), Vec::<String>::new());
+
+    let text = FILES.replace("a.cpp", "gone.cpp");
+    fs::write(&path, &text).unwrap();
+    let uri = client.open(&path, &text);
+    assert_eq!(client.published(), vec!["file-not-found"]);
+    let save = DidSaveTextDocumentParams { text_document: TextDocumentIdentifier::new(uri), text: None };
+    client.notify(DidSaveTextDocument::METHOD, to_json!(save));
+    assert_eq!(client.published(), vec!["file-not-found"]);
+    assert_eq!(client.published(), vec!["file-not-found"]);
+
+    client.stop();
+}
+
+#[test]
+fn files_in_targets_elsewhere_are_followed() {
+    let (directory, path) = target(&["a.cpp", "b.cpp", "src/c.cpp"]);
+    fs::create_dir_all(directory.path().join("work/shaping")).unwrap();
+    let text = CONFIGURATION.replace("\"code/\"", "\"../code/\" {\n    files \"late.cpp\"\n}");
+    fs::copy(&path, directory.path().join("work/shaping/settings.kdl")).unwrap();
+    let configuration = directory.path().join("work/engine.kdl");
+    fs::write(&configuration, &text).unwrap();
+    let client = Client::start();
+    client.open(&configuration, &text);
+    assert_eq!(client.published(), vec!["file-not-found"]);
+
+    let file = directory.path().join("code/late.cpp");
+    fs::write(&file, "").unwrap();
+    client.notify(DidChangeWatchedFiles::METHOD, created(&file));
+    assert_eq!(client.published(), Vec::<String>::new());
 
     client.stop();
 }

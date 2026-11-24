@@ -1,15 +1,17 @@
 // Standard Uses
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 // Crate Uses
-use crate::completion::{completion, settings};
+use crate::completion::{completion, document};
 use crate::diagnostics::{diagnostics, redundant_alias};
 use crate::document::{kind, DocumentKind};
 use crate::groups::link_at;
 use crate::inlay::{inlay_hints, Hints};
-use crate::navigation::{definition, references, rename, symbol_at};
+use crate::navigation::{definition, links, references, rename, symbol_at};
+use crate::options;
+use crate::paths::{self, Opening};
 use crate::position::LineIndex;
 use crate::preview::replacement_counts;
 use crate::schema::LOCATIONS;
@@ -26,19 +28,19 @@ use codeshaper::core::registry::Registry;
 use dunce::canonicalize;
 use lsp_server::{Connection, ErrorCode, Message, Notification, Request, RequestId, Response};
 use lsp_types::notification::{
-    Cancel, DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
+    Cancel, DidChangeTextDocument, DidChangeWatchedFiles, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
     Notification as _
 };
 use lsp_types::request::{
     ApplyWorkspaceEdit, CodeActionRequest, CodeLensRequest, Completion, DocumentHighlightRequest, DocumentSymbolRequest, ExecuteCommand, FoldingRangeRequest, GotoDefinition, HoverRequest, InlayHintRequest,
-    PrepareRenameRequest, References, Rename, Request as _, SemanticTokensFullRequest
+    PrepareRenameRequest, References, RegisterCapability, Rename, Request as _, SemanticTokensFullRequest
 };
 use lsp_types::{
     ApplyWorkspaceEditParams, CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, DocumentHighlight, DocumentHighlightParams, ExecuteCommandParams,
-    CodeLens, CodeLensParams, Command, CompletionParams, CompletionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse,
-    HoverParams, InlayHint, InlayHintParams, Location, LocationLink, Position,
-    Range, ReferenceParams, SemanticTokens, SemanticTokensParams, SemanticTokensResult, Uri,
+    CodeLens, CodeLensParams, Command, CompletionItemKind, CompletionParams, DidChangeWatchedFilesParams, DidChangeWatchedFilesRegistrationOptions, FileSystemWatcher, GlobPattern, CompletionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, GotoDefinitionParams,
+    HoverParams, InlayHint, InlayHintParams, Location, Position,
+    Range, ReferenceParams, Registration, RegistrationParams, WatchKind, SemanticTokens, SemanticTokensParams, SemanticTokensResult, Uri,
     DocumentSymbolParams, DocumentSymbolResponse, FoldingRangeParams, PrepareRenameResponse, RenameParams,
     TextDocumentPositionParams, TextEdit, WorkspaceEdit
 };
@@ -47,6 +49,7 @@ use miette::{miette, IntoDiagnostic, Result};
 
 
 const PREVIEW_COMMAND: &str = "codeshaper.preview";
+const SUGGEST_COMMAND: &str = "editor.action.triggerSuggest";
 pub const TOGGLE_COMMAND: &str = "codeshaper.toggle";
 const PREVIEW_REQUEST: &str = "codeshaper/preview";
 const OPERATION_COMMAND: &str = "codeshaper.previewOperation";
@@ -58,7 +61,9 @@ pub struct Options {
     pub limits: Limits,
     pub refresh: Refresh,
     pub hints: Hints,
-    pub definition_links: bool
+    pub definition_links: bool,
+    pub suggest_again: bool,
+    pub watch: bool
 }
 
 pub struct Server<'c> {
@@ -68,6 +73,8 @@ pub struct Server<'c> {
     shared: Arc<Shared>,
     worker: Worker,
     definition_links: bool,
+    suggest_again: bool,
+    watch: bool,
     hints: Hints
 }
 
@@ -84,11 +91,23 @@ impl<'c> Server<'c> {
             documents: HashMap::new(),
             shared, worker,
             definition_links: options.definition_links,
+            suggest_again: options.suggest_again,
+            watch: options.watch,
             hints: options.hints
         }
     }
 
     pub fn serve(&mut self) -> Result<()> {
+        if self.watch {
+            let watcher = FileSystemWatcher { glob_pattern: GlobPattern::String("**/*".to_string()), kind: Some(WatchKind::Create | WatchKind::Delete) };
+            let registration = Registration {
+                id: "files".to_string(),
+                method: DidChangeWatchedFiles::METHOD.to_string(),
+                register_options: Some(json!(DidChangeWatchedFilesRegistrationOptions { watchers: vec![watcher] }))
+            };
+            self.shared.ask(RegisterCapability::METHOD, json!(RegistrationParams { registrations: vec![registration] }));
+        }
+
         for message in &self.connection.receiver {
             match message {
                 Message::Request(request) => {
@@ -111,13 +130,18 @@ impl<'c> Server<'c> {
                 let params: CompletionParams = serde_json::from_value(request.params).into_diagnostic()?;
                 let position = params.text_document_position;
                 let uri = position.text_document.uri;
-                let items = match self.patch_at(&uri, position.position) {
+                let mut items = match self.patch_at(&uri, position.position) {
                     Some((project, text, offset)) => completion(&self.registry, &project, text, offset),
                     None => self.documents.get(&uri).zip(path(&uri))
-                        .filter(|(_, path)| kind(path) == DocumentKind::Settings)
-                        .map(|(text, _)| settings(&self.registry, text, LineIndex::new(text).offset(position.position)))
+                        .map(|(text, path)| (text, LineIndex::new(text).offset(position.position), path))
+                        .map(|(text, offset, path)| document(&self.registry, &path, text, offset))
                         .unwrap_or_default()
                 };
+                if self.suggest_again {
+                    for item in items.iter_mut().filter(|item| item.kind == Some(CompletionItemKind::FOLDER)) {
+                        item.command = Some(Command::new("Suggest".to_string(), SUGGEST_COMMAND.to_string(), None));
+                    }
+                }
 
                 Response::new_ok(request.id, CompletionResponse::Array(items))
             }
@@ -127,7 +151,7 @@ impl<'c> Server<'c> {
                 let uri = position.text_document.uri;
                 let offset = self.documents.get(&uri).map(|text| LineIndex::new(text).offset(position.position)).unwrap_or_default();
                 let work = self.snapshot(&uri).map(|snapshot| (snapshot, Work::Hover(offset)))
-                    .or_else(|| Some((self.document(&uri, DocumentKind::Settings)?, Work::Languages(offset))));
+                    .or_else(|| Some((self.listing(&uri)?, Work::Explain(offset))));
 
                 match work {
                     Some((snapshot, work)) => {
@@ -141,6 +165,26 @@ impl<'c> Server<'c> {
                 let params: GotoDefinitionParams = serde_json::from_value(request.params).into_diagnostic()?;
                 let position = params.text_document_position_params;
                 let uri = position.text_document.uri;
+                let opening = self.documents.get(&uri).zip(path(&uri)).and_then(|(text, path)| {
+                    let index = LineIndex::new(text);
+                    let (range, opening) = paths::opening(&path, text, index.offset(position.position))?;
+
+                    Some((index.range(range), opening))
+                });
+                match opening {
+                    Some((origin, Opening::Pattern(field, pattern))) => {
+                        if let Some(snapshot) = self.listing(&uri) {
+                            self.worker.request(request.id, snapshot, Work::Open { field, pattern, origin, links: self.definition_links });
+                            return Ok(())
+                        }
+                    }
+                    Some((origin, Opening::File(file))) => {
+                        let found = file_uri(&file).map(|file| links(self.definition_links, origin, vec![Location::new(file, Range::default())]));
+                        return self.connection.sender.send(Response::new_ok(request.id, found).into()).into_diagnostic()
+                    }
+                    None => {}
+                }
+
                 let found = self.documents.get(&uri).and_then(|text| {
                     let index = LineIndex::new(text);
                     let outline = Outline::parse(text);
@@ -149,16 +193,16 @@ impl<'c> Server<'c> {
                     let here = |range| vec![Location::new(uri.clone(), index.range(range))];
 
                     if let Some((symbol, range)) = symbol_at(&outline, text, offset).zip(definition(&outline, text, offset)) {
-                        return Some(self.links(index.range(symbol.range), here(range)))
+                        return Some(links(self.definition_links, index.range(symbol.range), here(range)))
                     }
 
                     if let Some(link) = link_at(&outline, text, offset) {
                         let origin = link.ranges().into_iter().find(|range| range.start <= offset && offset <= range.end)?;
-                        return Some(self.links(index.range(origin), here(link.group)))
+                        return Some(links(self.definition_links, index.range(origin), here(link.group)))
                     }
 
                     let (_, literal) = outline.literal_at(offset).filter(|(node, _)| outline.is_top(*node, "file"))?;
-                    Some(self.links(index.range(literal.content.clone()), self.target_files(&uri, &outline)))
+                    Some(links(self.definition_links, index.range(literal.content.clone()), self.target_files(&uri, &outline)))
                 });
 
                 Response::new_ok(request.id, found)
@@ -383,8 +427,8 @@ impl<'c> Server<'c> {
         Some(Snapshot { uri: uri.clone(), project, text: text.to_string(), revision: self.shared.revision(uri)? })
     }
 
-    fn document(&self, uri: &Uri, wanted: DocumentKind) -> Option<Snapshot> {
-        let path = path(uri).filter(|path| kind(path) == wanted)?;
+    fn listing(&self, uri: &Uri) -> Option<Snapshot> {
+        let path = path(uri).filter(|path| matches!(kind(path), DocumentKind::Settings | DocumentKind::Configuration))?;
 
         Some(Snapshot {
             uri: uri.clone(),
@@ -419,13 +463,12 @@ impl<'c> Server<'c> {
                 self.update(&uri, changed);
                 self.trace(&uri);
 
-                let project = path(&uri).filter(|path| kind(path) == DocumentKind::Settings).and_then(|path| path.parent().map(PathBuf::from));
-                if let Some(project) = project {
-                    let patches: Vec<Uri> = self.documents.keys()
-                        .filter(|uri| self.patch_at(uri, Position::default()).is_some_and(|(found, _, _)| found == project))
+                if let Some(project) = self.listing(&uri).and_then(|_| self.project(&uri)) {
+                    let others: Vec<Uri> = self.documents.keys()
+                        .filter(|other| **other != uri && self.project(other).as_ref() == Some(&project))
                         .cloned().collect();
 
-                    for uri in patches {
+                    for uri in others {
                         self.update(&uri, false);
                         self.trace(&uri);
                     }
@@ -441,6 +484,19 @@ impl<'c> Server<'c> {
                     self.shared.cancel(id);
                 }
             }
+            DidChangeWatchedFiles::METHOD => {
+                let params: DidChangeWatchedFilesParams = serde_json::from_value(notification.params).into_diagnostic()?;
+                forget_languages();
+                let changed: Vec<PathBuf> = params.changes.iter().filter_map(|change| path(&change.uri)).collect();
+                let uris: Vec<Uri> = self.documents.keys()
+                    .filter(|uri| self.folders(uri).iter().any(|folder| changed.iter().any(|file| file.starts_with(folder))))
+                    .cloned().collect();
+
+                for uri in uris {
+                    self.update(&uri, false);
+                    self.trace(&uri);
+                }
+            }
             _ => {}
         }
 
@@ -451,6 +507,9 @@ impl<'c> Server<'c> {
         let Some((text, path)) = self.documents.get(uri).zip(path(uri)) else { return };
 
         self.shared.update(uri, diagnostics(&self.registry, &path, text), changed);
+        if let Some(snapshot) = self.listing(uri) {
+            self.worker.check(snapshot);
+        }
     }
 
     fn trace(&self, uri: &Uri) {
@@ -468,19 +527,6 @@ impl<'c> Server<'c> {
         Some((index.range(toggle.node), toggle.title, WorkspaceEdit::new(HashMap::from([(uri.clone(), vec![edit])]))))
     }
 
-    fn links(&self, origin: Range, locations: Vec<Location>) -> GotoDefinitionResponse {
-        if !self.definition_links { return GotoDefinitionResponse::Array(locations) }
-
-        GotoDefinitionResponse::Link(locations.into_iter()
-            .map(|location| LocationLink {
-                origin_selection_range: Some(origin),
-                target_uri: location.uri,
-                target_range: location.range,
-                target_selection_range: location.range
-            })
-            .collect())
-    }
-
     fn remove_alias(&self, uri: &Uri) -> Option<(Range, &'static str, WorkspaceEdit)> {
         let (project, text, _) = self.patch_at(uri, Position::default())?;
         let alias = redundant_alias(&project, text)?;
@@ -493,6 +539,25 @@ impl<'c> Server<'c> {
         let edit = TextEdit::new(index.range(removed), String::new());
 
         Some((index.range(alias), "Remove alias", WorkspaceEdit::new(HashMap::from([(uri.clone(), vec![edit])]))))
+    }
+
+    fn project(&self, uri: &Uri) -> Option<PathBuf> {
+        canonicalize(options::project(&path(uri)?, self.documents.get(uri)?)?).ok()
+    }
+
+    fn folders(&self, uri: &Uri) -> Vec<PathBuf> {
+        let Some((path, text)) = path(uri).zip(self.documents.get(uri)) else { return vec![] };
+
+        let mut folders: Vec<PathBuf> = match kind(&path) {
+            DocumentKind::Patch { project } => project.parent().map(PathBuf::from).into_iter().collect(),
+            DocumentKind::Settings => path.parent().and_then(Path::parent).map(PathBuf::from).into_iter().collect(),
+            DocumentKind::Configuration => path.parent().map(PathBuf::from).into_iter().collect(),
+            DocumentKind::Other => vec![]
+        };
+        folders.extend(options::targets(&path, text, Default::default()).into_iter().map(|target| target.directory));
+        folders.extend(folders.clone().into_iter().filter_map(|folder| canonicalize(folder).ok()));
+
+        folders
     }
 
     fn target_files(&self, uri: &Uri, outline: &Outline) -> Vec<Location> {

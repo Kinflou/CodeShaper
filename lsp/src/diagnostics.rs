@@ -7,6 +7,8 @@ use std::path::Path;
 use crate::document::{ast_set, kind, DocumentKind};
 use crate::groups::links;
 use crate::navigation::calls;
+use crate::options::unknown;
+use crate::paths::check;
 use crate::position::LineIndex;
 use crate::schema::regex_field;
 use crate::syntax::{Outline, ACTION_NODES};
@@ -23,7 +25,7 @@ use lsp_types::{Diagnostic, DiagnosticSeverity, DiagnosticTag, NumberOrString};
 use miette::Report;
 
 
-const SOURCE: &str = "codeshaper";
+pub const SOURCE: &str = "codeshaper";
 
 
 pub fn diagnostics(registry: &Registry, path: &Path, text: &str) -> Vec<Diagnostic> {
@@ -32,14 +34,42 @@ pub fn diagnostics(registry: &Registry, path: &Path, text: &str) -> Vec<Diagnost
     let result = match kind(path) {
         DocumentKind::Patch { project } => return patch(registry, &project, path, text, &index),
         DocumentKind::Settings => match settings::from_kdl(text) {
-            Ok(settings) => return unknown_languages(registry, &settings, text, &index),
+            Ok(settings) => {
+                let mut found = unknown_languages(registry, &settings, text, &index);
+                found.extend(listing(registry, path, text, &index));
+
+                return found
+            }
             Err(report) => Err(report)
         },
         DocumentKind::Configuration => configuration::from_kdl(text).map(|_| ()),
-        DocumentKind::Other => Ok(())
+        DocumentKind::Other => return vec![]
     };
 
-    result.err().map(|report| parse_errors(&report, &index)).unwrap_or_default()
+    match result {
+        Ok(()) => listing(registry, path, text, &index),
+        Err(report) => parse_errors(&report, &index)
+    }
+}
+
+fn listing(registry: &Registry, path: &Path, text: &str, index: &LineIndex) -> Vec<Diagnostic> {
+    let mut found: Vec<Diagnostic> = unknown(registry, path, text).into_iter()
+        .map(|(range, code, message)| problem(index, &range, DiagnosticSeverity::ERROR, code, message))
+        .collect();
+    found.extend(check(path, text));
+
+    found
+}
+
+pub fn problem(index: &LineIndex, range: &Range<usize>, severity: DiagnosticSeverity, code: &str, message: String) -> Diagnostic {
+    Diagnostic {
+        range: index.range(range.clone()),
+        severity: Some(severity),
+        code: Some(NumberOrString::String(code.to_string())),
+        source: Some(SOURCE.to_string()),
+        message,
+        ..Diagnostic::default()
+    }
 }
 
 fn patch(registry: &Registry, project: &Path, path: &Path, text: &str, index: &LineIndex) -> Vec<Diagnostic> {

@@ -4,7 +4,10 @@ use std::ops::Range;
 use std::path::Path;
 
 // Crate Uses
+use crate::document::{kind, DocumentKind};
 use crate::groups::groups;
+use crate::options;
+use crate::paths;
 use crate::position::LineIndex;
 use crate::query::{captures, is_query, part_at, Part, PREDICATES};
 use crate::schema::{self, regex_field, LOCATIONS};
@@ -31,7 +34,7 @@ pub fn completion(registry: &Registry, project: &Path, text: &str, offset: usize
         }
         Context::Value { node, literal, before } => {
             if outline.is_top(node, "file") {
-                return paths(registry, project, text, literal.content)
+                return paths::target(text, &literal.content, offset, &every_file(registry, project))
             }
 
             if outline.is_top(node, "alias") {
@@ -110,20 +113,29 @@ fn query(backend: &dyn LanguageBackend, text: &str, content: Range<usize>, offse
         .collect()
 }
 
-fn paths(registry: &Registry, project: &Path, text: &str, content: Range<usize>) -> Vec<CompletionItem> {
-    let line = text[content.start..].find('\n').map(|length| content.start + length).unwrap_or(text.len());
-    let range = LineIndex::new(text).range(content.start..content.end.min(line));
+pub fn document(registry: &Registry, path: &Path, text: &str, offset: usize) -> Vec<CompletionItem> {
+    let is_settings = kind(path) == DocumentKind::Settings;
+    let outline = Outline::parse(text);
 
-    every_file(registry, project).iter()
-        .map(|path| {
-            let path = path.display().to_string();
+    match outline.context(text, offset) {
+        Context::Value { node, .. } if is_settings && outline.is_top(node, options::TARGET) => {
+            registry.targets().into_iter().map(|name| item(name, CompletionItemKind::VALUE, None)).collect()
+        }
+        Context::Name { parent: Some(node), prefix } if outline.is_top(node, options::TARGET) => {
+            let target = options::target_kind(path, text);
+            let known = target.and_then(|name| registry.loader(&name)).map(|loader| loader.options()).unwrap_or_default();
 
-            CompletionItem {
-                text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(range, path.clone()))),
-                ..item(&path, CompletionItemKind::FILE, None)
-            }
-        })
-        .collect()
+            known.iter()
+                .filter(|name| !options::options(&outline).any(|node| node.name == **name && node.name_range.start != prefix.start))
+                .map(|name| item(name, CompletionItemKind::PROPERTY, None))
+                .collect()
+        }
+        _ => {
+            let found = paths::completion(path, text, offset);
+
+            if found.is_empty() && is_settings { settings(registry, text, offset) } else { found }
+        }
+    }
 }
 
 pub fn settings(registry: &Registry, text: &str, offset: usize) -> Vec<CompletionItem> {
@@ -137,7 +149,7 @@ pub fn settings(registry: &Registry, text: &str, offset: usize) -> Vec<Completio
     }
 }
 
-fn item(label: &str, kind: CompletionItemKind, detail: Option<&str>) -> CompletionItem {
+pub fn item(label: &str, kind: CompletionItemKind, detail: Option<&str>) -> CompletionItem {
     CompletionItem {
         label: label.to_string(),
         kind: Some(kind),

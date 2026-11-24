@@ -1,7 +1,7 @@
 // Standard Uses
 use std::collections::BTreeMap;
 use std::ops::Range;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 // Crate Uses
@@ -137,7 +137,11 @@ fn files(registry: &Registry, project: &Path, outline: &Outline) -> Option<Strin
         return Some("Matches no target file".to_string())
     }
 
-    let mut value = format!("Matches {} target file(s)\n", files.len());
+    Some(listing(format!("Matches {} target file(s)", files.len()), &directory, &files))
+}
+
+pub fn listing(title: String, directory: &Path, files: &[PathBuf]) -> String {
+    let mut value = title + "\n";
     for file in files.iter().take(LISTED) {
         value += &match Url::from_file_path(directory.join(file)) {
             Ok(url) => format!("\n- [`{}`](<{url}>)", file.display()),
@@ -148,7 +152,7 @@ fn files(registry: &Registry, project: &Path, outline: &Outline) -> Option<Strin
         value += &format!("\n- +{} more", files.len() - LISTED);
     }
 
-    Some(value)
+    value
 }
 
 fn listed(registry: &Registry) -> String {

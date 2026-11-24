@@ -6,6 +6,8 @@ pub mod groups;
 pub mod hover;
 pub mod inlay;
 pub mod navigation;
+pub mod options;
+pub mod paths;
 pub mod position;
 pub mod preview;
 pub mod query;
@@ -42,7 +44,7 @@ pub fn capabilities() -> ServerCapabilities {
     ServerCapabilities {
         text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
         completion_provider: Some(CompletionOptions {
-            trigger_characters: Some(["[", ".", "\"", "(", "#", "@"].map(str::to_string).to_vec()),
+            trigger_characters: Some(["[", ".", "\"", "(", "#", "@", "/"].map(str::to_string).to_vec()),
             ..CompletionOptions::default()
         }),
         hover_provider: Some(HoverProviderCapability::Simple(true)),
@@ -92,7 +94,9 @@ pub fn serve_with(connection: &Connection, registry: impl Fn() -> Registry + Sen
             groups: parameters["initializationOptions"]["inlayHints"]["groups"].as_bool().unwrap_or(false),
             matches: parameters["initializationOptions"]["inlayHints"]["matches"].as_bool().unwrap_or(false)
         },
-        definition_links: parameters["capabilities"]["textDocument"]["definition"]["linkSupport"].as_bool().unwrap_or(false)
+        definition_links: parameters["capabilities"]["textDocument"]["definition"]["linkSupport"].as_bool().unwrap_or(false),
+        suggest_again: parameters["initializationOptions"]["suggestAgain"].as_bool().unwrap_or(false),
+        watch: parameters["capabilities"]["workspace"]["didChangeWatchedFiles"]["dynamicRegistration"].as_bool().unwrap_or(false)
     };
 
     Server::new(connection, registry, options).serve()

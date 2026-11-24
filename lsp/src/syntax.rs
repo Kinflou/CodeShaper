@@ -36,6 +36,13 @@ pub enum Context {
     None
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Entry {
+    pub node: usize,
+    pub content: Range<usize>,
+    pub quoted: bool
+}
+
 #[derive(Debug, Default)]
 pub struct Outline {
     pub nodes: Vec<Node>
@@ -109,6 +116,37 @@ impl Outline {
             .filter(|(_, node)| node.children.as_ref().is_some_and(|children| children.start <= offset && offset <= children.end))
             .max_by_key(|(_, node)| node.children.as_ref().map(|children| children.start))
             .map(|(index, _)| index)
+    }
+
+    pub fn entry(&self, text: &str, offset: usize) -> Option<Entry> {
+        let literal = self.literals()
+            .find(|(_, literal)| literal.quoted && literal.content.start <= offset && offset <= literal.content.end)
+            .map(|(node, literal)| Entry { node, content: literal.content.clone(), quoted: true });
+
+        let entry = literal.or_else(|| {
+            let (node, named) = self.nodes.iter()
+                .filter_map(|node| Some((node.parent?, node)))
+                .find(|(_, node)| node.name_range.start <= offset && offset <= node.name_range.end)?;
+            let name = &text[named.name_range.clone()];
+            let quoted = name.starts_with('"');
+            let closed = quoted && name.len() > 1 && name.ends_with('"');
+            let content = named.name_range.start + usize::from(quoted)..named.name_range.end - usize::from(closed);
+
+            (content.start <= offset).then_some(Entry { node, content, quoted })
+        });
+
+        match entry {
+            Some(entry) => {
+                let line = text[entry.content.clone()].find(['\n', '\r']).map(|length| entry.content.start + length);
+                let content = entry.content.start..line.unwrap_or(entry.content.end);
+
+                (offset <= content.end).then_some(Entry { content, ..entry })
+            }
+            None => match self.context(text, offset) {
+                Context::Name { parent: Some(node), prefix } => Some(Entry { node, content: prefix, quoted: false }),
+                _ => None
+            }
+        }
     }
 
     pub fn context(&self, text: &str, offset: usize) -> Context {

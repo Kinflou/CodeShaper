@@ -9,8 +9,11 @@ use std::thread::{self, JoinHandle};
 
 // Crate Uses
 use crate::diagnostics::{coverage, file};
+use crate::document::{kind, DocumentKind};
 use crate::hover::{hover, settings};
 use crate::inlay::{places, Counts, Hints};
+use crate::navigation::links;
+use crate::paths::{self, check_patterns};
 use crate::position::LineIndex;
 use crate::preview::{configuration, operation_preview, preview};
 use crate::syntax::Outline;
@@ -21,10 +24,11 @@ use crate::trace::{Limits, Traces};
 use codeshaper::core::registry::Registry;
 use codeshaper::core::shaping::operation::session::Preview;
 use codeshaper::core::shaping::patch::trace::Trace;
+use codeshaper_target_text::options::Field;
 use lsp_server::{ErrorCode, Message, Notification, Request, RequestId, Response};
 use lsp_types::notification::{Notification as _, PublishDiagnostics};
 use lsp_types::request::{CodeLensRefresh, InlayHintRefreshRequest, Request as _};
-use lsp_types::{Diagnostic, Hover, HoverContents, Location, MarkupContent, MarkupKind, PublishDiagnosticsParams, Uri};
+use lsp_types::{Diagnostic, Hover, HoverContents, Location, MarkupContent, MarkupKind, PublishDiagnosticsParams, Range, Uri};
 use serde_json::json;
 use url::Url;
 
@@ -41,13 +45,15 @@ pub struct Snapshot {
 pub enum Work {
     Hover(usize),
     Places(String),
-    Languages(usize),
+    Explain(usize),
+    Open { field: Field, pattern: String, origin: Range, links: bool },
     Preview,
     Operation { configuration: Option<PathBuf>, open: HashMap<PathBuf, String> }
 }
 
 enum Task {
     Trace(Snapshot),
+    Check(Snapshot),
     Request(RequestId, Snapshot, Work)
 }
 
@@ -171,6 +177,16 @@ impl Shared {
         }
     }
 
+    fn checked(&self, snapshot: &Snapshot, found: Vec<Diagnostic>) {
+        let mut states = lock(&self.states);
+        let Some(state) = states.get_mut(&snapshot.uri).filter(|state| state.revision == snapshot.revision) else { return };
+
+        if state.coverage != found {
+            state.coverage = found;
+            self.publish(&snapshot.uri, state);
+        }
+    }
+
     fn is_current(&self, snapshot: &Snapshot) -> bool {
         !self.stopping.load(Ordering::Relaxed)
             && lock(&self.states).get(&snapshot.uri).is_some_and(|state| state.revision == snapshot.revision)
@@ -220,6 +236,10 @@ impl Worker {
         self.queue(Task::Trace(snapshot));
     }
 
+    pub fn check(&self, snapshot: Snapshot) {
+        self.queue(Task::Check(snapshot));
+    }
+
     pub fn request(&self, id: RequestId, snapshot: Snapshot, work: Work) {
         lock(&self.shared.requests).pending.insert(id.clone());
         self.queue(Task::Request(id, snapshot, work));
@@ -253,6 +273,15 @@ fn run(shared: &Arc<Shared>, registry: &Registry, limits: Limits, tasks: Receive
                 if !shared.is_current(&snapshot) { continue }
 
                 let _ = catch_unwind(AssertUnwindSafe(|| trace(shared, registry, &mut traces, &snapshot)));
+            }
+            Task::Check(snapshot) => {
+                if !shared.is_current(&snapshot) { continue }
+
+                let _ = catch_unwind(AssertUnwindSafe(|| {
+                    let found = path(&snapshot.uri)
+                        .and_then(|path| check_patterns(&path, &snapshot.text, &|| shared.is_current(&snapshot)));
+                    if let Some(found) = found { shared.checked(&snapshot, found) }
+                }));
             }
             Task::Request(id, snapshot, work) => {
                 if shared.is_cancelled(&id) {
@@ -302,7 +331,24 @@ fn answer(
         Work::Hover(offset) => {
             hover_response(id, text, hover(registry, project, traces, text, offset))
         }
-        Work::Languages(offset) => hover_response(id, text, settings(registry, project, text, offset)),
+        Work::Explain(offset) => {
+            let found = path(uri).and_then(|path| {
+                let listed = paths::hover(&path, text, offset, &|| !shared.is_cancelled(id));
+
+                listed.or_else(|| settings(registry, project, text, offset).filter(|_| kind(&path) == DocumentKind::Settings))
+            });
+
+            hover_response(id, text, found)
+        }
+        Work::Open { field, pattern, origin, links: wanted } => {
+            let found: Vec<Location> = path(uri)
+                .map(|path| paths::open(&path, text, field, &pattern, &|| !shared.is_cancelled(id)))
+                .unwrap_or_default().iter()
+                .filter_map(|file| Some(Location::new(file_uri(file)?, Range::default())))
+                .collect();
+
+            Response::new_ok(id.clone(), links(wanted, origin, found))
+        }
         Work::Places(location) => Response::new_ok(id.clone(), target_places(registry, project, text, &location)),
         Work::Preview => preview_response(registry, id, uri, project, text),
         Work::Operation { configuration: path, open } => {
@@ -318,6 +364,15 @@ fn answer(
     }
 }
 
+fn hover_response(id: &RequestId, text: &str, found: Option<(String, std::ops::Range<usize>)>) -> Response {
+    let found = found.map(|(value, range)| Hover {
+        contents: HoverContents::Markup(MarkupContent { kind: MarkupKind::Markdown, value }),
+        range: Some(LineIndex::new(text).range(range))
+    });
+
+    Response::new_ok(id.clone(), found)
+}
+
 fn target_places(registry: &Registry, project: &Path, text: &str, location: &str) -> Vec<Location> {
     let mut found = vec![];
 
@@ -329,15 +384,6 @@ fn target_places(registry: &Registry, project: &Path, text: &str, location: &str
     }
 
     found
-}
-
-fn hover_response(id: &RequestId, text: &str, found: Option<(String, std::ops::Range<usize>)>) -> Response {
-    let found = found.map(|(value, range)| Hover {
-        contents: HoverContents::Markup(MarkupContent { kind: MarkupKind::Markdown, value }),
-        range: Some(LineIndex::new(text).range(range))
-    });
-
-    Response::new_ok(id.clone(), found)
 }
 
 fn preview_response(registry: &Registry, id: &RequestId, uri: &Uri, project: &Path, text: &str) -> Response {

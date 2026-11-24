@@ -62,6 +62,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
     const clientOptions: LanguageClientOptions = {
         documentSelector: [{ scheme: "file", language: "kdl" }],
         initializationOptions: {
+            suggestAgain: true,
             hover: {
                 samples: configuration.get<number>("hover.samples", 3),
                 lines: configuration.get<number>("hover.lines", 8),

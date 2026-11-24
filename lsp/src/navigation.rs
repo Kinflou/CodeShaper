@@ -5,6 +5,7 @@ use std::ops::Range;
 use crate::syntax::{is_name, Outline};
 
 // External Uses
+use lsp_types::{GotoDefinitionResponse, Location, LocationLink};
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,4 +74,17 @@ pub fn rename(outline: &Outline, text: &str, offset: usize, name: &str) -> Optio
     symbol_at(outline, text, offset)?;
 
     Some(references(outline, text, offset, true))
+}
+
+pub fn links(wanted: bool, origin: lsp_types::Range, locations: Vec<Location>) -> GotoDefinitionResponse {
+    if !wanted { return GotoDefinitionResponse::Array(locations) }
+
+    GotoDefinitionResponse::Link(locations.into_iter()
+        .map(|location| LocationLink {
+            origin_selection_range: Some(origin),
+            target_uri: location.uri,
+            target_range: location.range,
+            target_selection_range: location.range
+        })
+        .collect())
 }

@@ -6,6 +6,7 @@ mod hover;
 mod inlay;
 mod languages;
 mod navigation;
+mod paths;
 mod position;
 mod preview;
 mod protocol;
