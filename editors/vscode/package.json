@@ -277,6 +277,11 @@
         }
       ]
     },
+    "configurationDefaults": {
+      "[kdl]": {
+        "editor.inlayHints.fontSize": 11
+      }
+    },
     "configuration": {
       "title": "CodeShaper",
       "properties": {

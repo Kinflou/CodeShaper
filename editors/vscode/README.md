@@ -13,6 +13,7 @@ In a file with several `patch "name" { … }` blocks, each block has its own len
 command preview the block at the cursor, or ask for one.
 Beside each location stands how many places it matches, and beside the fields of each action how often it
 matches, builds and is called, updated on open and save (`codeshaper.inlayHints.matches`).
+These hints are smaller than the code, `editor.inlayHints.fontSize` under `[kdl]` changes it.
 Hovering `match`, `from`, `build`, `to` or a `$[…]` shows samples (`codeshaper.hover.samples`), with links
 that select each match and capture in its target file.
 The target is found through the operation configuration next to the shaping project.
