@@ -4,13 +4,12 @@ file "CallerModule.cpp"
 actions {
     builder "method_call_builder" {
         location r#"
-            (
-                function_definition declarator:
-                    (function_declarator declarator:
-                        (identifier) @target (#not-match? @target "Caller$")
-                    )
+            (function_definition declarator:
+                (function_declarator declarator:
+                    (identifier) @target (#not-match? @target "Caller$")
                 )
-            "#
+            )
+        "#
         match r"(\w+)"
         build "\t$[0]();\n"
         collect true
