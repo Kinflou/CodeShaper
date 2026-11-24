@@ -10,7 +10,7 @@ use crate::preview::configuration;
 
 // External Uses
 use codeshaper::core::registry::Registry;
-use codeshaper::core::shaping::operation::{LocationMatches, Operation};
+use codeshaper::core::shaping::operation::{LocationPlaces, Operation};
 use codeshaper::core::shaping::patch::Patch;
 use codeshaper::core::shaping::patch::trace::Trace;
 use codeshaper::core::shaping::project::settings;
@@ -61,18 +61,19 @@ struct Counts {
     project: PathBuf,
     patch: Patch,
     stamps: Stamps,
-    found: HashMap<String, LocationMatches>
+    found: HashMap<String, Arc<LocationPlaces>>
 }
 
 #[derive(Default)]
-pub struct Counted {
+struct Counted {
     entries: Vec<Counts>
 }
 
 impl Counted {
-    pub fn get(
-        &mut self, registry: &Registry, project: &Path, patch: &Patch, locations: &[&str], keep_going: &dyn Fn() -> bool
-    ) -> Option<Vec<LocationMatches>> {
+    fn get(
+        &mut self, registry: &Registry, project: &Path, patch: &Patch, locations: &[&str], limit: usize,
+        keep_going: &dyn Fn() -> bool
+    ) -> Option<(PathBuf, Vec<Arc<LocationPlaces>>)> {
         let Stamped { operation, directory, files, stamps } = Stamped::new(registry, project, patch)?;
         let known = self.entries.iter().position(|entry| entry.project == project && entry.patch == *patch)
             .map(|index| self.entries.remove(index))
@@ -82,14 +83,14 @@ impl Counted {
         });
 
         let missing: Vec<&str> = locations.iter().copied().filter(|location| !entry.found.contains_key(*location)).collect();
-        let counted = operation.locate_all(registry, patch, (&directory, &files), &missing, keep_going).ok();
-        entry.found.extend(missing.iter().map(|location| location.to_string()).zip(counted.into_iter().flatten()));
+        let counted = operation.find_all(registry, patch, (&directory, &files), &missing, limit, keep_going).ok();
+        entry.found.extend(missing.iter().map(|location| location.to_string()).zip(counted.into_iter().flatten().map(Arc::new)));
 
-        let found = locations.iter().map(|location| entry.found.get(*location).copied()).collect();
+        let found: Option<Vec<_>> = locations.iter().map(|location| entry.found.get(*location).cloned()).collect();
         if self.entries.len() >= KEPT { self.entries.remove(0); }
         self.entries.push(entry);
 
-        found
+        Some((directory, found?))
     }
 }
 
@@ -104,6 +105,7 @@ struct Entry {
 pub struct Traces {
     pub limits: Limits,
     entries: Vec<Entry>,
+    counted: Counted,
     guard: Option<Box<dyn Fn() -> bool>>
 }
 
@@ -114,6 +116,14 @@ impl Traces {
 
     pub fn guard(&mut self, keep_going: impl Fn() -> bool + 'static) {
         self.guard = Some(Box::new(keep_going));
+    }
+
+    pub fn places(
+        &mut self, registry: &Registry, project: &Path, patch: &Patch, locations: &[&str]
+    ) -> Option<(PathBuf, Vec<Arc<LocationPlaces>>)> {
+        let keep_going = || self.guard.as_ref().is_none_or(|guard| guard());
+
+        self.counted.get(registry, project, patch, locations, self.limits.samples, &keep_going)
     }
 
     pub fn get(&mut self, registry: &Registry, project: &Path, text: &str) -> Option<Arc<Trace>> {

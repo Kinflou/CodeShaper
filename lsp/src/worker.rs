@@ -20,7 +20,7 @@ use crate::preview::{configuration, operation_preview, preview};
 use crate::section::views;
 use crate::syntax::Outline;
 use crate::target;
-use crate::trace::{Counted, Limits, Traces};
+use crate::trace::{Limits, Traces};
 
 // External Uses
 use codeshaper::core::registry::Registry;
@@ -270,7 +270,6 @@ impl Drop for Worker {
 
 fn run(shared: &Arc<Shared>, registry: &Registry, limits: Limits, tasks: Receiver<Task>) {
     let mut traces = Traces::new(limits);
-    let mut counted = Counted::default();
     let mut located = Located::default();
 
     for task in tasks {
@@ -278,7 +277,7 @@ fn run(shared: &Arc<Shared>, registry: &Registry, limits: Limits, tasks: Receive
             Task::Trace(snapshot) => {
                 if !shared.is_current(&snapshot) { continue }
 
-                let _ = catch_unwind(AssertUnwindSafe(|| trace(shared, registry, &mut traces, &mut counted, &snapshot)));
+                let _ = catch_unwind(AssertUnwindSafe(|| trace(shared, registry, &mut traces, &snapshot)));
             }
             Task::Check(snapshot) => {
                 if !shared.is_current(&snapshot) { continue }
@@ -303,7 +302,7 @@ fn run(shared: &Arc<Shared>, registry: &Registry, limits: Limits, tasks: Receive
     }
 }
 
-fn trace(shared: &Arc<Shared>, registry: &Registry, traces: &mut Traces, counted: &mut Counted, snapshot: &Snapshot) {
+fn trace(shared: &Arc<Shared>, registry: &Registry, traces: &mut Traces, snapshot: &Snapshot) {
     let Snapshot { project, text, .. } = snapshot;
     let (guard, current) = (shared.clone(), snapshot.clone());
     traces.guard(move || guard.is_current(&current));
@@ -326,10 +325,10 @@ fn trace(shared: &Arc<Shared>, registry: &Registry, traces: &mut Traces, counted
         places.dedup();
 
         let locations: Vec<&str> = places.iter().map(|place| place.location.as_str()).collect();
-        let found = counted.get(registry, project, &target::patch(&outline), &locations, &|| shared.is_current(snapshot));
+        let found = traces.places(registry, project, &target::patch(&outline), &locations);
         if !shared.is_current(snapshot) { return }
 
-        counts.extend(places.into_iter().zip(found.into_iter().flatten()));
+        counts.extend(places.into_iter().zip(found.into_iter().flat_map(|(_, found)| found).map(|located| located.matches)));
     }
 
     shared.traced(snapshot, found, traced, counts);

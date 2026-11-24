@@ -9,7 +9,7 @@ use crate::preview::{operation, RENAME};
 
 // External Uses
 use codeshaper::core::shaping::patch::Patch;
-use codeshaper_lsp::trace::{diff, inline, truncate, Counted, Limits, Traces};
+use codeshaper_lsp::trace::{diff, inline, truncate, Limits, Traces};
 
 
 const SMALL: Limits = Limits { samples: 1, lines: 2, characters: 10 };
@@ -71,11 +71,12 @@ fn counts_are_reused_until_something_changes() {
     let (directory, project) = operation();
     let registry = codeshaper::registry();
     let patch = Patch { file: "*.cpp".to_string(), ..Patch::default() };
-    let mut counted = Counted::default();
+    let mut traces = Traces::default();
     let mut places = |locations: &[&str], keep_going: bool| {
-        let found = counted.get(&registry, &project, &patch, locations, &|| keep_going)?;
+        traces.guard(move || keep_going);
+        let (_, found) = traces.places(&registry, &project, &patch, locations)?;
 
-        Some(found.into_iter().map(|found| (found.places, found.matched_files, found.files)).collect::<Vec<_>>())
+        Some(found.into_iter().map(|found| (found.matches.places, found.matches.matched_files, found.matches.files)).collect::<Vec<_>>())
     };
 
     assert_eq!(places(&["FunctionDefinition", "Nothing"], true), Some(vec![(2, 2, 2), (0, 0, 2)]));
@@ -94,4 +95,20 @@ fn counts_are_reused_until_something_changes() {
 
     age(&project.join("project.kdl"));
     assert_eq!(places(&["FunctionDefinition"], false), None);
+}
+
+#[test]
+fn first_places_are_kept() {
+    let (directory, project) = operation();
+    let registry = codeshaper::registry();
+    let patch = Patch { file: "*.cpp".to_string(), ..Patch::default() };
+    fs::write(directory.path().join("target/a.cpp"), "void a() {}\r\nvoid b() {\r\n}\r\nvoid c() {}\r\n").unwrap();
+
+    for (samples, expected) in [(0, vec![]), (2, vec!["a.cpp void a() {}", "a.cpp void b() {\n}"]), (9, vec!["a.cpp void a() {}", "a.cpp void b() {\n}", "a.cpp void c() {}", "b.cpp void keep() {}"])] {
+        let mut traces = Traces::new(Limits { samples, ..Limits::default() });
+        let (folder, located) = traces.places(&registry, &project, &patch, &["FunctionDefinition"]).unwrap();
+        let found: Vec<String> = located[0].found.iter().map(|found| format!("{} {}", found.file.display(), found.matched.text)).collect();
+
+        assert_eq!((folder, located[0].matches.places, found), (directory.path().join("target"), 4, expected.into_iter().map(str::to_string).collect()));
+    }
 }

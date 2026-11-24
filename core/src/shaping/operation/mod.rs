@@ -14,6 +14,7 @@ use std::rc::Rc;
 // Crate Uses
 use crate::ast::backend::LanguageBackend;
 use crate::registry::Registry;
+use crate::shaping::lines::unix;
 use crate::shaping::operation::configuration::{OperationConfiguration, ResultOptions};
 use crate::shaping::operation::report::Report;
 use crate::shaping::operation::session::{Change, Session};
@@ -21,7 +22,7 @@ use crate::shaping::patch::Patch;
 use crate::shaping::patch::controller::PatchController;
 use crate::shaping::patch::pattern::Regexes;
 use crate::shaping::patch::source::PatchSource;
-use crate::shaping::patch::trace::Trace;
+use crate::shaping::patch::trace::{Capture, Found, Trace};
 use crate::shaping::patch::validation::{validate, validate_source, Diagnostic as PatchDiagnostic, DiagnosticKind, Severity};
 use crate::shaping::project::{Project, ProjectPatch};
 use crate::shaping::project::ast_set::AstSet;
@@ -44,6 +45,12 @@ pub struct LocationMatches {
     pub files: usize,
     pub matched_files: usize,
     pub places: usize
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct LocationPlaces {
+    pub matches: LocationMatches,
+    pub found: Vec<Found>
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -275,10 +282,19 @@ impl Operation {
     }
 
     pub fn locate_all(
-        &self, registry: &Registry, patch: &Patch, (directory, files): (&Path, &[File]), locations: &[&str],
-        keep_going: &dyn Fn() -> bool
+        &self, registry: &Registry, patch: &Patch, target: (&Path, &[File]), locations: &[&str], keep_going: &dyn Fn() -> bool
     ) -> Result<Vec<LocationMatches>> {
-        let mut found = vec![LocationMatches { files: files.len(), ..LocationMatches::default() }; locations.len()];
+        let found = self.find_all(registry, patch, target, locations, 0, keep_going)?;
+
+        Ok(found.into_iter().map(|located| located.matches).collect())
+    }
+
+    pub fn find_all(
+        &self, registry: &Registry, patch: &Patch, (directory, files): (&Path, &[File]), locations: &[&str],
+        limit: usize, keep_going: &dyn Fn() -> bool
+    ) -> Result<Vec<LocationPlaces>> {
+        let matches = LocationMatches { files: files.len(), ..LocationMatches::default() };
+        let mut found = vec![LocationPlaces { matches, found: vec![] }; locations.len()];
         if locations.is_empty() { return Ok(found) }
 
         for file in files {
@@ -287,10 +303,17 @@ impl Operation {
 
             if !keep_going() { bail!("Locating was stopped") }
 
-            for (ranges, matches) in backend.locate_all(&source, locations).into_iter().zip(&mut found) {
-                let places = ranges.map(|ranges| ranges.len()).unwrap_or_default();
-                matches.places += places;
-                matches.matched_files += usize::from(places > 0);
+            for (ranges, located) in backend.locate_all(&source, locations).into_iter().zip(&mut found) {
+                let ranges = ranges.unwrap_or_default();
+                located.matches.places += ranges.len();
+                located.matches.matched_files += usize::from(!ranges.is_empty());
+
+                let wanted = limit.saturating_sub(located.found.len());
+                located.found.extend(ranges.into_iter().take(wanted).map(|range| Found {
+                    file: file.path.clone(),
+                    matched: Capture { text: unix(&source[range.clone()]).into_owned(), place: Some(range) },
+                    groups: vec![]
+                }));
             }
         }
 

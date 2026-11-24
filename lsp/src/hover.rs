@@ -12,13 +12,13 @@ use crate::query::{is_query, part_at, Part, PREDICATES};
 use crate::schema::{regex_field, LOCATIONS};
 use crate::section::{view_at, View};
 use crate::syntax::{Literal, Outline, ACTION_NODES};
-use crate::target::{self, backends, matches};
+use crate::target::{self, backends};
 use crate::trace::{diff, fenced, inline, truncate, Limits, Traces};
 
 // External Uses
 use codeshaper::core::ast::backend::LanguageBackend;
 use codeshaper::core::registry::Registry;
-use codeshaper::core::shaping::operation::LocationMatches;
+use codeshaper::core::shaping::operation::{LocationMatches, LocationPlaces};
 use codeshaper::core::shaping::patch::pattern::{Group, FLAGS};
 use codeshaper::core::shaping::patch::trace::{ActionTrace, Found, Trace};
 use codeshaper::core::shaping::project::ast_set::AstSet;
@@ -61,7 +61,7 @@ pub fn hover(
     let field = outline.nodes[node].name.as_str();
 
     if LOCATIONS.contains(&field) {
-        return location(registry, project, &outline, text, literal, offset)
+        return location(registry, project, traces, &outline, text, literal, offset)
     }
 
     if outline.nodes[node].parent.is_none() {
@@ -257,10 +257,17 @@ fn results(action: Option<&ActionTrace>, trace: &Trace, language: &str, limits: 
 }
 
 fn location(
-    registry: &Registry, project: &Path, outline: &Outline, text: &str, literal: Literal, offset: usize
+    registry: &Registry, project: &Path, traces: &mut Traces, outline: &Outline, text: &str, literal: Literal, offset: usize
 ) -> Option<(String, Range<usize>)> {
     let backends = backends(registry, project, outline);
     let backend = *backends.first()?;
+    let location = literal.value.as_str();
+    let mut find = |locations: &[&str], title: &str| {
+        let (directory, found) = traces.places(registry, project, &target::patch(outline), locations)?;
+        let section = found.last().map(|located| placed(title, located, &directory, backend.name(), &traces.limits));
+
+        Some((found.first()?.matches, section?))
+    };
 
     if is_query(&literal) && literal.content.start <= offset && offset <= literal.content.end {
         let source = &text[literal.content.clone()];
@@ -268,37 +275,63 @@ fn location(
 
         if let Some((part, word)) = found {
             let range = literal.content.start + word.start..literal.content.start + word.end;
-            let counted = |query: &str| matches(registry, project, outline, query).map(summary).unwrap_or_default();
+            let word = &source[word];
+            let is_valid = backends.iter().any(|backend| backend.check_location(location).is_ok());
+            let kind = (part == Part::Kind && is_kind(backend, word)).then(|| format!("({word}) @target"));
 
-            return Some((query(backend, part, &source[word], source, counted), range))
+            let wanted: Vec<&str> = kind.as_deref().into_iter().chain(is_valid.then_some(location)).collect();
+            let found = find(&wanted, "Places of this location");
+            let mut value = query(backend, part, word);
+            if let (Some(_), Some((matches, _))) = (&kind, &found) { value += &summary(*matches); }
+            if let (true, Some((_, section))) = (is_valid, found) { value += &section; }
+
+            return Some((value, range))
         }
     }
 
     let mut described = vec![];
     for backend in &backends {
-        match backend.describe_location(&literal.value) {
+        match backend.describe_location(location) {
             Ok(description) => described.push(description),
             Err(error) => return Some((format!("Not a {} location: {error}", backend.name()), literal.range))
         }
     }
-    let description = described.join("\n\n");
+    let section = find(&[location], "Places").map(|(_, section)| section);
 
-    let found = matches(registry, project, outline, &literal.value).map(summary);
+    Some((described.join("\n\n") + &section.unwrap_or_default(), literal.range))
+}
 
-    Some((description + &found.unwrap_or_default(), literal.range))
+fn placed(title: &str, located: &LocationPlaces, directory: &Path, language: &str, limits: &Limits) -> String {
+    let LocationMatches { files, matched_files, places: all } = located.matches;
+    let mut value = format!("\n\n**{title}**\n\nIn {matched_files} of {files} target file(s), {all} in all");
+
+    let mut places = Places::new(directory, limits);
+    for Found { file, matched, .. } in &located.found {
+        let place = places.link(file, matched.place.as_ref()).unwrap_or_else(|| format!("`{}`", file.display()));
+
+        value += &format!("\n\n{}", snippet(&place, &matched.text, language, limits));
+    }
+    if all > located.found.len() {
+        value += &format!("\n\n+{} more, Find All References lists every place", all - located.found.len());
+    }
+
+    value
 }
 
 fn summary(matches: LocationMatches) -> String {
     format!("\n\nMatches {} place(s) in {} of {} target file(s)", matches.places, matches.matched_files, matches.files)
 }
 
-fn query(backend: &dyn LanguageBackend, part: Part, word: &str, source: &str, counted: impl Fn(&str) -> String) -> String {
+fn is_kind(backend: &dyn LanguageBackend, word: &str) -> bool {
+    word != "_" && backend.node_kinds().iter().any(|kind| kind == word)
+}
+
+fn query(backend: &dyn LanguageBackend, part: Part, word: &str) -> String {
     let name = backend.name();
 
     match part {
         Part::Kind if word == "_" => "Any named node".to_string(),
-        Part::Kind if backend.node_kinds().iter().any(|kind| kind == word) =>
-            format!("`{word}`: {name} node kind{}", counted(&format!("({word}) @target"))),
+        Part::Kind if is_kind(backend, word) => format!("`{word}`: {name} node kind"),
         Part::Kind => format!("`{word}` is not a {name} node kind"),
         Part::Field if backend.fields().iter().any(|field| field == word.trim_start_matches('!')) => format!("`{word}`: {name} field"),
         Part::Field => format!("`{word}` is not a {name} field"),
@@ -306,7 +339,7 @@ fn query(backend: &dyn LanguageBackend, part: Part, word: &str, source: &str, co
             Some((_, meaning)) => format!("`#{word}`: {meaning}"),
             None => format!("`#{word}` does not filter matches")
         },
-        Part::Capture if word == "target" => format!("`@target`: the place this location points at{}", counted(source)),
+        Part::Capture if word == "target" => "`@target`: the place this location points at".to_string(),
         Part::Capture => format!("`@{word}`: a capture, for predicates to refer to")
     }
 }

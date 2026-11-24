@@ -12,7 +12,7 @@ use crate::syntax::Outline;
 // External Uses
 use codeshaper::core::ast::backend::LanguageBackend;
 use codeshaper::core::registry::Registry;
-use codeshaper::core::shaping::operation::{LocationMatches, Operation, Places};
+use codeshaper::core::shaping::operation::{Operation, Places};
 use codeshaper::core::shaping::patch::Patch;
 use codeshaper::core::shaping::project::ast_set::AstSet;
 
@@ -93,10 +93,6 @@ pub fn every_file(registry: &Registry, project: &Path) -> Vec<PathBuf> {
         .and_then(|operation| operation.matching_files(registry, "", &patch).ok())
         .map(|(_, files)| files.into_iter().map(|file| file.path).collect())
         .unwrap_or_default()
-}
-
-pub fn matches(registry: &Registry, project: &Path, outline: &Outline, location: &str) -> Option<LocationMatches> {
-    operation(project)?.locate(registry, "", &patch(outline), location).ok()
 }
 
 pub fn places(registry: &Registry, project: &Path, outline: &Outline, location: &str) -> Vec<Places> {

@@ -83,5 +83,5 @@ fn each_part_has_its_own_hover() {
     assert_eq!(hovered(query, "declarator").0, "`declarator`: cpp field");
     assert_eq!(hovered(query, "nope").0, "`nope` is not a cpp node kind");
     assert_eq!(hovered(query, "eq?").0, "`#eq?`: the capture's text equals a string or another capture");
-    assert!(hovered("(function_definition) @target", "target").0.ends_with("Matches 2 place(s) in 2 of 2 target file(s)"));
+    assert!(hovered("(function_definition) @target", "target").0.contains("\n\n**Places of this location**\n\nIn 2 of 2 target file(s), 2 in all\n\n"));
 }

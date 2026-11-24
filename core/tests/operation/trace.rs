@@ -123,3 +123,37 @@ fn locations_are_counted_together() {
     assert_eq!(operation.locate_all(&registry(), &patch, (&folder, &files), &[], &|| panic!("nothing to locate")).unwrap(), vec![]);
     assert!(operation.locate_all(&registry(), &patch, (&folder, &files), &["Line"], &|| false).is_err());
 }
+
+#[test]
+fn first_places_are_found() {
+    let directory = workspace("replace", &[]);
+    std::fs::write(directory.path().join("target/a.txt"), "é𝄞\r\nkeep\r\n").unwrap();
+    std::fs::remove_file(directory.path().join("target/nested/b.txt")).unwrap();
+    let operation = Operation::from_file(&directory.path().join("configuration.kdl")).unwrap();
+    let patch = Patch::from_kdl("traced.kdl", &rename("lines", "Line")).unwrap();
+    let (folder, files) = operation.matching_files(&registry(), "", &patch).unwrap();
+    let find = |locations: &[&str], limit: usize| operation.find_all(&registry(), &patch, (&folder, &files), locations, limit, &|| true).unwrap();
+
+    let found = find(&["Line", "Missing", "File"], 2);
+    let shown: Vec<Vec<_>> = found.iter()
+        .map(|located| located.found.iter().map(|found| (found.matched.text.as_str(), found.matched.place.clone())).collect())
+        .collect();
+
+    assert_eq!(shown, vec![
+        vec![("é𝄞\r", Some(0..7)), ("keep\r", Some(8..13))],
+        vec![],
+        vec![("é𝄞\nkeep\n", Some(0..14)), ("", Some(0..0))]
+    ]);
+    assert_eq!(found[0].found[1].file, PathBuf::from("a.txt"));
+
+    for limit in [0, 1, 9] {
+        let counts: Vec<_> = find(&["Line", "Missing", "File"], limit).into_iter().map(|located| located.matches).collect();
+        assert_eq!(counts, operation.locate_all(&registry(), &patch, (&folder, &files), &["Line", "Missing", "File"], &|| true).unwrap());
+    }
+    assert_eq!(find(&["Line"], 1)[0].found.len(), 1);
+    assert!(find(&["Line"], 0)[0].found.is_empty());
+
+    let unknown = Patch::from_kdl("traced.kdl", &rename("cobol", "Line")).unwrap();
+    let found = operation.find_all(&registry(), &unknown, (&folder, &files), &["Line"], 9, &|| true).unwrap();
+    assert_eq!((found[0].matches.files, found[0].matches.places, found[0].found.len()), (2, 0, 0));
+}

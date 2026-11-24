@@ -25,10 +25,13 @@ impl<'t> Places<'t> {
     }
 
     pub fn file(&mut self, file: &Path, place: Option<&Range<usize>>) -> String {
-        match self.locate(file, place) {
-            Some((span, url)) => format!("[`{}:{span}`](<{url}>)", file.display()),
-            None => format!("`{}`, changed by an earlier replacer", file.display())
-        }
+        self.link(file, place).unwrap_or_else(|| format!("`{}`, changed by an earlier replacer", file.display()))
+    }
+
+    pub fn link(&mut self, file: &Path, place: Option<&Range<usize>>) -> Option<String> {
+        let (span, url) = self.locate(file, place)?;
+
+        Some(format!("[`{}:{span}`](<{url}>)", file.display()))
     }
 
     pub fn capture(&mut self, file: &Path, capture: &Capture, language: &str) -> String {
