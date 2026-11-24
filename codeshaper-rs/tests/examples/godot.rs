@@ -9,6 +9,7 @@ use crate::examples::{copy_directory, read};
 use codeshaper::registry;
 use codeshaper::core::shaping::operation::Operation;
 use codeshaper::core::shaping::operation::report::Outcome;
+use codeshaper::core::shaping::project::ProjectPatch;
 
 
 const EXAMPLE: &str = "examples/Godot/Godot 3 to 4 Migration/";
@@ -51,7 +52,7 @@ fn patches_validate() {
     let operation = Operation::from_file(&Path::new(EXAMPLE).join("configuration.kdl")).unwrap();
     let solution = operation.target(&registry).unwrap();
 
-    for (name, patch) in &operation.project.patches {
+    for ProjectPatch { name, patch, .. } in &operation.project.patches {
         let (backends, diagnostics) = operation.languages(&registry, patch, &solution.files());
 
         assert_eq!(backends.len(), 1, "{name} has no language");

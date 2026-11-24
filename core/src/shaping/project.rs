@@ -3,12 +3,13 @@ pub mod ast_set;
 pub mod settings;
 
 // Standard Uses
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::{fs, io};
 use std::path::{Path, PathBuf, MAIN_SEPARATOR};
 
 // Crate Uses
 use crate::shaping::patch::Patch;
+use crate::shaping::patch::file::NamedPatch;
 use crate::shaping::patch::source::PatchSource;
 use crate::shaping::project::settings::ProjectSettings;
 
@@ -20,8 +21,15 @@ use glob::glob;
 pub struct Project {
     pub directory: String,
     pub settings: ProjectSettings,
-    pub patches: BTreeMap<String, Patch>,
-    pub sources: BTreeMap<String, PatchSource>,
+    pub patches: Vec<ProjectPatch>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProjectPatch {
+    pub name: String,
+    pub path: PathBuf,
+    pub patch: Patch,
+    pub source: PatchSource
 }
 
 impl Project {
@@ -43,14 +51,17 @@ impl Project {
         }
 
         let settings = ProjectSettings::from_path(path)?;
-        let (patches, sources) = load_patches(&path.join("patches"), read)?;
+        let patches = load_patches(&path.join("patches"), read)?;
 
         Ok(Self {
             directory: path.to_str().unwrap().to_string(),
             settings,
             patches,
-            sources,
         })
+    }
+
+    pub fn patch(&self, name: &str) -> Option<&ProjectPatch> {
+        self.patches.iter().find(|patch| patch.name == name)
     }
 }
 
@@ -62,29 +73,36 @@ pub fn patch_files(directory: &Path) -> Result<Vec<(String, PathBuf)>> {
         .into_diagnostic()
         .wrap_err_with(|| format!("Could not search for patches in {}", directory.display()))?;
 
-    entries
+    let mut files = entries
         .map(|entry| {
             let path = entry.into_diagnostic()?;
             let name = path.strip_prefix(directory).into_diagnostic()?.to_string_lossy().replace(MAIN_SEPARATOR, "/");
 
             Ok((name, path))
         })
-        .collect()
+        .collect::<Result<Vec<_>>>()?;
+    files.sort();
+
+    Ok(files)
 }
 
-pub fn load_patches(
-    directory: &Path, read: &dyn Fn(&Path) -> io::Result<String>
-) -> Result<(BTreeMap<String, Patch>, BTreeMap<String, PatchSource>)> {
-    let mut patches = BTreeMap::new();
-    let mut sources = BTreeMap::new();
+pub fn load_patches(directory: &Path, read: &dyn Fn(&Path) -> io::Result<String>) -> Result<Vec<ProjectPatch>> {
+    let mut patches = vec![];
+    let mut files: HashMap<String, String> = HashMap::new();
 
-    for (name, path) in patch_files(directory)? {
-        let (patch, source) = Patch::load_with(&path, read)
+    for (file, path) in patch_files(directory)? {
+        let found = Patch::load_all_with(&path, read)
             .wrap_err_with(|| format!("Could not load patch {}", path.display()))?;
 
-        patches.insert(name.clone(), patch);
-        sources.insert(name, source);
+        for NamedPatch { name, patch, source } in found {
+            let name = name.unwrap_or_else(|| file.clone());
+            if let Some(other) = files.insert(name.clone(), file.clone()) {
+                bail!("Patch '{name}' is in both {other} and {file}")
+            }
+
+            patches.push(ProjectPatch { name, path: path.clone(), patch, source });
+        }
     }
 
-    Ok((patches, sources))
+    Ok(patches)
 }

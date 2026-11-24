@@ -1,5 +1,4 @@
 // Standard Uses
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -15,6 +14,7 @@ use codeshaper::core::shaping::operation::Operation;
 use codeshaper::core::shaping::operation::report::Outcome;
 use codeshaper::core::shaping::patch::Patch;
 use codeshaper::core::shaping::patch::controller::PatchController;
+use codeshaper::core::shaping::patch::file::NamedPatch;
 use codeshaper::core::shaping::patch::source::PatchSource;
 use codeshaper::core::shaping::patch::validation::{validate_source, Diagnostic, DiagnosticKind, Severity};
 use codeshaper::core::shaping::project::settings::ProjectSettings;
@@ -61,6 +61,8 @@ enum Command {
         patch: PathBuf,
         #[arg(help = "The file to shape")]
         file: PathBuf,
+        #[arg(long, help = "The patch's name, when the patch file has several")]
+        name: Option<String>,
         #[arg(long, help = "Write the result into the file instead of showing a diff")]
         in_place: bool,
         #[arg(long, help = "The file's language, when the patch doesn't name one")]
@@ -79,7 +81,9 @@ fn main() -> Result<ExitCode> {
         Command::Run { configuration, dry_run: true } => dry_run(&configuration),
         Command::Check { paths, patch: false, .. } => check_operation(&paths),
         Command::Check { paths, patch: true, language } => check_patches(&paths, language.as_deref()),
-        Command::Apply { patch, file, in_place, language } => apply(&patch, &file, in_place, language.as_deref()),
+        Command::Apply { patch, file, name, in_place, language } => {
+            apply(&patch, &file, name.as_deref(), in_place, language.as_deref())
+        }
         Command::Lsp => codeshaper_lsp::run().map(|_| ExitCode::SUCCESS)
     }
 }
@@ -128,39 +132,63 @@ fn check_operation(paths: &[PathBuf]) -> Result<ExitCode> {
     let operation = Operation::from_file(configuration)?;
     let found = operation.check(&registry())?;
 
-    Ok(report_diagnostics(found, &operation.project.sources))
+    Ok(report_diagnostics(found.iter().map(|(name, diagnostic)| {
+        (name.as_str(), diagnostic, operation.project.patch(name).map(|patch| &patch.source))
+    })))
 }
 
 fn check_patches(paths: &[PathBuf], language: Option<&str>) -> Result<ExitCode> {
     let registry = registry();
     let mut found = vec![];
-    let mut sources = BTreeMap::new();
 
     for path in paths {
-        let (patch, source) = Patch::load(path)?;
-        let name = path.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_default();
+        for named in Patch::load_all(path)? {
+            let NamedPatch { patch, source, .. } = &named;
 
-        let (backends, mut diagnostics) = match languages(&registry, path, &patch, language)? {
-            Languages::Known(backend) => (vec![backend], vec![]),
-            Languages::Mixed(operation) => {
-                let solution = operation.target(&registry)?;
-                let diagnostics = operation.check_file(&registry, &patch, &source)?;
+            let (backends, mut diagnostics) = match languages(&registry, path, patch, language)? {
+                Languages::Known(backend) => (vec![backend], vec![]),
+                Languages::Mixed(operation) => {
+                    let solution = operation.target(&registry)?;
+                    let diagnostics = operation.check_file(&registry, patch, source)?;
 
-                (operation.languages(&registry, &patch, &solution.files()).0, diagnostics)
-            }
-            Languages::Unknown => {
-                eprintln!("The locations of {} weren't checked: it is in no project and names no language, use --language", path.display());
-                (vec![], vec![])
-            }
-        };
-        diagnostics.retain(|diagnostic| diagnostic.kind == DiagnosticKind::LanguageNotFound);
-        diagnostics.extend(validate_source(&patch, &source, backends));
+                    (operation.languages(&registry, patch, &solution.files()).0, diagnostics)
+                }
+                Languages::Unknown => {
+                    let of = named.name.as_ref().map(|name| format!("'{name}' in ")).unwrap_or_default();
+                    eprintln!("The locations of {of}{} weren't checked: it is in no project and names no language, use --language", path.display());
+                    (vec![], vec![])
+                }
+            };
+            diagnostics.retain(|diagnostic| diagnostic.kind == DiagnosticKind::LanguageNotFound);
+            diagnostics.extend(validate_source(patch, source, backends));
 
-        found.extend(diagnostics.into_iter().map(|diagnostic| (name.clone(), diagnostic)));
-        sources.insert(name, source);
+            found.push((display_name(path, &named), named, diagnostics));
+        }
     }
 
-    Ok(report_diagnostics(found, &sources))
+    Ok(report_diagnostics(found.iter().flat_map(|(name, named, diagnostics)| {
+        diagnostics.iter().map(|diagnostic| (name.as_str(), diagnostic, Some(&named.source)))
+    })))
+}
+
+fn display_name(path: &Path, named: &NamedPatch) -> String {
+    let file = || path.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_default();
+
+    named.name.clone().unwrap_or_else(file)
+}
+
+fn chosen(path: &Path, name: Option<&str>) -> Result<NamedPatch> {
+    let mut patches = Patch::load_all(path)?;
+    let names: Vec<String> = patches.iter().map(|named| display_name(path, named)).collect();
+
+    let index = match name {
+        Some(name) => names.iter().position(|known| known == name)
+            .ok_or_else(|| miette!("{} has no patch named '{}', only: {}", path.display(), name, names.join(", ")))?,
+        None if patches.len() > 1 => bail!("{} has several patches, name one with --name: {}", path.display(), names.join(", ")),
+        None => 0
+    };
+
+    Ok(patches.swap_remove(index))
 }
 
 enum Languages<'r> {
@@ -204,9 +232,11 @@ fn target_language<'r>(registry: &'r Registry, operation: &Operation, patch: &Pa
     operation.backend(registry, patch, found)
 }
 
-fn apply(patch_path: &Path, file: &Path, in_place: bool, language: Option<&str>) -> Result<ExitCode> {
+fn apply(patch_path: &Path, file: &Path, name: Option<&str>, in_place: bool, language: Option<&str>) -> Result<ExitCode> {
     let registry = registry();
-    let (patch, source) = Patch::load(patch_path)?;
+    let named = chosen(patch_path, name)?;
+    let name = display_name(patch_path, &named);
+    let NamedPatch { patch, source, .. } = named;
 
     let backend = match languages(&registry, patch_path, &patch, language)? {
         Languages::Known(backend) => backend,
@@ -214,12 +244,9 @@ fn apply(patch_path: &Path, file: &Path, in_place: bool, language: Option<&str>)
         Languages::Unknown => bail!("{} is in no project and names no language, use --language", patch_path.display())
     };
 
-    let name = patch_path.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_default();
-    let diagnostics: Vec<_> = validate_source(&patch, &source, [backend]).into_iter()
-        .map(|diagnostic| (name.clone(), diagnostic))
-        .collect();
-    if diagnostics.iter().any(|(_, diagnostic)| diagnostic.severity == Severity::Error) {
-        return Ok(report_diagnostics(diagnostics, &BTreeMap::from([(name, source)])))
+    let diagnostics = validate_source(&patch, &source, [backend]);
+    if diagnostics.iter().any(|diagnostic| diagnostic.severity == Severity::Error) {
+        return Ok(report_diagnostics(diagnostics.iter().map(|diagnostic| (name.as_str(), diagnostic, Some(&source)))))
     }
 
     let source = fs::read_to_string(file)
@@ -249,11 +276,11 @@ fn print_diff(path: &Path, old: &str, new: &str) {
     print!("{}", diff.unified_diff().header(&format!("a/{path}"), &format!("b/{path}")));
 }
 
-fn report_diagnostics(found: Vec<(String, Diagnostic)>, sources: &BTreeMap<String, PatchSource>) -> ExitCode {
+fn report_diagnostics<'f>(found: impl Iterator<Item = (&'f str, &'f Diagnostic, Option<&'f PatchSource>)>) -> ExitCode {
     let mut errors = 0;
     let mut warnings = 0;
 
-    for (patch, diagnostic) in &found {
+    for (patch, diagnostic, source) in found {
         let severity = match diagnostic.severity {
             Severity::Error => { errors += 1; "error" }
             Severity::Warning => { warnings += 1; "warning" }
@@ -264,7 +291,7 @@ fn report_diagnostics(found: Vec<(String, Diagnostic)>, sources: &BTreeMap<Strin
             diagnostic.kind.code(), diagnostic.action, diagnostic.field, diagnostic.message
         );
 
-        match sources.get(patch).filter(|_| diagnostic.span.is_some()) {
+        match source.filter(|_| diagnostic.span.is_some()) {
             Some(source) => println!("{:?}", source.report(diagnostic, title)),
             None => println!("{title}")
         }

@@ -203,3 +203,57 @@ fn check_says_when_locations_were_not_checked() {
     assert!(!output.status.success());
     assert!(stdout(&output).contains("error[location-not-found]"));
 }
+
+fn block(name: &str, from: &str, to: &str) -> String {
+    format!(
+        "patch \"{name}\" {{\n    enabled true\n    alias \"cpp\"\n    file \"*\"\n    actions {{\n        replacers {{\n            \
+        replacer {{\n                location \"Identifier\"\n                from r\"{from}\"\n                to \"{to}\"\n            }}\n        }}\n    }}\n}}\n"
+    )
+}
+
+#[test]
+fn apply_takes_one_of_several() {
+    let directory = tempfile::tempdir().unwrap();
+    let patch = directory.path().join("several.kdl");
+    let file = directory.path().join("a.cpp");
+    fs::write(&patch, block("one", "a", "b") + &block("two", "a", "c")).unwrap();
+    fs::write(&file, "int a;\n").unwrap();
+    let apply = |extra: &[&str]| {
+        let output = codeshaper(&[&["apply", &patch.display().to_string(), &file.display().to_string()], extra].concat());
+        (output.status.success(), stdout(&output), String::from_utf8_lossy(&output.stderr).to_string())
+    };
+
+    assert!(apply(&["--name", "one"]).1.contains("+int b;"));
+    assert!(apply(&["--name", "two"]).1.contains("+int c;"));
+
+    let (success, _, error) = apply(&[]);
+    assert!(!success && error.contains("has several patches, name one with --name: one, two"), "{error}");
+    let (success, _, error) = apply(&["--name", "three"]);
+    assert!(!success && error.contains("has no patch named 'three', only: one, two"), "{error}");
+
+    fs::write(&patch, block("one", "a", "b")).unwrap();
+    assert!(apply(&[]).1.contains("+int b;"));
+    assert!(apply(&["--name", "one"]).1.contains("+int b;"));
+
+    fs::write(&patch, block("one", "a", "#[missing]")).unwrap();
+    assert!(apply(&[]).1.contains("error[action-not-found] one › replacer #1 › to"));
+}
+
+#[test]
+fn check_reports_every_patch_of_a_file() {
+    let directory = tempfile::tempdir().unwrap();
+    let (first, second) = (directory.path().join("first.kdl"), directory.path().join("second.kdl"));
+    fs::write(&first, block("one", "a", "#[lost]") + &block("two", "(", "b")).unwrap();
+    fs::write(&second, format!("\n\n{}", block("one", "a", "#[gone]"))).unwrap();
+
+    let output = codeshaper(&["check", "--patch", &first.display().to_string(), &second.display().to_string()]);
+    let text = stdout(&output);
+
+    assert!(!output.status.success());
+    assert!(text.contains("error[action-not-found] one › replacer #1 › to"));
+    assert!(text.contains("error[incorrect-regex] two › replacer #1 › from"));
+    assert!(text.contains("[first.kdl:10:21]"), "{text}");
+    assert!(text.contains("[first.kdl:23:"), "{text}");
+    assert!(text.contains("[second.kdl:12:21]"), "{text}");
+    assert!(text.contains("3 error(s), 0 warning(s)"));
+}

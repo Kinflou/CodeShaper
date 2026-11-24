@@ -4,6 +4,7 @@ use std::fmt::{Display, Formatter};
 use std::ops::Range;
 
 // Crate Uses
+use crate::shaping::patch::file::is_block;
 use crate::shaping::patch::validation::{Diagnostic, Severity};
 
 // External Uses
@@ -39,6 +40,14 @@ impl PatchSource {
         let document = knus::parse_ast::<Span>(name, text).map_err(Report::new)?;
 
         Ok(Self { name: name.to_string(), text: text.to_string(), spans: node_spans(&document.nodes) })
+    }
+
+    pub fn parse_all(name: &str, text: &str) -> Result<Vec<Self>> {
+        let document = knus::parse_ast::<Span>(name, text).map_err(Report::new)?;
+        let source = |spans| Self { name: name.to_string(), text: text.to_string(), spans };
+        let blocks: Vec<Self> = document.nodes.iter().filter(|node| is_block(node)).map(|node| source(named_spans(node))).collect();
+
+        Ok(if blocks.is_empty() { vec![source(node_spans(&document.nodes))] } else { blocks })
     }
 
     pub fn narrow(&self, literal: SourceSpan, range: Range<usize>) -> Option<SourceSpan> {
@@ -126,6 +135,16 @@ fn node_spans(nodes: &[SpannedNode<Span>]) -> NodeSpans {
     spans
 }
 
+fn named_spans(node: &SpannedNode<Span>) -> NodeSpans {
+    let mut spans = node_spans(children(node));
+
+    if let Some(name) = node.arguments.first() {
+        spans.fields.insert("name".to_string(), source_span(name.literal.span()));
+    }
+
+    spans
+}
+
 fn action_spans(containers: &[SpannedNode<Span>]) -> ActionSpans {
     let mut spans = ActionSpans::default();
 
@@ -140,13 +159,7 @@ fn action_spans(containers: &[SpannedNode<Span>]) -> ActionSpans {
         };
 
         for node in children(container).iter().filter(|node| &**node.node_name == item) {
-            let mut action = node_spans(children(node));
-
-            if let Some(argument) = node.arguments.first() {
-                action.fields.insert("name".to_string(), source_span(argument.literal.span()));
-            }
-
-            list.push(action);
+            list.push(named_spans(node));
         }
     }
 

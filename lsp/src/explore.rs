@@ -1,5 +1,5 @@
 // Standard Uses
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::fs;
 use std::ops::Range;
 use std::path::{Path, PathBuf, MAIN_SEPARATOR};
@@ -200,8 +200,7 @@ pub fn files(registry: &Registry, start: &Path, open: &Open) -> Result<Files> {
         project: Project {
             directory: project.to_string_lossy().to_string(),
             settings: ProjectSettings::from_path(&project)?,
-            patches: BTreeMap::new(),
-            sources: BTreeMap::new()
+            patches: vec![]
         }
     };
 

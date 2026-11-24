@@ -11,7 +11,7 @@ use codeshaper_core::shaping::project::Project;
 #[test]
 fn load_patches() {
     let project = Project::from_directory(Path::new(PROJECT_SETTINGS_PATH)).unwrap();
-    let names: Vec<&str> = project.patches.keys().map(String::as_str).collect();
+    let names: Vec<&str> = project.patches.iter().map(|patch| patch.name.as_str()).collect();
 
     assert_eq!(names, vec![
         "function_creation.kdl",
@@ -19,6 +19,6 @@ fn load_patches() {
         "function_name_correction_cpp.kdl",
         "function_return_creation.kdl"
     ]);
-    assert!(project.patches["function_creation.kdl"].enabled);
-    assert!(!project.patches["function_name_correction.kdl"].enabled);
+    assert!(project.patch("function_creation.kdl").unwrap().patch.enabled);
+    assert!(!project.patch("function_name_correction.kdl").unwrap().patch.enabled);
 }

@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use crate::registry::Registry;
 use crate::shaping::operation::{Operation, RunFailed};
 use crate::shaping::operation::report::{FileReport, Outcome, Report};
+use crate::shaping::project::ProjectPatch;
 use crate::target::{File, Solution};
 
 // External Uses
@@ -51,7 +52,7 @@ pub struct Session<'a> {
     registry: &'a Registry,
     directory: PathBuf,
     files: Vec<File>,
-    steps: Vec<(usize, String)>,
+    steps: Vec<(usize, usize)>,
     history: Vec<Change>,
     cursor: usize,
     contents: Vec<Option<String>>,
@@ -65,8 +66,8 @@ impl<'a> Session<'a> {
         let mut steps = vec![];
 
         for (index, file) in files.iter().enumerate() {
-            for name in operation.matching_patches(file)? {
-                steps.push((index, name.clone()));
+            for patch in operation.matching_patches(file)? {
+                steps.push((index, patch));
             }
         }
 
@@ -261,7 +262,8 @@ impl<'a> Session<'a> {
     }
 
     fn apply_step(&mut self, step: usize) -> Change {
-        let (index, patch) = self.steps[step].clone();
+        let (index, patch) = self.steps[step];
+        let ProjectPatch { name, patch, .. } = &self.operation.project.patches[patch];
         let file = &self.files[index];
 
         let before = match &self.contents[index] {
@@ -277,7 +279,7 @@ impl<'a> Session<'a> {
 
         let (before, result) = match before {
             Ok(before) => {
-                let result = self.operation.apply_patch(self.registry, &patch, &self.operation.project.patches[&patch], file, &before);
+                let result = self.operation.apply_patch(self.registry, name, patch, file, &before);
                 (before, result)
             }
             Err(error) => (String::new(), Err(error))
@@ -287,6 +289,6 @@ impl<'a> Session<'a> {
             self.contents[index] = Some(before.clone());
         }
 
-        Change { file: file.path.clone(), patch, before, result }
+        Change { file: file.path.clone(), patch: name.clone(), before, result }
     }
 }

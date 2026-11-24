@@ -22,7 +22,7 @@ use crate::shaping::patch::controller::PatchController;
 use crate::shaping::patch::source::PatchSource;
 use crate::shaping::patch::trace::Trace;
 use crate::shaping::patch::validation::{validate, validate_source, Diagnostic as PatchDiagnostic, DiagnosticKind, Severity};
-use crate::shaping::project::Project;
+use crate::shaping::project::{Project, ProjectPatch};
 use crate::shaping::project::ast_set::AstSet;
 use crate::target::{File, Solution};
 
@@ -131,16 +131,15 @@ impl Operation {
         let files = solution.files();
         let mut found = vec![];
 
-        for (name, patch) in &self.project.patches {
-            let source = &self.project.sources[name];
+        for ProjectPatch { name, patch, source, .. } in &self.project.patches {
             let (backends, diagnostics) = self.languages(registry, patch, &files);
 
             found.extend(validate_source(patch, source, backends).into_iter().map(|diagnostic| (name.clone(), diagnostic)));
             found.extend(diagnostics.into_iter().map(|diagnostic| (name.clone(), spanned(diagnostic, source))));
         }
 
-        for (name, patch) in &self.project.patches {
-            let diagnostic = file_diagnostic(patch, &self.project.sources[name], &files);
+        for ProjectPatch { name, patch, source, .. } in &self.project.patches {
+            let diagnostic = file_diagnostic(patch, source, &files);
             found.extend(diagnostic.map(|diagnostic| (name.clone(), diagnostic)));
         }
 
@@ -151,10 +150,9 @@ impl Operation {
         self.project.settings.ast_set.check(registry)?;
         let mut errors = vec![];
 
-        for (name, patch) in &self.project.patches {
+        for ProjectPatch { name, patch, source, .. } in &self.project.patches {
             if !patch.enabled { continue }
 
-            let source = &self.project.sources[name];
             let (backends, diagnostics) = self.languages(registry, patch, files);
             let diagnostics = diagnostics.into_iter().map(|diagnostic| spanned(diagnostic, source));
 
@@ -347,14 +345,14 @@ impl Operation {
         Ok((solution.directory, files))
     }
 
-    fn matching_patches(&self, file: &File) -> Result<Vec<&String>> {
+    fn matching_patches(&self, file: &File) -> Result<Vec<usize>> {
         let mut matching = vec![];
 
-        for (name, patch) in &self.project.patches {
+        for (index, ProjectPatch { name, patch, .. }) in self.project.patches.iter().enumerate() {
             if !patch.enabled { continue }
 
             if file_pattern(name, patch)?.matches_path(&file.path) {
-                matching.push(name);
+                matching.push(index);
             }
         }
 
