@@ -22,7 +22,7 @@ export const settings = {
     }),
     inlayHints: (): HintSettings => ({
         groups: read("inlayHints.groups", false),
-        matches: read("inlayHints.matches", false)
+        matches: read("inlayHints.matches", true)
     }),
     exploreDepth: (): number => read("explore.depth", 4)
 };

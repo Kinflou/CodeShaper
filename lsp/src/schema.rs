@@ -27,6 +27,15 @@ pub fn template_field(action: &str) -> Option<&'static str> {
     }
 }
 
+pub fn result_field(action: &str) -> Option<&'static str> {
+    match action {
+        "builder" => Some("build"),
+        "maker" => Some("make"),
+        "switch" | "list" => Some("index"),
+        _ => None
+    }
+}
+
 pub fn top(has_blocks: bool, has_fields: bool) -> Vec<&'static str> {
     let fields = children(None).iter().copied();
 

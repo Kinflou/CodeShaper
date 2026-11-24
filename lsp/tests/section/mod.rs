@@ -498,7 +498,10 @@ fn hints_count_for_their_patch() {
         .map(|hint| (hint["position"]["line"].as_u64().unwrap(), hint["label"].as_str().unwrap().to_string()))
         .collect();
 
-    assert_eq!(shown, vec![(9, "2 places in 2 files".to_string()), (30, "1 place in 1 file".to_string()), (31, "0:".to_string())]);
+    assert_eq!(shown.iter().map(|(line, label)| (*line, label.as_str())).collect::<Vec<_>>(), vec![
+        (9, "2 places in 2 files"), (10, "1 match in 1 of 2"), (25, "1 call"),
+        (30, "1 place in 1 file"), (31, "0:"), (31, "1 match in 1 of 1")
+    ]);
 
     client.stop();
 }

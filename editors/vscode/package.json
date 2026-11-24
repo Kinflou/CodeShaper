@@ -310,8 +310,8 @@
         },
         "codeshaper.inlayHints.matches": {
           "type": "boolean",
-          "default": false,
-          "description": "Show how many places each location matches, updated on open and save. Takes effect after reloading the window."
+          "default": true,
+          "description": "Show how many places each location matches, and how often each action matches, builds and is called. Updated on open and save. Takes effect after reloading the window."
         },
         "codeshaper.explore.depth": {
           "type": "integer",

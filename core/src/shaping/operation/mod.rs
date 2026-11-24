@@ -266,13 +266,32 @@ impl Operation {
     }
 
     pub fn locate(&self, registry: &Registry, name: &str, patch: &Patch, location: &str) -> Result<LocationMatches> {
-        let places = self.places(registry, name, patch, location)?;
+        let (directory, files) = self.matching_files(registry, name, patch)?;
+        let found = self.locate_all(registry, patch, (&directory, &files), &[location], &|| true)?;
 
-        Ok(LocationMatches {
-            files: places.len(),
-            matched_files: places.iter().filter(|places| !places.ranges.is_empty()).count(),
-            places: places.iter().map(|places| places.ranges.len()).sum()
-        })
+        Ok(found.into_iter().next().unwrap_or_default())
+    }
+
+    pub fn locate_all(
+        &self, registry: &Registry, patch: &Patch, (directory, files): (&Path, &[File]), locations: &[&str],
+        keep_going: &dyn Fn() -> bool
+    ) -> Result<Vec<LocationMatches>> {
+        let mut found = vec![LocationMatches { files: files.len(), ..LocationMatches::default() }; locations.len()];
+
+        for file in files {
+            let source = fs::read_to_string(directory.join(&file.path)).unwrap_or_default();
+            let Ok(backend) = self.backend(registry, patch, file) else { continue };
+
+            for (location, matches) in locations.iter().zip(&mut found) {
+                if !keep_going() { bail!("Locating was stopped") }
+
+                let places = backend.locate(&source, location).map(|ranges| ranges.len()).unwrap_or_default();
+                matches.places += places;
+                matches.matched_files += usize::from(places > 0);
+            }
+        }
+
+        Ok(found)
     }
 
     pub fn places(&self, registry: &Registry, name: &str, patch: &Patch, location: &str) -> Result<Vec<Places>> {

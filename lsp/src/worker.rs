@@ -12,7 +12,7 @@ use crate::diagnostics::{coverage, duplicates, file};
 use crate::document::{kind, DocumentKind};
 use crate::explore::{self, Located};
 use crate::hover::{hover, settings};
-use crate::inlay::{places, Counts, Hints};
+use crate::inlay::{places, Counts, Hints, Place};
 use crate::navigation::links;
 use crate::paths::{self, check_patterns};
 use crate::position::LineIndex;
@@ -20,7 +20,7 @@ use crate::preview::{configuration, operation_preview, preview};
 use crate::section::views;
 use crate::syntax::Outline;
 use crate::target;
-use crate::trace::{Limits, Traces};
+use crate::trace::{Counted, Limits, Traces};
 
 // External Uses
 use codeshaper::core::registry::Registry;
@@ -270,6 +270,7 @@ impl Drop for Worker {
 
 fn run(shared: &Arc<Shared>, registry: &Registry, limits: Limits, tasks: Receiver<Task>) {
     let mut traces = Traces::new(limits);
+    let mut counted = Counted::default();
     let mut located = Located::default();
 
     for task in tasks {
@@ -277,7 +278,7 @@ fn run(shared: &Arc<Shared>, registry: &Registry, limits: Limits, tasks: Receive
             Task::Trace(snapshot) => {
                 if !shared.is_current(&snapshot) { continue }
 
-                let _ = catch_unwind(AssertUnwindSafe(|| trace(shared, registry, &mut traces, &snapshot)));
+                let _ = catch_unwind(AssertUnwindSafe(|| trace(shared, registry, &mut traces, &mut counted, &snapshot)));
             }
             Task::Check(snapshot) => {
                 if !shared.is_current(&snapshot) { continue }
@@ -302,7 +303,7 @@ fn run(shared: &Arc<Shared>, registry: &Registry, limits: Limits, tasks: Receive
     }
 }
 
-fn trace(shared: &Arc<Shared>, registry: &Registry, traces: &mut Traces, snapshot: &Snapshot) {
+fn trace(shared: &Arc<Shared>, registry: &Registry, traces: &mut Traces, counted: &mut Counted, snapshot: &Snapshot) {
     let Snapshot { project, text, .. } = snapshot;
     let (guard, current) = (shared.clone(), snapshot.clone());
     traces.guard(move || guard.is_current(&current));
@@ -320,11 +321,15 @@ fn trace(shared: &Arc<Shared>, registry: &Registry, traces: &mut Traces, snapsho
         if !shared.hints.matches { continue }
         let outline = Outline::parse(&view.text);
 
-        for (place, _) in places(&outline) {
-            if !shared.is_current(snapshot) { return }
-            let Some(matches) = target::matches(registry, project, &outline, &place.location) else { continue };
-            counts.insert(place, matches);
-        }
+        let mut places: Vec<Place> = places(&outline).into_iter().map(|(place, _)| place).collect();
+        places.sort_by(|one, other| one.location.cmp(&other.location));
+        places.dedup();
+
+        let locations: Vec<&str> = places.iter().map(|place| place.location.as_str()).collect();
+        let found = counted.get(registry, project, &target::patch(&outline), &locations, &|| shared.is_current(snapshot));
+        if !shared.is_current(snapshot) { return }
+
+        counts.extend(places.into_iter().zip(found.into_iter().flatten()));
     }
 
     shared.traced(snapshot, found, traced, counts);

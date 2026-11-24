@@ -1,4 +1,5 @@
 // Standard Uses
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -9,9 +10,11 @@ use crate::preview::configuration;
 
 // External Uses
 use codeshaper::core::registry::Registry;
-use codeshaper::core::shaping::operation::Operation;
+use codeshaper::core::shaping::operation::{LocationMatches, Operation};
 use codeshaper::core::shaping::patch::Patch;
 use codeshaper::core::shaping::patch::trace::Trace;
+use codeshaper::core::shaping::project::settings;
+use codeshaper::core::target::File;
 
 
 const KEPT: usize = 64;
@@ -30,10 +33,70 @@ impl Default for Limits {
     }
 }
 
+type Stamps = Vec<(PathBuf, Option<SystemTime>)>;
+
+struct Stamped {
+    operation: Operation,
+    directory: PathBuf,
+    files: Vec<File>,
+    stamps: Stamps
+}
+
+impl Stamped {
+    fn new(registry: &Registry, project: &Path, patch: &Patch) -> Option<Self> {
+        let configuration = configuration(project).ok()?;
+        let operation = Operation::from_file(&configuration).ok()?;
+        let (directory, files) = operation.matching_files(registry, "", patch).ok()?;
+
+        let stamps = [configuration, project.join(settings::FILE)].into_iter()
+            .chain(files.iter().map(|file| directory.join(&file.path)))
+            .map(|path| { let modified = fs::metadata(&path).and_then(|metadata| metadata.modified()).ok(); (path, modified) })
+            .collect();
+
+        Some(Self { operation, directory, files, stamps })
+    }
+}
+
+struct Counts {
+    project: PathBuf,
+    patch: Patch,
+    stamps: Stamps,
+    found: HashMap<String, LocationMatches>
+}
+
+#[derive(Default)]
+pub struct Counted {
+    entries: Vec<Counts>
+}
+
+impl Counted {
+    pub fn get(
+        &mut self, registry: &Registry, project: &Path, patch: &Patch, locations: &[&str], keep_going: &dyn Fn() -> bool
+    ) -> Option<Vec<LocationMatches>> {
+        let Stamped { operation, directory, files, stamps } = Stamped::new(registry, project, patch)?;
+        let known = self.entries.iter().position(|entry| entry.project == project && entry.patch == *patch)
+            .map(|index| self.entries.remove(index))
+            .filter(|entry| entry.stamps == stamps);
+        let mut entry = known.unwrap_or_else(|| Counts {
+            project: project.to_path_buf(), patch: patch.clone(), stamps, found: HashMap::new()
+        });
+
+        let missing: Vec<&str> = locations.iter().copied().filter(|location| !entry.found.contains_key(*location)).collect();
+        let counted = operation.locate_all(registry, patch, (&directory, &files), &missing, keep_going).ok();
+        entry.found.extend(missing.iter().map(|location| location.to_string()).zip(counted.into_iter().flatten()));
+
+        let found = locations.iter().map(|location| entry.found.get(*location).copied()).collect();
+        if self.entries.len() >= KEPT { self.entries.remove(0); }
+        self.entries.push(entry);
+
+        found
+    }
+}
+
 struct Entry {
     project: PathBuf,
     patch: Patch,
-    stamps: Vec<(PathBuf, Option<SystemTime>)>,
+    stamps: Stamps,
     trace: Arc<Trace>
 }
 
@@ -55,12 +118,7 @@ impl Traces {
 
     pub fn get(&mut self, registry: &Registry, project: &Path, text: &str) -> Option<Arc<Trace>> {
         let patch = Patch::from_kdl("", text).ok()?;
-        let operation = Operation::from_file(&configuration(project).ok()?).ok()?;
-        let (directory, files) = operation.matching_files(registry, "", &patch).ok()?;
-
-        let stamps: Vec<(PathBuf, Option<SystemTime>)> = files.iter()
-            .map(|file| (file.path.clone(), fs::metadata(directory.join(&file.path)).and_then(|metadata| metadata.modified()).ok()))
-            .collect();
+        let Stamped { operation, stamps, .. } = Stamped::new(registry, project, &patch)?;
 
         let found = self.entries.iter()
             .find(|entry| entry.project == project && entry.patch == patch && entry.stamps == stamps);

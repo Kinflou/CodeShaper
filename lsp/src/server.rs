@@ -351,7 +351,7 @@ impl<'c> Server<'c> {
                 let params: InlayHintParams = serde_json::from_value(request.params).into_diagnostic()?;
                 let uri = params.text_document.uri;
                 let found: Vec<InlayHint> = self.patch(&uri)
-                    .map(|(_, text)| inlay_hints(text, self.hints, &self.shared.counts(&uri)))
+                    .map(|(_, text)| inlay_hints(text, self.hints, &self.shared.counts(&uri), &self.shared.traces(&uri)))
                     .unwrap_or_default()
                     .into_iter()
                     .filter(|hint| params.range.start <= hint.position && hint.position <= params.range.end)

@@ -11,6 +11,8 @@ Each patch gets a **Preview result** lens, a preview button in the editor's titl
 pattern matches, and opens a diff of the result. When several files would change, pick one first.
 In a file with several `patch "name" { … }` blocks, each block has its own lenses, and the button and the
 command preview the block at the cursor, or ask for one.
+Beside each location stands how many places it matches, and beside the fields of each action how often it
+matches, builds and is called, updated on open and save (`codeshaper.inlayHints.matches`).
 The target is found through the operation configuration next to the shaping project.
 
 **Explore target**, next to *Preview operation*, opens a read-only copy of a target file and shows which

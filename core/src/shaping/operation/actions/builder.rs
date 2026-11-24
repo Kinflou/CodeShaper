@@ -150,6 +150,7 @@ impl BuilderAction {
 
             controller.record(*self.self_id(), |trace, limit| {
                 trace.input(usize::from(matched));
+                trace.built += usize::from(result.is_some());
                 trace.sample(limit, sample);
             });
         }
