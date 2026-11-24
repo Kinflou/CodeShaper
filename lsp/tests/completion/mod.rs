@@ -147,3 +147,11 @@ fn file_offers_target_paths() {
     let Some(CompletionTextEdit::Edit(edit)) = &items[1].text_edit else { panic!("expected an edit") };
     assert_eq!((edit.range.start, edit.range.end), (Position::new(1, 6), Position::new(1, 9)));
 }
+
+#[test]
+fn replacers_are_not_offered() {
+    let text = "actions {\n    replacer \"named\" {\n        to \"x\"\n    }\n    maker \"pair\" {\n        make \"x\"\n    }\n    replacer {\n        to \"#[";
+
+    assert_eq!(labels(text, text.len()), vec!["pair"]);
+    assert_eq!(labels(text, text.find("named").unwrap() + 2), Vec::<String>::new());
+}

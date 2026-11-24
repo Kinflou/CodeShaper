@@ -5,6 +5,7 @@ use std::ops::Range;
 
 // External Uses
 use codeshaper::core::shaping::lines::unix;
+use codeshaper::core::shaping::patch::replacer::Replacer;
 
 
 pub const ACTIONS: [&str; 4] = ["builder", "maker", "switch", "list"];
@@ -95,7 +96,9 @@ impl Outline {
         let segment = match node.name.as_str() {
             "replacer" => {
                 let earlier = self.nodes[..index].iter().filter(|other| other.parent == node.parent && other.name == "replacer").count();
-                format!("replacer #{}", earlier + 1)
+                let name = node.arguments.first().filter(|name| name.quoted).map(|name| name.value.as_str());
+
+                Replacer::label(name, earlier)
             }
             _ => node.arguments.first()?.value.clone()
         };

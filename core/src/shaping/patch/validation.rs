@@ -8,6 +8,7 @@ use crate::expressions::syntax::ExpressionAST;
 use crate::expressions::syntax::parser::parse_tolerant;
 use crate::shaping::patch::{pattern, Actions, Patch};
 use crate::shaping::patch::pattern::{check_flags, regex_builder};
+use crate::shaping::patch::replacer::Replacer;
 use crate::shaping::patch::source::{ActionSpans, NodeSpans, PatchSource};
 
 // External Uses
@@ -30,6 +31,7 @@ pub enum DiagnosticKind {
     DuplicateAction,
     RecursiveAction,
     UnusedAction,
+    IncorrectName,
     IncorrectFilePattern,
     FileNotMatched,
     LanguageNotFound
@@ -46,6 +48,7 @@ impl DiagnosticKind {
             Self::DuplicateAction => "duplicate-action",
             Self::RecursiveAction => "recursive-action",
             Self::UnusedAction => "unused-action",
+            Self::IncorrectName => "incorrect-name",
             Self::IncorrectFilePattern => "incorrect-file-pattern",
             Self::FileNotMatched => "file-not-matched",
             Self::LanguageNotFound => "language-not-found"
@@ -98,6 +101,11 @@ fn check(patch: &Patch, source: Option<&PatchSource>, backends: Vec<&dyn Languag
     for (action, field, name, count, span) in &calls {
         validator.current_span = *span;
 
+        if validator.replacers.contains_key(name) && !validator.names.contains_key(name) {
+            let message = format!("'{name}' is a replacer, replacers can't be called");
+            validator.report(DiagnosticKind::ActionNotFound, action, field, message);
+            continue
+        }
         if !validator.names.contains_key(name) {
             validator.report(DiagnosticKind::ActionNotFound, action, field, format!("No action named '{name}'"));
             continue
@@ -177,6 +185,7 @@ struct Validator<'a> {
     source: Option<&'a PatchSource>,
     diagnostics: Vec<Diagnostic>,
     names: HashMap<String, (String, Option<SourceSpan>)>,
+    replacers: HashMap<String, String>,
     receivers: HashSet<String>,
     required: HashMap<String, usize>,
     prepared: HashSet<String>,
@@ -234,7 +243,8 @@ impl<'a> Validator<'a> {
         for (index, replacer) in actions.replacers.iter().enumerate() {
             self.enter(spans.map(|spans| spans.replacers.as_slice()), index);
             let nested = self.current.map(|current| &current.actions);
-            let path = join(parent, &format!("replacer #{}", index + 1));
+            let path = join(parent, &Replacer::label(replacer.name.as_deref(), index));
+            if let Some(name) = &replacer.name { self.replacer_name(&path, name); }
 
             self.location(&path, "location", &replacer.location);
             if !replacer.reference_location.is_empty() {
@@ -284,11 +294,30 @@ impl<'a> Validator<'a> {
             let message = format!("Action '{name}' is already defined at '{first}', so this one is never used");
             self.report(DiagnosticKind::DuplicateAction, &path, "name", message);
         } else {
+            if let Some(first) = self.replacers.get(name) {
+                let message = format!("The name '{name}' is already used at '{first}'");
+                self.report(DiagnosticKind::DuplicateAction, &path, "name", message);
+            }
+
             let span = self.span("name");
             self.names.insert(name.to_string(), (path.clone(), span));
         }
 
         path
+    }
+
+    fn replacer_name(&mut self, path: &str, name: &str) {
+        if let Err(error) = Replacer::check_name(name) {
+            return self.report(DiagnosticKind::IncorrectName, path, "name", error.to_string())
+        }
+
+        match self.names.get(name).map(|(first, _)| first).or_else(|| self.replacers.get(name)) {
+            Some(first) => {
+                let message = format!("The name '{name}' is already used at '{first}'");
+                self.report(DiagnosticKind::DuplicateAction, path, "name", message);
+            }
+            None => { self.replacers.insert(name.to_string(), path.to_string()); }
+        }
     }
 
     fn location(&mut self, action: &str, field: &'static str, location: &str) {

@@ -12,6 +12,7 @@ use crate::shaping::lines::{restore, unix};
 use crate::shaping::patch::{Actions, Patch};
 use crate::shaping::patch::origin::Origin;
 use crate::shaping::patch::pattern::Regexes;
+use crate::shaping::patch::replacer::Replacer;
 use crate::shaping::patch::trace::{ActionTrace, Trace};
 use crate::shaping::operation::actions::{Action, ActionOf};
 use crate::shaping::operation::actions::builder::BuilderAction;
@@ -113,7 +114,7 @@ impl PatchController {
             );
             let id = arena.new_node(action);
             arena.get_mut(id).unwrap().get_mut().replacer_mut().unwrap().post_new(id);
-            paths.insert(id, path(&format!("replacer #{}", index + 1)));
+            paths.insert(id, path(&Replacer::label(replacer.name.as_deref(), index)));
 
             if let Some(parent) = parent { parent.append(id, arena); }
 
@@ -281,7 +282,7 @@ impl PatchController {
         for action in self.actions.iter() {
             let action: &ActionOf = action.get();
 
-            if action.name() == name { return Some(action) }
+            if action.is_callable() && action.name() == name { return Some(action) }
 
             if let Some(name) = action.find_inner(name, controller) {
                 return Some(name)

@@ -72,3 +72,11 @@ fn folding_covers_multiline_blocks() {
 
     assert_eq!(lines, vec![(3, 18), (4, 11), (6, 10), (7, 9), (12, 14), (15, 17)]);
 }
+
+#[test]
+fn replacers_are_shown_by_name() {
+    let found = symbols(&PATCH.replacen("    replacer {", "    replacer \"header\" {", 1));
+
+    assert_eq!(tree(&found)[4..], [format!("header ({:?})", SymbolKind::METHOD), format!("replacer #2 ({:?})", SymbolKind::METHOD)]);
+    assert_eq!((found[3].selection_range.start.character, found[3].selection_range.end.character), (13, 21));
+}

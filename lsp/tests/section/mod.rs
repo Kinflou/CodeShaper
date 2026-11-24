@@ -578,3 +578,38 @@ fn half_typed_blocks_are_survived() {
 
     client.stop();
 }
+
+#[test]
+fn replacers_are_named_in_their_patch() {
+    let (_directory, project) = operation();
+    let named = |content: &str| content.replace("    replacer {", "    replacer \"same\" {");
+    let text = block("first", &named(RENAME)) + &block("é", &named(CALLED)) + &block("plain", RENAME);
+    let mut client = Client::start();
+    let uri = client.open(&project.join("patches/rename.kdl"), &text);
+
+    let counted: Vec<(String, Vec<String>)> = lenses(&mut client, &uri).into_iter()
+        .filter(|(title, _, _)| title.contains("replacement"))
+        .map(|(title, _, arguments)| (title, arguments))
+        .collect();
+    assert_eq!(counted, ["first", "é", "plain"].map(|name| ("1 replacement(s) in 1 file(s)".to_string(), vec![name.to_string()])));
+
+    let found = ask(&mut client, "codeshaper/exploreBlock", json!({
+        "uri": uri.as_str(), "file": { "path": "a.cpp", "language": "cpp", "usual": "cpp" }, "text": "void old() {}\n",
+        "range": { "start": { "line": 0, "character": 5 }, "end": { "line": 0, "character": 8 } }
+    }));
+    let used: Vec<(&str, &str)> = found["used"].as_array().unwrap().iter()
+        .map(|used| (used["patch"].as_str().unwrap(), used["action"].as_str().unwrap()))
+        .collect();
+    assert_eq!(used, vec![("é", "same"), ("first", "same"), ("plain", "replacer #1")]);
+
+    let renamed = ask(&mut client, "textDocument/rename", {
+        let mut params = at(&uri, &text, "\"same\"", 2);
+        params["newName"] = json!("other");
+        params
+    });
+    let edits = renamed["changes"][uri.as_str()].as_array().unwrap();
+    assert_eq!(edits.len(), 1);
+    assert_eq!(edits[0]["range"]["start"], place(&text, "\"same\"", 1));
+
+    client.stop();
+}

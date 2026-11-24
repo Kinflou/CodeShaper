@@ -88,7 +88,7 @@ impl ReplacerAction {
 }
 
 impl Action for ReplacerAction {
-    fn name(&self) -> &str { "" }
+    fn name(&self) -> &str { self.replacer.name.as_deref().unwrap_or_default() }
 
     fn self_id(&self) -> &NodeId { self.self_id.as_ref().unwrap() }
 

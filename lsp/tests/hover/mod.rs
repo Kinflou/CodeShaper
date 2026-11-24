@@ -375,3 +375,15 @@ fn arguments_show_the_values_passed() {
     let more = INDEXED.replace("make \"@[0]_@[1]\"", "make \"@[0]_@[1]\" ").replace("@[1]\"", "@[7]\"");
     assert_eq!(hovered(&more, "@[7]", 2).0, "`@[7]` is argument 8 of `#[pair]`");
 }
+
+#[test]
+fn replacer_names_show_their_replacements() {
+    let named = TRACED.replace("    replacer {", "    replacer \"returns\" {");
+    let (text, range) = hovered(&named, "returns", 2);
+
+    assert_eq!(range, "returns");
+    assert_eq!(text, hovered(&named, "int $[0]", 1).0);
+    assert!(text.starts_with("**2 replacement(s)** across 2 target file(s)\n\n[`a.cpp:1:1-11`]"), "{text}");
+    assert_eq!(text, traced("int $[0]", 1).0);
+    assert_eq!(hovered(&named, "$[0]()", 2).0, traced("$[0]()", 2).0);
+}

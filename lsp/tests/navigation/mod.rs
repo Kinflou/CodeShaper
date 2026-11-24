@@ -69,3 +69,17 @@ fn rename_refuses_invalid_names_and_plain_text() {
     assert_eq!(rename(&outline, PATCH, nth("#[pair]", 0) + 3, ""), None);
     assert_eq!(rename(&outline, PATCH, nth("x)", 0), "other"), None);
 }
+
+#[test]
+fn replacers_are_renamed_by_name() {
+    let text = "actions {\n    replacer \"first\" {\n        to \"#[second] #[m]\"\n    }\n    replacer \"second\" {\n        to \"first\"\n    }\n    maker \"m\" {\n    }\n}\n";
+    let outline = Outline::parse(text);
+    let at = |needle: &str| text.find(needle).unwrap();
+    let spans = |ranges: Vec<std::ops::Range<usize>>| ranges.iter().map(|range| range.start).collect::<Vec<_>>();
+
+    assert_eq!(rename(&outline, text, at("first") + 1, "x").map(spans), Some(vec![at("first")]));
+    assert_eq!(rename(&outline, text, at("second\" {"), "x").map(spans), Some(vec![at("second\" {"), at("second]")]));
+    assert_eq!(definition(&outline, text, at("second]") + 2), Some(at("second\" {")..at("second\" {") + 6));
+    assert_eq!(spans(references(&outline, text, at("second\" {"), false)), vec![at("second]")]);
+    assert_eq!(rename(&outline, text, at("\"first\"\n") + 2, "x"), None);
+}

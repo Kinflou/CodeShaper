@@ -21,14 +21,14 @@ actions {
         }
     }
 
-    replacer {
+    replacer "function_header" {
         location "FunctionDefinition.body"
         reference-location "FunctionDefinition"
         from r"void Method\w+"
         to "#[function_header_builder]"
     }
 
-    replacer {
+    replacer "return_statement" {
         location "FunctionDefinition.body"
         from r"(int (\w+) = \d+;)\n\}"
         to "$[0]\n\t\n\treturn $[1];\n}"

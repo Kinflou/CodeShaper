@@ -166,3 +166,22 @@ fn patterns_matching_nothing_are_hinted() {
     assert_eq!((replacer("a+"), replacer("^"), builder("")), (vec![], vec![], vec![]));
     assert_eq!(builder("a?"), vec![("matches-empty".to_string(), "r\"a?\"".to_string())]);
 }
+
+#[test]
+fn diagnostics_use_names() {
+    let (_directory, project) = operation();
+    let named = UNCOVERED.replacen("    replacer {", "    replacer \"classes\" {", 1);
+    let trace = Traces::default().get(&codeshaper::registry(), &project, &named).unwrap();
+    let messages = coverage(&named, &trace).into_iter().map(|found| found.message).collect::<Vec<_>>();
+
+    assert_eq!(messages[2..], ["classes › location: matches nothing in 2 target file(s)", "replacer #2 › from: never matches in the 2 located content(s)"]);
+
+    let (_directory, project) = crate::project(&[]);
+    let wrong = BROKEN.replacen("    replacer {", "    replacer \"a/b\" {", 1);
+    let found = diagnostics(&codeshaper::registry(), &project.join("patches/broken.kdl"), &wrong);
+    assert_eq!(codes(&found)[..2], ["incorrect-name", "location-not-found"]);
+    assert!(found[0].message.starts_with("replacer #1 › name: A replacer's name can't have"), "{}", found[0].message);
+
+    let line = found[0].range.start.line as usize;
+    assert_eq!(&wrong.lines().nth(line).unwrap()[found[0].range.start.character as usize..found[0].range.end.character as usize], "\"a/b\"");
+}

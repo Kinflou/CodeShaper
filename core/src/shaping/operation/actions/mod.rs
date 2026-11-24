@@ -78,7 +78,7 @@ pub trait Action {
         for id in actions.into_iter() {
             let action = controller.actions.get(id).unwrap().get();
 
-            if action.name() == name { return Some(action) }
+            if action.is_callable() && action.name() == name { return Some(action) }
         }
 
         None
@@ -170,6 +170,10 @@ impl ActionOf {
             Self::ReplacerAction(r) => Ok(r),
             _ => bail!("Not a replacer")
         }
+    }
+
+    pub fn is_callable(&self) -> bool {
+        !matches!(self, Self::ReplacerAction(_))
     }
 
     pub fn list(&self) -> Result<&ListAction> {

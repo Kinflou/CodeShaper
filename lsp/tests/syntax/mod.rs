@@ -69,3 +69,24 @@ fn paths_follow_mixed_actions() {
 
     assert_eq!(paths, vec!["replacer #1", "replacer #1/replacer #1", "replacer #1/m", "n", "replacer #2", "replacer #2/l"]);
 }
+
+#[test]
+fn paths_use_names() {
+    let path = |written: &str| {
+        let text = format!("actions {{\n    replacer {{\n    }}\n    replacer{written} {{\n        actions {{\n            maker \"m\" {{\n            }}\n        }}\n    }}\n    replacer {{\n    }}\n}}\n");
+        let outline = Outline::parse(&text);
+        let paths: Vec<String> = (0..outline.nodes.len())
+            .filter(|index| outline.nodes[*index].name != "actions")
+            .filter_map(|index| outline.action_path(index))
+            .collect();
+
+        paths
+    };
+
+    assert_eq!(path(" \"one two\""), vec!["replacer #1", "one two", "one two/m", "replacer #3"]);
+    assert_eq!(path(" r\"é\""), vec!["replacer #1", "é", "é/m", "replacer #3"]);
+    for written in ["", " \"\"", " \"a/b\"", " \"replacer #1\"", " 7"] {
+        assert_eq!(path(written), vec!["replacer #1", "replacer #2", "replacer #2/m", "replacer #3"], "{written}");
+    }
+    assert_eq!(path(" \"half")[..2], ["replacer #1", "replacer #2"]);
+}

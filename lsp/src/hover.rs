@@ -11,7 +11,7 @@ use crate::places::Places;
 use crate::query::{is_query, part_at, Part, PREDICATES};
 use crate::schema::{regex_field, LOCATIONS};
 use crate::section::{view_at, View};
-use crate::syntax::{Literal, Outline, ACTIONS};
+use crate::syntax::{Literal, Outline, ACTION_NODES};
 use crate::target::{self, backends, matches};
 use crate::trace::{diff, fenced, inline, truncate, Limits, Traces};
 
@@ -40,8 +40,13 @@ pub fn hover(
 
     if let Some(Symbol { name, range }) = symbol_at(&outline, text, offset) {
         let index = outline.nodes.iter().position(|node| {
-            ACTIONS.contains(&node.name.as_str()) && node.arguments.first().is_some_and(|literal| literal.value == name)
+            ACTION_NODES.contains(&node.name.as_str()) && node.arguments.first().is_some_and(|literal| literal.value == name)
         })?;
+
+        if outline.nodes[index].name == "replacer" {
+            let (trace, path) = traced(registry, project, traces, text, &outline, index)?;
+            return Some((replacements(trace.action(&path), &trace, &traces.limits), range))
+        }
 
         let sites = calls(&outline, text).iter().filter(|call| call.name == name).count();
         let mut value = format!("Called from {sites} place(s) in this patch");

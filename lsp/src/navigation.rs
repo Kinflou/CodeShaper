@@ -2,7 +2,7 @@
 use std::ops::Range;
 
 // Crate Uses
-use crate::syntax::{is_name, Outline};
+use crate::syntax::{is_name, Outline, ACTION_NODES};
 
 // External Uses
 use lsp_types::{GotoDefinitionResponse, Location, LocationLink};
@@ -36,8 +36,10 @@ pub fn calls(outline: &Outline, text: &str) -> Vec<Symbol> {
 }
 
 pub fn definitions(outline: &Outline) -> Vec<Symbol> {
-    outline.actions()
-        .map(|(_, name)| Symbol { name: name.value.clone(), range: name.content.clone() })
+    outline.nodes.iter()
+        .filter(|node| ACTION_NODES.contains(&node.name.as_str()))
+        .filter_map(|node| node.arguments.first())
+        .map(|name| Symbol { name: name.value.clone(), range: name.content.clone() })
         .collect()
 }
 

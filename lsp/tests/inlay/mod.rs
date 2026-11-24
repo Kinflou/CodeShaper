@@ -163,6 +163,16 @@ fn results_follow_mixed_actions() {
 }
 
 #[test]
+fn results_follow_names() {
+    let patch = ACTIONS.replacen("    replacer {", "    replacer \"é\" {", 1);
+    let matches = |matches: usize| ActionTrace { inputs: 9, matched: 1, matches, ..ActionTrace::default() };
+    let text = traced(&patch, MATCHES, &Counts::default(), &[run(&[("é", matches(1)), ("replacer #2", matches(2))])]);
+
+    assert!(text.contains("from \"(a)\"‹1 match in 1 of 9›\n"), "{text}");
+    assert!(text.contains("from \"c\"‹2 matches in 1 of 9›\n"), "{text}");
+}
+
+#[test]
 fn unused_actions_say_so() {
     let text = shown(&[run(&[("m", ActionTrace { inputs: 2, ..ActionTrace::default() }), ("b", ActionTrace { inputs: 1, matched: 1, ..ActionTrace::default() })])]);
     assert!(text.contains("prepare \"(p)\"‹0 of 2 match›\n"), "{text}");
