@@ -19,6 +19,7 @@ use crate::shaping::operation::report::Report;
 use crate::shaping::operation::session::{Change, Session};
 use crate::shaping::patch::Patch;
 use crate::shaping::patch::controller::PatchController;
+use crate::shaping::patch::pattern::Regexes;
 use crate::shaping::patch::source::PatchSource;
 use crate::shaping::patch::trace::Trace;
 use crate::shaping::patch::validation::{validate, validate_source, Diagnostic as PatchDiagnostic, DiagnosticKind, Severity};
@@ -244,6 +245,7 @@ impl Operation {
     pub fn preview(&self, registry: &Registry, name: &str, patch: &Patch) -> Result<Vec<Change>> {
         let (directory, files) = self.matching_files(registry, name, patch)?;
         self.check_patch(registry, name, patch, &files)?;
+        let regexes = Rc::default();
 
         let changes = files.iter()
             .map(|file| {
@@ -254,7 +256,7 @@ impl Operation {
 
                 match before {
                     Ok(before) => {
-                        let result = self.apply_patch(registry, name, patch, file, &before);
+                        let result = self.apply_patch(registry, (name, patch), file, &before, &regexes);
                         Change { file: file.path.clone(), patch: name.to_string(), before, result }
                     }
                     Err(error) => Change { file: file.path.clone(), patch: name.to_string(), before: String::new(), result: Err(error) }
@@ -334,6 +336,7 @@ impl Operation {
         let (directory, files) = self.matching_files(registry, name, patch)?;
         self.check_patch(registry, name, patch, &files)?;
         let patch = Rc::new(patch.clone());
+        let regexes = Rc::default();
         let mut trace = Trace { directory, ..Trace::new(limit) };
 
         for file in &files {
@@ -342,7 +345,7 @@ impl Operation {
             let Ok(source) = fs::read_to_string(trace.directory.join(&file.path)) else { continue };
             let Ok(backend) = self.backend(registry, &patch, file) else { continue };
 
-            let mut controller = PatchController::traced(patch.clone(), limit);
+            let mut controller = PatchController::traced(patch.clone(), limit).sharing(Rc::clone(&regexes));
             if controller.apply(backend, &source).is_err() { continue }
 
             if let Some(traced) = controller.trace.take() {
@@ -379,9 +382,11 @@ impl Operation {
         Ok(matching)
     }
 
-    fn apply_patch(&self, registry: &Registry, name: &str, patch: &Patch, file: &File, source: &str) -> Result<String> {
+    fn apply_patch(
+        &self, registry: &Registry, (name, patch): (&str, &Patch), file: &File, source: &str, regexes: &Rc<Regexes>
+    ) -> Result<String> {
         self.backend(registry, patch, file)
-            .and_then(|backend| PatchController::with(Rc::new(patch.clone())).apply(backend, source))
+            .and_then(|backend| PatchController::with(Rc::new(patch.clone())).sharing(regexes.clone()).apply(backend, source))
             .wrap_err_with(|| format!("Patch {} could not shape {}", name, file.path.display()))
     }
 

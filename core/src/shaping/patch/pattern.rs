@@ -1,11 +1,14 @@
 // Standard Uses
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ops::Range;
+use std::rc::Rc;
 
 // Crate Uses
 
 // External Uses
 use miette::{bail, Result};
-use regex::RegexBuilder;
+use regex::{Regex, RegexBuilder};
 use regex_syntax::ast::{self, Ast, GroupKind, Visitor};
 use regex_syntax::hir::Hir;
 use regex_syntax::{Error, ParserBuilder};
@@ -23,6 +26,22 @@ pub const FLAGS: [(char, &str); 4] = [
 pub struct Group {
     pub range: Range<usize>,
     pub name: Option<String>
+}
+
+type Compiled = HashMap<(String, String), Option<Rc<Regex>>>;
+
+#[derive(Debug, Default)]
+pub struct Regexes {
+    compiled: RefCell<Compiled>
+}
+
+impl Regexes {
+    pub fn get(&self, pattern: &str, flags: &str) -> Option<Rc<Regex>> {
+        self.compiled.borrow_mut()
+            .entry((pattern.to_string(), flags.to_string()))
+            .or_insert_with(|| regex_builder(pattern, flags).build().ok().map(Rc::new))
+            .clone()
+    }
 }
 
 

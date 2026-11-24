@@ -11,6 +11,7 @@ use crate::ast::listener::ListenerController;
 use crate::shaping::lines::{restore, unix};
 use crate::shaping::patch::{Actions, Patch};
 use crate::shaping::patch::origin::Origin;
+use crate::shaping::patch::pattern::Regexes;
 use crate::shaping::patch::trace::{ActionTrace, Trace};
 use crate::shaping::operation::actions::{Action, ActionOf};
 use crate::shaping::operation::actions::builder::BuilderAction;
@@ -29,6 +30,7 @@ pub struct PatchController {
     pub actions: Arena<ActionOf>,
     pub listener_controller: ListenerController,
     pub trace: Option<RefCell<Trace>>,
+    pub regexes: Rc<Regexes>,
     paths: HashMap<NodeId, String>,
     origin: Option<Origin>
 }
@@ -42,11 +44,15 @@ impl PatchController {
     pub fn with_listener(patch: Rc<Patch>, listener_controller: ListenerController) -> Self {
         let (actions, paths) = Self::make_actions(patch.clone());
 
-        Self { patch, actions, listener_controller, trace: None, paths, origin: None }
+        Self { patch, actions, listener_controller, trace: None, regexes: Rc::default(), paths, origin: None }
     }
 
     pub fn traced(patch: Rc<Patch>, limit: usize) -> Self {
         Self { trace: Some(RefCell::new(Trace::new(limit))), ..Self::with(patch) }
+    }
+
+    pub fn sharing(self, regexes: Rc<Regexes>) -> Self {
+        Self { regexes, ..self }
     }
 
     pub fn path(&self, id: NodeId) -> Option<&str> {

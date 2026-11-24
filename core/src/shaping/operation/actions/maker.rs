@@ -1,4 +1,6 @@
 // Standard Uses
+use std::cell::OnceCell;
+use std::rc::Rc;
 
 // Crate Uses
 use crate::expressions::visitor;
@@ -6,18 +8,19 @@ use crate::shaping::operation::actions::composer::Composer;
 use crate::shaping::operation::actions::{Action, composer};
 use crate::shaping::patch::controller::PatchController;
 use crate::shaping::patch::maker::Maker;
-use crate::shaping::patch::pattern::regex_builder;
 use crate::shaping::patch::trace::{groups, Found, Sample};
 
 // External Uses
 use indextree::NodeId;
+use regex::Regex;
 
 
 pub struct MakerAction {
     maker: Maker,
     self_id: Option<NodeId>,
     parent_id: Option<NodeId>,
-    composer: Option<Composer>
+    composer: Option<Composer>,
+    regex: OnceCell<Option<Rc<Regex>>>
 }
 
 #[allow(unused)]
@@ -27,7 +30,7 @@ impl MakerAction {
     ) -> Self {
         Self {
             maker, self_id: None, parent_id,
-            composer: None
+            composer: None, regex: OnceCell::new()
         }
     }
 
@@ -36,10 +39,14 @@ impl MakerAction {
         self.composer = Some(Composer::with(self_id));
     }
 
+    fn regex(&self, controller: &PatchController) -> Option<&Regex> {
+        self.regex
+            .get_or_init(|| controller.regexes.get(self.maker.prepare.as_deref()?, &self.maker.flags))
+            .as_deref()
+    }
+
     pub fn make(&self, input: &str, controller: &PatchController) -> Option<String> {
-        let locals = composer::capture_locals(
-            self.maker.prepare.as_deref(), &self.maker.flags, input
-        );
+        let locals = composer::capture_locals(self.regex(controller), input);
 
         *self.composer.as_ref().unwrap().locals.borrow_mut() = locals;
 
@@ -53,17 +60,17 @@ impl MakerAction {
         &self, args: &[String], controller: &PatchController
     ) -> Option<String> {
         let composer = self.composer.as_ref()?;
-        let prepared = self.maker.prepare.as_deref().zip(args.first());
+        let regex = self.regex(controller);
+        let prepared = self.maker.prepare.as_ref().and(args.first());
 
         *composer.locals.borrow_mut() = prepared
-            .map(|(prepare, input)| composer::capture_locals(Some(prepare), &self.maker.flags, input))
+            .map(|input| composer::capture_locals(regex, input))
             .unwrap_or_default();
 
         let result = visitor::navigate_expression(composer, controller, &self.maker.make, args).ok();
 
-        if let (Some((prepare, input)), true) = (prepared, controller.tracing()) {
-            let regex = regex_builder(prepare, &self.maker.flags).build().ok();
-            let captures = regex.as_ref().and_then(|regex| regex.captures(input));
+        if let (Some(input), true) = (prepared, controller.tracing()) {
+            let captures = regex.and_then(|regex| regex.captures(input));
             let sample = Sample {
                 groups: captures.as_ref().map(groups).unwrap_or_default(),
                 input: input.clone(),

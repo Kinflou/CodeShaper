@@ -1,17 +1,18 @@
 // Standard Uses
-use std::cell::RefCell;
+use std::cell::{OnceCell, RefCell};
+use std::rc::Rc;
 
 // Crate Uses
 use crate::shaping::patch::builder::Builder;
 use crate::shaping::patch::controller::PatchController;
 use crate::shaping::operation::actions::{Action, composer};
 use crate::shaping::operation::actions::composer::Composer;
-use crate::shaping::patch::pattern::regex_builder;
 use crate::shaping::patch::trace::{groups, Found, Sample};
 use crate::expressions::visitor;
 
 // External Uses
 use indextree::NodeId;
+use regex::Regex;
 
 
 #[allow(unused)]
@@ -20,6 +21,7 @@ pub struct BuilderAction {
     self_id: Option<NodeId>,
     parent_id : Option<NodeId>,
     composer: Option<Composer>,
+    regex: OnceCell<Option<Rc<Regex>>>,
     pub current_inner_builder: RefCell<Option<String>>,
     // input: RefCell<Option<String>>,
     // locals: RefCell<LocalsMap>,
@@ -32,7 +34,7 @@ impl BuilderAction {
     ) -> Self {
         Self {
             builder, self_id: None, parent_id,
-            composer: None,
+            composer: None, regex: OnceCell::new(),
             current_inner_builder: Default::default(),
         }
     }
@@ -40,6 +42,10 @@ impl BuilderAction {
     pub fn post_new(&mut self, self_id: NodeId) {
         self.self_id = Some(self_id);
         self.composer = Some(Composer::with(self_id));
+    }
+
+    fn regex(&self, controller: &PatchController) -> Option<&Regex> {
+        self.regex.get_or_init(|| controller.regexes.get(&self.builder.r#match, &self.builder.flags)).as_deref()
     }
 }
 
@@ -136,9 +142,8 @@ impl BuilderAction {
     fn process_at(
         &self, controller: &PatchController, input: String, start: Option<usize>
     ) -> Option<String> {
-        let locals = composer::capture_locals(
-            Some(&self.builder.r#match), &self.builder.flags, &input
-        );
+        let regex = self.regex(controller);
+        let locals = composer::capture_locals(regex, &input);
 
         *self.composer.as_ref().unwrap().locals.borrow_mut() = locals;
 
@@ -148,8 +153,7 @@ impl BuilderAction {
         ).ok();
 
         if controller.tracing() {
-            let regex = regex_builder(&self.builder.r#match, &self.builder.flags).build().ok();
-            let captures = regex.as_ref().and_then(|regex| regex.captures(&input));
+            let captures = regex.and_then(|regex| regex.captures(&input));
             let sample = Sample {
                 groups: captures.as_ref().map(groups).unwrap_or_default(),
                 input: input.clone(),

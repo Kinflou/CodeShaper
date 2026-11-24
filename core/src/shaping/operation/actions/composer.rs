@@ -5,7 +5,6 @@ use std::collections::HashMap;
 // Crate Uses
 use crate::shaping::operation::actions::{Action, ActionOf};
 use crate::shaping::patch::controller::PatchController;
-use crate::shaping::patch::pattern::regex_builder;
 use crate::shaping::patch::trace::Sample;
 use crate::expressions::visitor;
 use crate::expressions::visitor::ExpressionVisitor;
@@ -113,10 +112,9 @@ impl ExpressionVisitor for Composer {
     }
 }
 
-pub fn capture_locals(reg_expr: Option<&str>, flags: &str, content: &str) -> Locals {
-    reg_expr
-        .and_then(|reg_expr| regex_builder(reg_expr, flags).build().ok())
-        .and_then(|regex| regex.captures(content).map(|captures| Locals::new(&regex, &captures)))
+pub fn capture_locals(regex: Option<&Regex>, content: &str) -> Locals {
+    regex
+        .and_then(|regex| regex.captures(content).map(|captures| Locals::new(regex, &captures)))
         .unwrap_or_default()
 }
 

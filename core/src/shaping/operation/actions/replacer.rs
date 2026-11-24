@@ -1,6 +1,9 @@
 // Standard Uses
+use std::cell::OnceCell;
+use std::rc::Rc;
 
 // Crate Uses
+use crate::shaping::patch::pattern::check_flags;
 use crate::shaping::patch::replacer::Replacer;
 use crate::shaping::patch::controller::PatchController;
 use crate::shaping::operation::actions::Action;
@@ -10,6 +13,7 @@ use crate::expressions::visitor;
 
 // External Uses
 use indextree::NodeId;
+use regex::Regex;
 
 
 pub struct ReplacerAction {
@@ -17,11 +21,12 @@ pub struct ReplacerAction {
     self_id: Option<NodeId>,
     parent_id: Option<NodeId>,
     composer: Option<Composer>,
+    regex: OnceCell<Option<Rc<Regex>>>
 }
 
 impl ReplacerAction {
     pub fn with_ref(replacer: Replacer, parent_id: Option<NodeId>) -> Self {
-        Self { replacer, self_id: None, parent_id, composer: None }
+        Self { replacer, self_id: None, parent_id, composer: None, regex: OnceCell::new() }
     }
 
     pub fn post_new(&mut self, self_id: NodeId) {
@@ -29,10 +34,16 @@ impl ReplacerAction {
         self.composer = Some(Composer::with(self_id));
     }
 
+    fn regex(&self, controller: &PatchController) -> Option<&Regex> {
+        let Replacer { from, flags, .. } = &self.replacer;
+
+        self.regex.get_or_init(|| check_flags(flags).ok().and_then(|()| controller.regexes.get(from, flags))).as_deref()
+    }
+
     pub fn replacer(&self) -> &Replacer { &self.replacer }
 
     pub fn replace_input(&self, controller: &PatchController, input: &str, start: Option<usize>) -> Option<String> {
-        let from = self.replacer.from_regex().ok()?;
+        let from = self.regex(controller)?;
         let composer = self.composer.as_ref()?;
 
         let mut result = String::with_capacity(input.len());
@@ -42,7 +53,7 @@ impl ReplacerAction {
         for captures in from.captures_iter(input) {
             let found = captures.get(0)?;
 
-            *composer.locals.borrow_mut() = Locals::new(&from, &captures);
+            *composer.locals.borrow_mut() = Locals::new(from, &captures);
 
             let replacement = visitor::navigate_expression(
                 composer, controller, &self.replacer.to, &[]
