@@ -9,7 +9,7 @@ use crate::document::{kind, DocumentKind};
 use crate::position::LineIndex;
 use crate::preview::configuration;
 use crate::schema::LOCATIONS;
-use crate::section::views;
+use crate::section::{view_at, views};
 use crate::syntax::{Literal, Outline};
 use crate::target;
 use crate::worker::{file_uri, path};
@@ -24,7 +24,7 @@ use codeshaper::core::shaping::project::settings::ProjectSettings;
 use codeshaper::core::shaping::project::{patch_files, Project};
 use codeshaper::core::target::File;
 use dunce::canonicalize;
-use lsp_types::{Location, Uri};
+use lsp_types::{Location, Position, Uri};
 use miette::{bail, miette, IntoDiagnostic, Result};
 use serde_json::{json, Value};
 
@@ -175,7 +175,10 @@ pub fn answer(
     registry: &Registry, located: &mut Located, method: &str, start: &Path, params: &Value, open: &Open, keep_going: &dyn Fn() -> bool
 ) -> Result<Value> {
     match method {
-        FILES_REQUEST => Ok(listed(&files(registry, start, params["patch"].as_str(), open)?)),
+        FILES_REQUEST => match serde_json::from_value(params["position"].clone()) {
+            Ok(position) => explored_at(registry, start, position, open),
+            Err(_) => Ok(listed(&files(registry, start, params["patch"].as_str(), open)?))
+        },
         BLOCK_REQUEST => {
             let asked = Asked::new(params)?;
 
@@ -353,6 +356,24 @@ pub fn uses(
 
     found.sort_by_key(|found| found.place.len());
     found
+}
+
+fn explored_at(registry: &Registry, start: &Path, position: Position, open: &Open) -> Result<Value> {
+    if !matches!(kind(start), DocumentKind::Patch { .. }) { bail!("{} is not a patch", start.display()) }
+
+    let text = read(start, open)?;
+    let offset = LineIndex::new(&text).offset(position);
+    let view = view_at(&text, offset);
+    let outline = Outline::parse(&view.text);
+    let location = outline.literal_at(offset)
+        .filter(|(node, _)| LOCATIONS.contains(&outline.nodes[*node].name.as_str()))
+        .map(|(_, literal)| literal.value.as_str());
+
+    let mut found = listed(&files(registry, start, view.name(), open)?);
+    found["patch"] = json!(view.name());
+    found["location"] = json!(location);
+
+    Ok(found)
 }
 
 fn listed(files: &Files) -> Value {

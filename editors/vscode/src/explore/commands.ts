@@ -2,6 +2,7 @@ import { SCHEME } from "./copy";
 
 export const COMMANDS = {
     start: "codeshaper.explore",
+    open: "codeshaper.openPlace",
     next: "codeshaper.nextPlace",
     previous: "codeshaper.previousPlace",
     all: "codeshaper.allPlaces",

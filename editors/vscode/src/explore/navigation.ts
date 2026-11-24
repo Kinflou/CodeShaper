@@ -1,5 +1,6 @@
 import { commands, window, Location, Range, Selection, TextDocument, TextEditor, TextEditorRevealType, Uri } from "vscode";
 import { openCopy } from "./copy";
+import { Link } from "./links";
 import { PlainRange } from "./protocol";
 import { isSame, live } from "./ranges";
 import { Requests } from "./requests";
@@ -15,6 +16,31 @@ export class Navigation {
         private readonly state: State,
         private readonly follow: (editor: TextEditor) => void
     ) {}
+
+    async open(link?: Link): Promise<void> {
+        if (!link) {
+            window.showInformationMessage("Hover the patch again");
+            return;
+        }
+
+        const { asked, range } = link;
+        const target = Uri.parse(link.uri);
+        const explored = await this.requests.from(asked);
+        const file = explored?.files.find(({ uri }) => Uri.parse(uri).fsPath === target.fsPath);
+        if (!explored || !file) {
+            await commands.executeCommand("vscode.open", target, ...(range ? [{ selection: live(range) }] : []));
+            return;
+        }
+
+        const editor = await openCopy({ start: asked.uri, patch: explored.patch ?? undefined }, file);
+        if (!range) {
+            return;
+        }
+        if (explored.location) {
+            this.state.choose(editor.document, { location: explored.location, range });
+        }
+        await this.go(editor, range);
+    }
 
     async step(forward: boolean, popup?: number, path?: number): Promise<void> {
         const found = this.state.find(popup, path);

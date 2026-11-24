@@ -25,6 +25,11 @@ export interface FilesResult {
     without: number;
 }
 
+export interface ExploredFrom extends FilesResult {
+    patch?: string | null;
+    location?: string | null;
+}
+
 export interface BlockName {
     kind: string;
     field: string | null;

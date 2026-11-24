@@ -2,13 +2,18 @@ import { window, CancellationToken } from "vscode";
 import { LanguageClient } from "vscode-languageclient/node";
 import { reason } from "../errors";
 import { Origin, Subject } from "./copy";
-import { Block, BlockHint, FilesResult, Place, PlainLocation, PlainRange } from "./protocol";
+import { Asked } from "./links";
+import { Block, BlockHint, ExploredFrom, FilesResult, Place, PlainLocation, PlainRange } from "./protocol";
 
 export class Requests {
     constructor(private readonly client: LanguageClient) {}
 
     files({ start, patch }: Origin): Promise<FilesResult | undefined> {
         return this.loud("codeshaper/explore", { uri: start, patch });
+    }
+
+    from({ uri, position }: Asked): Promise<ExploredFrom | undefined> {
+        return this.quiet("codeshaper/explore", { uri, position });
     }
 
     block(subject: Subject, range: PlainRange): Promise<Block | null | undefined> {
@@ -31,9 +36,9 @@ export class Requests {
         return this.loud("codeshaper/explorePlaces", { ...about(subject), location });
     }
 
-    private async quiet<T>(method: string, params: object, token: CancellationToken): Promise<T | undefined> {
+    private async quiet<T>(method: string, params: object, token?: CancellationToken): Promise<T | undefined> {
         try {
-            return await this.client.sendRequest<T>(method, params, token);
+            return await (token ? this.client.sendRequest<T>(method, params, token) : this.client.sendRequest<T>(method, params));
         } catch {
             return undefined;
         }

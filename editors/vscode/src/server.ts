@@ -1,12 +1,13 @@
 import * as fs from "fs";
 import * as path from "path";
-import { LanguageClient, LanguageClientOptions, ServerOptions } from "vscode-languageclient/node";
+import { LanguageClient, LanguageClientOptions, Middleware, ServerOptions } from "vscode-languageclient/node";
 import { settings } from "./settings";
 
-export function createClient(extensionPath: string): LanguageClient {
+export function createClient(extensionPath: string, middleware: Middleware): LanguageClient {
     const serverOptions: ServerOptions = { command: executable(settings.serverPath(), extensionPath), args: ["lsp"] };
     const clientOptions: LanguageClientOptions = {
         documentSelector: [{ scheme: "file", language: "kdl" }],
+        middleware,
         initializationOptions: {
             suggestAgain: true,
             hover: settings.hover(),

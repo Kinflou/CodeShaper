@@ -1,5 +1,4 @@
 import { commands, languages, window, workspace, ExtensionContext, TextEditor, Uri } from "vscode";
-import { LanguageClient } from "vscode-languageclient/node";
 import { named } from "../arguments";
 import { SECTION } from "../settings";
 import { copy, edit, showKeys, start } from "./actions";
@@ -9,6 +8,7 @@ import { Cursor } from "./cursor";
 import { BlockHints } from "./hints";
 import { BlockHover } from "./hover";
 import { HeldKey, CLOCK } from "./key";
+import { Links } from "./links";
 import { Navigation } from "./navigation";
 import { Requests } from "./requests";
 import { State } from "./state";
@@ -19,8 +19,7 @@ export interface Exploring {
     opened(): void;
 }
 
-export function explore(context: ExtensionContext, client: LanguageClient): Exploring {
-    const requests = new Requests(client);
+export function explore(context: ExtensionContext, requests: Requests, links: Links): Exploring {
     const state = new State(requests);
     const copies = new Copies();
     const hints = new BlockHints(requests, state);
@@ -43,6 +42,7 @@ export function explore(context: ExtensionContext, client: LanguageClient): Expl
 
     const actions: Record<string, (...given: never[]) => unknown> = {
         [COMMANDS.start]: (resource?: Uri | string, patch?: unknown) => start(requests, resource?.toString(), named(patch)),
+        [COMMANDS.open]: (number: number) => navigation.open(links.find(number)),
         [COMMANDS.next]: (popup?: number, path?: number) => navigation.step(true, popup, path),
         [COMMANDS.previous]: (popup?: number, path?: number) => navigation.step(false, popup, path),
         [COMMANDS.all]: (popup?: number, path?: number) => navigation.all(popup, path),

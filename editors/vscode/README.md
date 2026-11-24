@@ -15,7 +15,8 @@ Beside each location stands how many places it matches, and beside the fields of
 matches, builds and is called, updated on open and save (`codeshaper.inlayHints.matches`).
 These hints are smaller than the code, `editor.inlayHints.fontSize` under `[kdl]` changes it.
 Hovering a location, `match`, `from`, `build`, `to` or a `$[…]` shows samples (`codeshaper.hover.samples`), with
-links that select each place, match and capture in its target file.
+links that select each place, match and capture in a read-only copy of its target file. Files listed when
+hovering `file`, the references of a location and the definition of `file` open as copies too.
 The target is found through the operation configuration next to the shaping project.
 
 **Explore target**, next to *Preview operation*, opens a read-only copy of a target file and shows which

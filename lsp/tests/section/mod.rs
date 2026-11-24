@@ -537,6 +537,45 @@ fn exploring_starts_from_one_patch_or_all() {
 }
 
 #[test]
+fn positions_explore_their_patch() {
+    let (directory, project) = operation();
+    let query = "(function_definition) @target";
+    let text = "// 日 🦀\n".to_string() + &block("first", &CALLED.replace("a.cpp", "b.cpp")) + &block("é", &CALLED.replace("\"FunctionDeclarator.Declarator\"", &format!("r#\"{query}\"#"))) + "patch";
+    let mut client = Client::start();
+    let uri = client.open(&project.join("patches/rename.kdl"), &text);
+    let mut at = |needle: &str, skip: usize| {
+        let found = client.request("codeshaper/explore", json!({ "uri": uri.as_str(), "position": place(&text, needle, skip) })).response_result.unwrap();
+        let files: Vec<&str> = found["files"].as_array().unwrap().iter().map(|file| file["path"].as_str().unwrap()).collect();
+
+        (files.join(" "), found["patch"].as_str().map(str::to_string), found["location"].as_str().map(str::to_string))
+    };
+    let some = |text: &str| Some(text.to_string());
+
+    assert_eq!(at("\"FunctionDeclarator", 3), ("b.cpp".to_string(), some("first"), some("FunctionDeclarator.Declarator")));
+    assert_eq!(at("r#\"(function", 8), ("a.cpp".to_string(), some("é"), some(query)));
+    assert_eq!(at("r#\"(function", 0), ("a.cpp".to_string(), some("é"), some(query)));
+    assert_eq!(at("r\"(old)\"", 3), ("a.cpp".to_string(), some("é"), None));
+    assert_eq!(at("b.cpp", 1), ("b.cpp".to_string(), some("first"), None));
+    assert_eq!(at("日", 0), ("a.cpp b.cpp".to_string(), None, None));
+
+    let referring = RENAME.replace("from", "reference-location \"ClassSpecifier\"\n        from");
+    fs::write(project.join("patches/other.kdl"), &referring).unwrap();
+    let other = client.open(&project.join("patches/other.kdl"), &referring);
+    let found = ask(&mut client, "codeshaper/explore", json!({ "uri": other.as_str(), "position": place(&referring, "ClassSpecifier", 2) }));
+    assert_eq!((found["files"].as_array().unwrap().len(), &found["patch"], &found["location"]), (2, &json!(null), &json!("ClassSpecifier")));
+
+    let listed = ask(&mut client, "codeshaper/explore", json!({ "uri": other.as_str() }));
+    assert_eq!(listed.as_object().unwrap().keys().collect::<Vec<_>>(), vec!["files", "without"]);
+    assert_eq!(listed["files"], found["files"]);
+
+    let configuration = client.open(&directory.path().join("configuration.kdl"), "");
+    let refused = client.request("codeshaper/explore", json!({ "uri": configuration.as_str(), "position": { "line": 0, "character": 0 } })).response_result;
+    assert!(refused.err().unwrap().message.contains("is not a patch"));
+
+    client.stop();
+}
+
+#[test]
 fn uses_name_their_patch() {
     let (_directory, project) = operation();
     let text = block("first", RENAME) + &block("é", CALLED);

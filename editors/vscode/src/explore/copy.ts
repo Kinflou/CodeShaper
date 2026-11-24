@@ -34,9 +34,14 @@ export class Copies implements TextDocumentContentProvider {
     }
 }
 
-export async function openCopy({ start, patch }: Origin, { uri, path, language, usual }: ExploredFile): Promise<TextEditor> {
+export function copyUri({ start, patch }: Origin, { uri, path, language, usual }: ExploredFile): Uri {
     const query = JSON.stringify({ start, patch, file: { uri, path, language, usual } });
-    const document = await workspace.openTextDocument(Uri.parse(uri).with({ scheme: SCHEME, query }));
+
+    return Uri.parse(uri).with({ scheme: SCHEME, query });
+}
+
+export async function openCopy(origin: Origin, file: ExploredFile): Promise<TextEditor> {
+    const document = await workspace.openTextDocument(copyUri(origin, file));
 
     return window.showTextDocument(document, { preview: false });
 }
