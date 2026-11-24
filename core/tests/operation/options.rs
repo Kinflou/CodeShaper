@@ -177,6 +177,9 @@ fn each_configuration_has_its_own_target() {
     let names: Vec<&str> = found.iter().map(|path| path.file_name().unwrap().to_str().unwrap()).collect();
     assert_eq!(names, vec!["configuration.kdl", "engine.kdl"]);
     assert!(found.iter().all(|path| path.parent() == Some(root)), "{found:?}");
+
+    let resolved = Operation::configurations_for(&fs::canonicalize(root.join("shaping")).unwrap()).unwrap();
+    assert!(Operation::from_file(&resolved[1]).unwrap().target(&disk().0).is_ok(), "{resolved:?}");
     assert_eq!(Operation::configuration_for(&root.join("shaping")).unwrap(), found[0]);
 
     let (registry, given) = disk();

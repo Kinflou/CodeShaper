@@ -27,7 +27,7 @@ use crate::shaping::project::ast_set::AstSet;
 use crate::target::{File, Solution};
 
 // External Uses
-use dunce::canonicalize;
+use dunce::{canonicalize, simplified};
 use glob::Pattern;
 use miette::{bail, miette, Context, Diagnostic, IntoDiagnostic, Result};
 
@@ -70,7 +70,7 @@ impl Operation {
     }
 
     pub fn configurations_for(project: &Path) -> Result<Vec<PathBuf>> {
-        let given = project.parent().filter(|_| project.is_absolute());
+        let given = project.parent().filter(|_| project.is_absolute()).map(simplified);
         let project = canonicalize(project).into_diagnostic()?;
         let parent = project.parent().ok_or_else(|| miette!("{} has no parent directory", project.display()))?;
         let parent = given.filter(|given| canonicalize(given).is_ok_and(|given| given == parent)).unwrap_or(parent);
