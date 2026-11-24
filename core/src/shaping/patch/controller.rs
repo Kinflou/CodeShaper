@@ -167,22 +167,31 @@ impl PatchController {
         collect_locations(&self.patch.actions, &mut locations);
 
         let mut source = source.to_string();
+        let mut known: Option<HashMap<&str, Vec<Range<usize>>>> = None;
 
         for id in replacer_ids {
             let replacer = self.actions[id].get().replacer()?.replacer().clone();
-            let triggers = backend.locate(&source, &replacer.location)?;
+            let unlisted = match locations.contains(&replacer.location) {
+                true => None,
+                false => Some(backend.locate(&source, &replacer.location)?)
+            };
 
-            let mut located = HashMap::new();
-            for location in &locations {
-                located.insert(location.as_str(), backend.locate(&source, location)?);
-            }
+            let located = match known.take() {
+                Some(located) => located,
+                None => {
+                    let located = locate(backend, &source, &locations, &replacer.location)?;
 
-            self.listener_controller.location_contents = located.iter()
-                .map(|(location, ranges)| (
-                    location.to_string(),
-                    ranges.iter().map(|range| source[range.clone()].to_string()).collect()
-                ))
-                .collect();
+                    self.listener_controller.location_contents = located.iter()
+                        .map(|(location, ranges)| (
+                            location.to_string(),
+                            ranges.iter().map(|range| source[range.clone()].to_string()).collect()
+                        ))
+                        .collect();
+
+                    located
+                }
+            };
+            let triggers = unlisted.as_ref().or_else(|| located.get(replacer.location.as_str())).into_iter().flatten();
 
             let mut edits: Vec<(Range<usize>, String)> = vec![];
             for trigger in triggers {
@@ -190,7 +199,7 @@ impl PatchController {
                 let mut target = None;
 
                 for (location, ranges) in &located {
-                    let Some(range) = scoped_range(ranges, &trigger) else { continue };
+                    let Some(range) = scoped_range(ranges, trigger) else { continue };
 
                     if *location == replacer.target_location() {
                         target = Some(range.clone());
@@ -215,9 +224,13 @@ impl PatchController {
                 applied.push(edit);
             }
 
+            let mut changed = false;
             for (range, text) in applied.into_iter().rev() {
+                changed |= source[range.clone()] != text;
                 source.replace_range(range, &text);
             }
+
+            known = (!changed).then_some(located);
         }
 
         Ok(source)
@@ -287,6 +300,19 @@ fn collect_locations(actions: &Actions, locations: &mut Vec<String>) {
     locations.retain(|location| !location.is_empty());
     locations.sort();
     locations.dedup();
+}
+
+fn locate<'l>(
+    backend: &dyn LanguageBackend, source: &str, locations: &'l [String], first: &str
+) -> Result<HashMap<&'l str, Vec<Range<usize>>>> {
+    let wanted: Vec<&str> = locations.iter().map(String::as_str).collect();
+    let mut found: Vec<_> = wanted.iter().copied().zip(backend.locate_all(source, &wanted)).collect();
+
+    if let Some(index) = found.iter().position(|(location, ranges)| *location == first && ranges.is_err()) {
+        found.swap(0, index);
+    }
+
+    found.into_iter().map(|(location, ranges)| Ok((location, ranges?))).collect()
 }
 
 fn scoped_range<'r>(ranges: &'r [Range<usize>], trigger: &Range<usize>) -> Option<&'r Range<usize>> {

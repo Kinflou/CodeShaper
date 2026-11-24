@@ -277,15 +277,16 @@ impl Operation {
         keep_going: &dyn Fn() -> bool
     ) -> Result<Vec<LocationMatches>> {
         let mut found = vec![LocationMatches { files: files.len(), ..LocationMatches::default() }; locations.len()];
+        if locations.is_empty() { return Ok(found) }
 
         for file in files {
             let source = fs::read_to_string(directory.join(&file.path)).unwrap_or_default();
             let Ok(backend) = self.backend(registry, patch, file) else { continue };
 
-            for (location, matches) in locations.iter().zip(&mut found) {
-                if !keep_going() { bail!("Locating was stopped") }
+            if !keep_going() { bail!("Locating was stopped") }
 
-                let places = backend.locate(&source, location).map(|ranges| ranges.len()).unwrap_or_default();
+            for (ranges, matches) in backend.locate_all(&source, locations).into_iter().zip(&mut found) {
+                let places = ranges.map(|ranges| ranges.len()).unwrap_or_default();
                 matches.places += places;
                 matches.matched_files += usize::from(places > 0);
             }

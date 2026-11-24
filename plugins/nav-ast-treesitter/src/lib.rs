@@ -2,7 +2,9 @@
 mod suggest;
 
 // Standard Uses
+use std::collections::HashMap;
 use std::ops::Range;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 // Crate Uses
 
@@ -26,6 +28,8 @@ pub fn register(registry: &mut Registry) {
 }
 
 
+const KEPT: usize = 64;
+
 const QUERIES: QueryLanguage = QueryLanguage {
     name: "tree-sitter",
     documentation: "https://tree-sitter.github.io/tree-sitter/using-parsers/queries/1-syntax.html"
@@ -35,11 +39,12 @@ const QUERIES: QueryLanguage = QueryLanguage {
 pub struct TreeSitterBackend {
     name: String,
     language: Language,
+    queries: Mutex<HashMap<String, Arc<(Query, u32)>>>
 }
 
 impl TreeSitterBackend {
     pub fn new(name: &str, language: Language) -> Self {
-        Self { name: name.to_string(), language }
+        Self { name: name.to_string(), language, queries: Mutex::default() }
     }
 
     #[cfg(feature = "cpp")]
@@ -65,13 +70,24 @@ impl TreeSitterBackend {
             .ok_or_else(|| miette!("Could not parse source as {}", self.name))
     }
 
-    fn query(&self, query: &str) -> Result<(Query, u32)> {
-        let query = Query::new(&self.language, query).map_err(|error| self.query_error(query, error))?;
+    fn query(&self, text: &str) -> Result<Arc<(Query, u32)>> {
+        if let Some(known) = self.queries().get(text) { return Ok(known.clone()) }
+
+        let query = Query::new(&self.language, text).map_err(|error| self.query_error(text, error))?;
         let Some(target) = query.capture_index_for_name("target") else {
             bail!("Query location has no @target capture")
         };
 
-        Ok((query, target))
+        let compiled = Arc::new((query, target));
+        let mut queries = self.queries();
+        if queries.len() >= KEPT { queries.clear(); }
+        queries.insert(text.to_string(), compiled.clone());
+
+        Ok(compiled)
+    }
+
+    fn queries(&self) -> MutexGuard<'_, HashMap<String, Arc<(Query, u32)>>> {
+        self.queries.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     fn query_error(&self, query: &str, error: QueryError) -> LocationError {
@@ -109,6 +125,12 @@ impl TreeSitterBackend {
         }
     }
 
+    fn kind_ids(&self, kind: &str) -> Vec<u16> {
+        (0..self.language.node_kind_count() as u16)
+            .filter(|id| self.language.node_kind_for_id(*id) == Some(kind))
+            .collect()
+    }
+
     fn locate_in(&self, tree: &Tree, source: &str, location: &str) -> Result<Vec<Range<usize>>> {
         let location = location.trim();
 
@@ -125,14 +147,15 @@ impl TreeSitterBackend {
     }
 
     fn locate_query(&self, tree: &Tree, source: &str, query: &str) -> Result<Vec<Range<usize>>> {
-        let (query, target) = self.query(query)?;
+        let compiled = self.query(query)?;
+        let (query, target) = &*compiled;
 
         let mut ranges = vec![];
         let mut cursor = QueryCursor::new();
-        let mut matches = cursor.matches(&query, tree.root_node(), source.as_bytes());
+        let mut matches = cursor.matches(query, tree.root_node(), source.as_bytes());
 
         while let Some(found) = matches.next() {
-            ranges.extend(found.nodes_for_capture_index(target).map(|node| node.byte_range()));
+            ranges.extend(found.nodes_for_capture_index(*target).map(|node| node.byte_range()));
         }
 
         Ok(ranges)
@@ -149,8 +172,12 @@ impl TreeSitterBackend {
                     let mut cursor = node.walk();
                     next.extend(node.children_by_field_name(&field, &mut cursor));
                 },
-                Segment::Kind(kind) => for node in &nodes {
-                    collect_descendants(*node, &kind, &mut next);
+                Segment::Kind(kind) => {
+                    let ids = self.kind_ids(&kind);
+
+                    for node in &nodes {
+                        collect_descendants(*node, &ids, &mut next);
+                    }
                 }
             }
 
@@ -168,6 +195,15 @@ impl LanguageBackend for TreeSitterBackend {
 
     fn locate(&self, source: &str, location: &str) -> Result<Vec<Range<usize>>> {
         self.locate_in(&self.parse(source)?, source, location)
+    }
+
+    fn locate_all(&self, source: &str, locations: &[&str]) -> Vec<Result<Vec<Range<usize>>>> {
+        if locations.is_empty() { return vec![] }
+
+        match self.parse(source) {
+            Ok(tree) => locations.iter().map(|location| self.locate_in(&tree, source, location)).collect(),
+            Err(error) => locations.iter().map(|_| Err(miette!("{error}"))).collect()
+        }
     }
 
     fn check_location(&self, location: &str) -> Result<()> {
@@ -271,7 +307,7 @@ fn is_word(character: char) -> bool {
     character.is_alphanumeric() || matches!(character, '_' | '-' | '.' | '?' | '!')
 }
 
-fn collect_descendants<'tree>(node: Node<'tree>, kind: &str, found: &mut Vec<Node<'tree>>) {
+fn collect_descendants<'tree>(node: Node<'tree>, kinds: &[u16], found: &mut Vec<Node<'tree>>) {
     let mut cursor = node.walk();
     if !cursor.goto_first_child() {
         return
@@ -279,8 +315,9 @@ fn collect_descendants<'tree>(node: Node<'tree>, kind: &str, found: &mut Vec<Nod
 
     let mut depth = 1;
     loop {
-        if cursor.node().kind() == kind {
-            found.push(cursor.node());
+        let node = cursor.node();
+        if kinds.contains(&node.kind_id()) {
+            found.push(node);
         }
 
         if cursor.goto_first_child() {

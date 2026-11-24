@@ -1,5 +1,5 @@
 // Standard Uses
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::ops::Range;
 use std::path::{Path, PathBuf, MAIN_SEPARATOR};
@@ -10,7 +10,7 @@ use crate::position::LineIndex;
 use crate::preview::configuration;
 use crate::schema::LOCATIONS;
 use crate::section::views;
-use crate::syntax::Outline;
+use crate::syntax::{Literal, Outline};
 use crate::target;
 use crate::worker::{file_uri, path};
 
@@ -93,15 +93,43 @@ struct Asked<'p> {
 
 
 impl Located {
-    fn places(&mut self, backend: &dyn LanguageBackend, text: &str, location: &str) -> Vec<Range<usize>> {
+    fn prepare(&mut self, text: &str, wanted: &[(&dyn LanguageBackend, &str)]) {
         if self.text != text {
             self.text = text.to_string();
             self.found.clear();
         }
 
-        self.found.entry((backend.name().to_string(), location.to_string()))
-            .or_insert_with(|| backend.locate(text, location).unwrap_or_default())
-            .clone()
+        let mut missing: BTreeMap<&str, (&dyn LanguageBackend, BTreeSet<&str>)> = BTreeMap::new();
+        for (backend, location) in wanted {
+            if self.places(*backend, location).is_some() { continue }
+
+            missing.entry(backend.name()).or_insert((*backend, BTreeSet::new())).1.insert(location);
+        }
+
+        for (name, (backend, locations)) in missing {
+            let locations: Vec<&str> = locations.into_iter().collect();
+            let found = backend.locate_all(text, &locations);
+
+            self.found.extend(locations.iter().zip(found)
+                .map(|(location, ranges)| ((name.to_string(), location.to_string()), ranges.unwrap_or_default())));
+        }
+    }
+
+    fn places(&self, backend: &dyn LanguageBackend, location: &str) -> Option<&Vec<Range<usize>>> {
+        self.found.get(&(backend.name().to_string(), location.to_string()))
+    }
+}
+
+struct Candidate<'r> {
+    path: PathBuf,
+    patch: String,
+    outline: Outline,
+    backend: &'r dyn LanguageBackend
+}
+
+impl Candidate<'_> {
+    fn locations(&self) -> impl Iterator<Item = (usize, &Literal)> {
+        self.outline.literals().filter(|(node, _)| LOCATIONS.contains(&self.outline.nodes[*node].name.as_str()))
     }
 }
 
@@ -280,7 +308,7 @@ pub fn hints(text: &str, nodes: &[SyntaxNode], depth: Option<usize>) -> Vec<Bloc
 pub fn uses(
     registry: &Registry, located: &mut Located, file: &Explored, text: &str, block: &Range<usize>, project: &Path, open: &Open
 ) -> Vec<Use> {
-    let mut found = vec![];
+    let mut candidates = vec![];
 
     for (name, path) in patch_files(&project.join("patches")).unwrap_or_default() {
         let Ok(source) = read(&path, open) else { continue };
@@ -295,18 +323,31 @@ pub fn uses(
             let Some(backend) = language.and_then(|language| registry.backend(&language)) else { continue };
             if !patch.matches(&file.path) { continue }
 
-            for (node, literal) in outline.literals().filter(|(node, _)| LOCATIONS.contains(&outline.nodes[*node].name.as_str())) {
-                let Some(action) = outline.nodes[node].parent.and_then(|action| outline.action_path(action)) else { continue };
-                let smallest = located.places(backend, text, &literal.value).into_iter()
-                    .filter(|place| place.start <= block.start && block.end <= place.end)
-                    .min_by_key(|place| place.len());
+            candidates.push(Candidate { path: path.clone(), patch: view.name().unwrap_or(&name).to_string(), outline, backend });
+        }
+    }
 
-                found.extend(smallest.map(|place| Use {
-                    path: path.clone(), patch: view.name().unwrap_or(&name).to_string(), action, field: outline.nodes[node].name.clone(),
-                    enabled: outline.argument("enabled") == Some("true"),
-                    literal: literal.range.clone(), place
-                }));
-            }
+    let wanted: Vec<(&dyn LanguageBackend, &str)> = candidates.iter()
+        .flat_map(|candidate| candidate.locations().map(|(_, literal)| (candidate.backend, literal.value.as_str())))
+        .collect();
+    located.prepare(text, &wanted);
+
+    let mut found = vec![];
+    for candidate in &candidates {
+        let Candidate { path, patch, outline, backend } = candidate;
+
+        for (node, literal) in candidate.locations() {
+            let Some(action) = outline.nodes[node].parent.and_then(|action| outline.action_path(action)) else { continue };
+            let smallest = located.places(*backend, &literal.value).into_iter().flatten()
+                .filter(|place| place.start <= block.start && block.end <= place.end)
+                .min_by_key(|place| place.len())
+                .cloned();
+
+            found.extend(smallest.map(|place| Use {
+                path: path.clone(), patch: patch.clone(), action, field: outline.nodes[node].name.clone(),
+                enabled: outline.argument("enabled") == Some("true"),
+                literal: literal.range.clone(), place
+            }));
         }
     }
 

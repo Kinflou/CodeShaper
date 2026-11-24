@@ -4,6 +4,7 @@ mod broken;
 mod check;
 mod languages;
 mod lines;
+mod located;
 mod options;
 mod preview;
 mod run;

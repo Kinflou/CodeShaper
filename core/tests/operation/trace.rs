@@ -125,6 +125,6 @@ fn locations_are_counted_together() {
     for (location, found) in ["Line", "File", "Missing"].iter().zip(found) {
         assert_eq!(operation.locate(&registry(), "", &patch, location).unwrap(), found);
     }
-    assert_eq!(count(&[]), vec![]);
+    assert_eq!(operation.locate_all(&registry(), &patch, (&folder, &files), &[], &|| panic!("nothing to locate")).unwrap(), vec![]);
     assert!(operation.locate_all(&registry(), &patch, (&folder, &files), &["Line"], &|| false).is_err());
 }

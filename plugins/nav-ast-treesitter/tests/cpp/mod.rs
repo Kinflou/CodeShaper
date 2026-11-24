@@ -173,3 +173,37 @@ fn location_errors_point_at_the_wrong_part() {
     assert_eq!(location_range("(function_definition nope: (_) @target)").as_deref(), Some("nope"));
     assert_eq!(location_range("((identifier) @target (#eq? @other \"a\"))").as_deref(), Some("other"));
 }
+
+#[test]
+fn locations_found_together_are_the_same() {
+    let backend = TreeSitterBackend::cpp();
+    let source = "class A { void a() { if (b) { c(); } } };\nvoid d() {}\nint x = ;\n";
+    let kinds = backend.node_kinds();
+    let mut locations: Vec<&str> = kinds.iter().map(String::as_str).collect();
+    locations.extend([
+        "FunctionDefinition.Body", "FunctionDefinition.FunctionDeclarator.Declarator", "Nothing", "", "(", "(identifier) @other",
+        "(identifier) @target", "(ERROR) @target", "(call_expression function: (identifier) @target)", "(identifier) @target"
+    ]);
+
+    let text = |found: Result<Vec<std::ops::Range<usize>>, miette::Report>| found.map_err(|error| error.to_string());
+    let alone: Vec<_> = locations.iter().map(|location| text(backend.locate(source, location))).collect();
+    let together: Vec<_> = backend.locate_all(source, &locations).into_iter().map(text).collect();
+
+    assert_eq!(together, alone);
+    assert!(alone.iter().any(|found| found.is_err()) && alone.iter().any(|found| found.as_ref().is_ok_and(|found| found.len() > 2)));
+    assert!(backend.locate_all(source, &[]).is_empty());
+}
+
+#[test]
+fn many_queries_stay_right() {
+    let backend = TreeSitterBackend::cpp();
+    let source = (0..150).map(|number| format!("void f{number}() {{}}\n")).collect::<String>();
+
+    for number in (0..150).chain([0, 149, 3]) {
+        let query = format!("((identifier) @target (#eq? @target \"f{number}\"))");
+        let found = backend.locate(&source, &query).unwrap();
+
+        assert_eq!(found.into_iter().map(|range| &source[range]).collect::<Vec<_>>(), vec![format!("f{number}")]);
+        assert!(backend.locate(&source, "((identifier) @other)").is_err());
+    }
+}

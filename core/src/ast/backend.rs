@@ -57,6 +57,10 @@ pub trait LanguageBackend {
     fn name(&self) -> &str;
     fn locate(&self, source: &str, location: &str) -> Result<Vec<Range<usize>>>;
 
+    fn locate_all(&self, source: &str, locations: &[&str]) -> Vec<Result<Vec<Range<usize>>>> {
+        locations.iter().map(|location| self.locate(source, location)).collect()
+    }
+
     fn check_location(&self, _location: &str) -> Result<()> {
         Ok(())
     }
