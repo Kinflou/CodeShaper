@@ -1,10 +1,13 @@
+// Relative Modules
+mod suggest;
+
 // Standard Uses
 use std::ops::Range;
 
 // Crate Uses
 
 // External Uses
-use codeshaper_core::ast::backend::{LanguageBackend, LocationError};
+use codeshaper_core::ast::backend::{LanguageBackend, LocationError, QueryLanguage, Suggestions, SyntaxNode};
 use codeshaper_core::registry::Registry;
 use miette::{miette, bail, Report, Result};
 use tree_sitter::{Language, Node, Parser, Query, QueryCursor, QueryError, QueryErrorKind, StreamingIterator, Tree};
@@ -21,6 +24,12 @@ pub fn register(registry: &mut Registry) {
     #[cfg(feature = "godot-resource")]
     registry.add_backend(Box::new(TreeSitterBackend::godot_resource()));
 }
+
+
+const QUERIES: QueryLanguage = QueryLanguage {
+    name: "tree-sitter",
+    documentation: "https://tree-sitter.github.io/tree-sitter/using-parsers/queries/1-syntax.html"
+};
 
 
 pub struct TreeSitterBackend {
@@ -100,6 +109,21 @@ impl TreeSitterBackend {
         }
     }
 
+    fn locate_in(&self, tree: &Tree, source: &str, location: &str) -> Result<Vec<Range<usize>>> {
+        let location = location.trim();
+
+        let mut ranges = if location.starts_with('(') {
+            self.locate_query(tree, source, location)?
+        } else {
+            self.locate_path(tree, location)?
+        };
+
+        ranges.sort_by_key(|range| (range.start, range.end));
+        ranges.dedup();
+
+        Ok(ranges)
+    }
+
     fn locate_query(&self, tree: &Tree, source: &str, query: &str) -> Result<Vec<Range<usize>>> {
         let (query, target) = self.query(query)?;
 
@@ -143,19 +167,7 @@ impl LanguageBackend for TreeSitterBackend {
     }
 
     fn locate(&self, source: &str, location: &str) -> Result<Vec<Range<usize>>> {
-        let tree = self.parse(source)?;
-        let location = location.trim();
-
-        let mut ranges = if location.starts_with('(') {
-            self.locate_query(&tree, source, location)?
-        } else {
-            self.locate_path(&tree, location)?
-        };
-
-        ranges.sort_by_key(|range| (range.start, range.end));
-        ranges.dedup();
-
-        Ok(ranges)
+        self.locate_in(&self.parse(source)?, source, location)
     }
 
     fn check_location(&self, location: &str) -> Result<()> {
@@ -224,6 +236,18 @@ impl LanguageBackend for TreeSitterBackend {
         names.sort();
         names.dedup();
         names
+    }
+
+    fn query_language(&self) -> Option<QueryLanguage> {
+        Some(QUERIES)
+    }
+
+    fn nodes(&self, source: &str) -> Result<Vec<SyntaxNode>> {
+        Ok(self.syntax_nodes(&self.parse(source)?))
+    }
+
+    fn suggest_locations(&self, source: &str, node: usize) -> Result<Suggestions> {
+        self.suggest(&self.parse(source)?, source, node)
     }
 }
 

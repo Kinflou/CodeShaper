@@ -5,3 +5,5 @@ mod cpp;
 mod gdscript;
 #[cfg(feature = "godot-resource")]
 mod godot_resource;
+#[cfg(feature = "cpp")]
+mod suggest;

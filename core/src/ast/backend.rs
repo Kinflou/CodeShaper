@@ -25,6 +25,34 @@ impl std::error::Error for LocationError {}
 impl Diagnostic for LocationError {}
 
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct QueryLanguage {
+    pub name: &'static str,
+    pub documentation: &'static str
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyntaxNode {
+    pub kind: String,
+    pub field: Option<String>,
+    pub range: Range<usize>,
+    pub parent: Option<usize>,
+    pub broken: bool
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Suggestion {
+    pub location: String,
+    pub ranges: Vec<Range<usize>>
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Suggestions {
+    pub paths: Vec<Suggestion>,
+    pub query: Option<Suggestion>
+}
+
+
 pub trait LanguageBackend {
     fn name(&self) -> &str;
     fn locate(&self, source: &str, location: &str) -> Result<Vec<Range<usize>>>;
@@ -47,5 +75,17 @@ pub trait LanguageBackend {
 
     fn location_names(&self, _segment: usize) -> Vec<String> {
         vec![]
+    }
+
+    fn query_language(&self) -> Option<QueryLanguage> {
+        None
+    }
+
+    fn nodes(&self, _source: &str) -> Result<Vec<SyntaxNode>> {
+        Ok(vec![])
+    }
+
+    fn suggest_locations(&self, _source: &str, _node: usize) -> Result<Suggestions> {
+        Ok(Suggestions::default())
     }
 }
