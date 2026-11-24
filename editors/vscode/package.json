@@ -31,6 +31,9 @@
           ".kdl"
         ],
         "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "codeshaper-query"
       }
     ],
     "grammars": [
@@ -38,6 +41,11 @@
         "language": "kdl",
         "scopeName": "source.kdl.codeshaper",
         "path": "./syntaxes/kdl.tmLanguage.json"
+      },
+      {
+        "language": "codeshaper-query",
+        "scopeName": "source.query.codeshaper",
+        "path": "./syntaxes/query.tmLanguage.json"
       },
       {
         "scopeName": "codeshaper.expressions.injection",
@@ -72,6 +80,119 @@
           "light": "images/preview-light.png",
           "dark": "images/preview-dark.png"
         }
+      },
+      {
+        "command": "codeshaper.explore",
+        "title": "Explore Target",
+        "category": "CodeShaper",
+        "icon": "$(telescope)"
+      },
+      {
+        "command": "codeshaper.nextPlace",
+        "title": "Next Place of the Location",
+        "category": "CodeShaper"
+      },
+      {
+        "command": "codeshaper.previousPlace",
+        "title": "Previous Place of the Location",
+        "category": "CodeShaper"
+      },
+      {
+        "command": "codeshaper.allPlaces",
+        "title": "All Places of the Location",
+        "category": "CodeShaper"
+      },
+      {
+        "command": "codeshaper.highlightBlock",
+        "title": "Select the Block",
+        "category": "CodeShaper"
+      },
+      {
+        "command": "codeshaper.exploreParent",
+        "title": "Select the Surrounding Block",
+        "category": "CodeShaper"
+      },
+      {
+        "command": "codeshaper.copyLocation",
+        "title": "Copy Location",
+        "category": "CodeShaper"
+      },
+      {
+        "command": "codeshaper.exploreChild",
+        "title": "Select a Block Inside",
+        "category": "CodeShaper"
+      },
+      {
+        "command": "codeshaper.toggleHighlights",
+        "title": "Highlight the Block and its Places",
+        "category": "CodeShaper"
+      },
+      {
+        "command": "codeshaper.toggleHints",
+        "title": "Show or Hide Every Hint",
+        "category": "CodeShaper"
+      },
+      {
+        "command": "codeshaper.editExplored",
+        "title": "Edit the Explored File",
+        "category": "CodeShaper"
+      },
+      {
+        "command": "codeshaper.exploreKeys",
+        "title": "Keys While Exploring",
+        "category": "CodeShaper"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "codeshaper.nextPlace",
+        "key": "n",
+        "when": "codeshaper.exploring && editorTextFocus && resourceScheme == codeshaper-explore"
+      },
+      {
+        "command": "codeshaper.previousPlace",
+        "key": "p",
+        "when": "codeshaper.exploring && editorTextFocus && resourceScheme == codeshaper-explore"
+      },
+      {
+        "command": "codeshaper.allPlaces",
+        "key": "a",
+        "when": "codeshaper.exploring && editorTextFocus && resourceScheme == codeshaper-explore"
+      },
+      {
+        "command": "codeshaper.exploreParent",
+        "key": "u",
+        "when": "codeshaper.exploring && editorTextFocus && resourceScheme == codeshaper-explore"
+      },
+      {
+        "command": "codeshaper.exploreChild",
+        "key": "d",
+        "when": "codeshaper.exploring && editorTextFocus && resourceScheme == codeshaper-explore"
+      },
+      {
+        "command": "codeshaper.toggleHighlights",
+        "key": "s",
+        "when": "codeshaper.exploring && editorTextFocus && resourceScheme == codeshaper-explore"
+      },
+      {
+        "command": "codeshaper.toggleHints",
+        "key": "h",
+        "when": "codeshaper.exploring && editorTextFocus && resourceScheme == codeshaper-explore"
+      },
+      {
+        "command": "editor.action.showHover",
+        "key": "i",
+        "when": "codeshaper.exploring && editorTextFocus && resourceScheme == codeshaper-explore"
+      },
+      {
+        "command": "codeshaper.copyLocation",
+        "key": "c",
+        "when": "codeshaper.exploring && editorTextFocus && resourceScheme == codeshaper-explore"
+      },
+      {
+        "command": "codeshaper.editExplored",
+        "key": "e",
+        "when": "codeshaper.exploring && editorTextFocus && resourceScheme == codeshaper-explore"
       }
     ],
     "menus": {
@@ -85,6 +206,16 @@
           "command": "codeshaper.previewOperation",
           "when": "resourceLangId == kdl && resourceFilename == configuration.kdl",
           "group": "navigation"
+        },
+        {
+          "command": "codeshaper.explore",
+          "when": "resourceLangId == kdl && resourcePath =~ /[\\\\/]patches[\\\\/]/",
+          "group": "navigation"
+        },
+        {
+          "command": "codeshaper.explore",
+          "when": "resourceLangId == kdl && resourceFilename == configuration.kdl",
+          "group": "navigation"
         }
       ],
       "commandPalette": [
@@ -95,6 +226,54 @@
         {
           "command": "codeshaper.previewOperation",
           "when": "editorLangId == kdl"
+        },
+        {
+          "command": "codeshaper.explore",
+          "when": "editorLangId == kdl"
+        },
+        {
+          "command": "codeshaper.nextPlace",
+          "when": "codeshaper.exploring"
+        },
+        {
+          "command": "codeshaper.previousPlace",
+          "when": "codeshaper.exploring"
+        },
+        {
+          "command": "codeshaper.allPlaces",
+          "when": "codeshaper.exploring"
+        },
+        {
+          "command": "codeshaper.highlightBlock",
+          "when": "codeshaper.exploring"
+        },
+        {
+          "command": "codeshaper.exploreParent",
+          "when": "codeshaper.exploring"
+        },
+        {
+          "command": "codeshaper.copyLocation",
+          "when": "codeshaper.exploring"
+        },
+        {
+          "command": "codeshaper.exploreChild",
+          "when": "codeshaper.exploring"
+        },
+        {
+          "command": "codeshaper.toggleHighlights",
+          "when": "codeshaper.exploring"
+        },
+        {
+          "command": "codeshaper.toggleHints",
+          "when": "codeshaper.exploring"
+        },
+        {
+          "command": "codeshaper.editExplored",
+          "when": "codeshaper.exploring"
+        },
+        {
+          "command": "codeshaper.exploreKeys",
+          "when": "codeshaper.exploring"
         }
       ]
     },
@@ -116,13 +295,13 @@
           "type": "integer",
           "default": 8,
           "minimum": 1,
-          "description": "Lines kept from each hover sample before it is cut."
+          "description": "Lines kept from each hover sample before it is cut, and from a block's code while exploring."
         },
         "codeshaper.hover.characters": {
           "type": "integer",
           "default": 400,
           "minimum": 1,
-          "description": "Characters kept from each hover sample before it is cut."
+          "description": "Characters kept from each hover sample before it is cut, and from a block's code while exploring."
         },
         "codeshaper.inlayHints.groups": {
           "type": "boolean",
@@ -133,6 +312,12 @@
           "type": "boolean",
           "default": false,
           "description": "Show how many places each location matches, updated on open and save. Takes effect after reloading the window."
+        },
+        "codeshaper.explore.depth": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 0,
+          "description": "How many levels of blocks of several lines get a hint while exploring. 0 turns the hints off."
         }
       }
     }
@@ -142,6 +327,7 @@
     "clean": "node -e \"require('fs').rmSync('out', { recursive: true, force: true })\"",
     "compile": "npm run clean && tsc -p ./",
     "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node --test out/test/*.test.js",
     "package": "vsce package"
   },
   "dependencies": {

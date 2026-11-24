@@ -86,6 +86,8 @@ jobs:
           cache-dependency-path: editors/vscode/package-lock.json
       - run: npm ci
         working-directory: editors/vscode
+      - run: npm test
+        working-directory: editors/vscode
       - uses: actions/download-artifact@v8
         with:
           pattern: server-*

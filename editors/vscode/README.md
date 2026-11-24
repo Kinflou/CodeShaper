@@ -11,6 +11,26 @@ Each patch gets a **Preview result** lens, a preview button in the editor's titl
 pattern matches, and opens a diff of the result. When several files would change, pick one first.
 The target is found through the operation configuration next to the shaping project.
 
+**Explore target**, next to *Preview operation*, opens a read-only copy of a target file and shows which
+location its code belongs to. Hovering a block gives its code, its locations and how many places they match in the file, with
+links to the next and previous place in the target, all places and the surrounding block, to select the block and to copy the location. It also lists
+the patches that locate that code. With a selection, the hover is about the block around it. Blocks of
+several lines get a hint, down to `codeshaper.explore.depth`, and hovering a hint shows the same for its block. The status bar shows the location at the
+cursor. Places are those of the saved file, before any patch runs. Close the copy to stop.
+
+| Key | While exploring |
+| --- | --- |
+| `N` / `P` | Next or previous place of the location |
+| `A` | All places |
+| `U` / `D` | Select the surrounding block, or go back inside |
+| `S` | Highlight the block and the other places of its location |
+| `H` | Every hint: tap to show or hide, or hold |
+| `I` | Show the hover |
+| `C` | Copy the location |
+| `E` | Edit the file itself |
+
+Click the status bar item for the list. They can be changed in *Keyboard Shortcuts*.
+
 ## Install
 
 Download the `.vsix` for your platform from the
@@ -45,11 +65,14 @@ pre-releases named `dev-<number>`. Installed this way it doesn't update itself.
 3. Run it: open this folder in VS Code and press F5, or start VS Code with
    `code --extensionDevelopmentPath=editors/vscode <workspace>`.
 
+`npm test` compiles it and tests the modules that don't need VS Code.
+
 | In `src/` | What it does |
 | --- | --- |
 | `extension.ts` | Starts everything |
 | `server.ts`, `settings.ts` | The language server and the settings |
 | `preview/` | Patch and operation previews |
+| `explore/` | Explore target, with the popup in `explore/popup/` |
 
 In each folder, `index.ts` is where commands and providers are registered.
 

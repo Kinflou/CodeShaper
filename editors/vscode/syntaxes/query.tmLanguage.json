@@ -1,0 +1,8 @@
+{
+    "scopeName": "source.query.codeshaper",
+    "patterns": [
+        {
+            "include": "codeshaper.fields.injection#query"
+        }
+    ]
+}

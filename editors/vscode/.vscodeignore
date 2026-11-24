@@ -2,6 +2,7 @@
 .vscodeignore
 **/*.map
 src/**
+out/test/**
 tsconfig.json
 package-lock.json
 *.vsix

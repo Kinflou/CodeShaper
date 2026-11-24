@@ -23,7 +23,8 @@ export const settings = {
     inlayHints: (): HintSettings => ({
         groups: read("inlayHints.groups", false),
         matches: read("inlayHints.matches", false)
-    })
+    }),
+    exploreDepth: (): number => read("explore.depth", 4)
 };
 
 function read<T>(name: string, fallback: T): T {
