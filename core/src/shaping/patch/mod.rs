@@ -22,6 +22,7 @@ use crate::shaping::patch::maker::Maker;
 use crate::shaping::patch::source::PatchSource;
 
 // External Uses
+use glob::Pattern;
 use miette::{bail, IntoDiagnostic, Report, Result};
 use crate::shaping::patch::resolver::{List, Switch};
 
@@ -99,5 +100,9 @@ impl Patch {
 
     pub fn parse(name: &str, content: &str) -> Result<(Self, PatchSource)> {
         Ok((Self::from_kdl(name, content)?, PatchSource::parse(name, content)?))
+    }
+
+    pub fn matches(&self, file: &Path) -> bool {
+        Pattern::new(&self.file).is_ok_and(|pattern| pattern.matches_path(file))
     }
 }

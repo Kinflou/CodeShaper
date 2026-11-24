@@ -324,12 +324,16 @@ fn preview_lens_and_request() {
     let operation = lenses[1].command.clone().unwrap();
     assert_eq!((operation.title.as_str(), operation.command.as_str()), ("Preview operation", "codeshaper.previewOperation"));
 
-    let toggle = lenses[2].command.clone().unwrap();
+    let explore = lenses[2].command.clone().unwrap();
+    assert_eq!((explore.title.as_str(), explore.command.as_str()), ("Explore target", "codeshaper.explore"));
+    assert_eq!(explore.arguments, Some(vec![serde_json::json!(uri.as_str())]));
+
+    let toggle = lenses[3].command.clone().unwrap();
     assert_eq!((toggle.title.as_str(), toggle.command.as_str()), ("Enable patch", "codeshaper.toggle"));
 
-    let counted = lenses[3].command.clone().unwrap();
+    let counted = lenses[4].command.clone().unwrap();
     assert_eq!(counted.title, "1 replacement(s) in 1 file(s)");
-    assert_eq!(lenses[3].range.start, Position::new(6, 8));
+    assert_eq!(lenses[4].range.start, Position::new(6, 8));
 
     let response = client.request("codeshaper/preview", serde_json::json!({ "uri": uri.as_str() }));
     let result = response.response_result.unwrap();

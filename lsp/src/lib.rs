@@ -2,6 +2,7 @@
 pub mod completion;
 pub mod diagnostics;
 pub mod document;
+pub mod explore;
 pub mod groups;
 pub mod hover;
 pub mod inlay;

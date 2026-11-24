@@ -7,6 +7,7 @@ use std::sync::Arc;
 use crate::completion::{completion, document};
 use crate::diagnostics::{diagnostics, redundant_alias};
 use crate::document::{kind, DocumentKind};
+use crate::explore;
 use crate::groups::link_at;
 use crate::inlay::{inlay_hints, Hints};
 use crate::navigation::{definition, links, references, rename, symbol_at};
@@ -54,6 +55,7 @@ pub const TOGGLE_COMMAND: &str = "codeshaper.toggle";
 const PREVIEW_REQUEST: &str = "codeshaper/preview";
 const OPERATION_COMMAND: &str = "codeshaper.previewOperation";
 const OPERATION_REQUEST: &str = "codeshaper/previewOperation";
+const EXPLORE_COMMAND: &str = "codeshaper.explore";
 
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -316,6 +318,7 @@ impl<'c> Server<'c> {
                 if is_configuration || !lenses.is_empty() {
                     let place = usize::from(!lenses.is_empty());
                     lenses.insert(place, command(Range::default(), "Preview operation".to_string(), OPERATION_COMMAND));
+                    lenses.insert(place + 1, command(Range::default(), "Explore target".to_string(), EXPLORE_COMMAND));
                 }
 
                 Response::new_ok(request.id, lenses)
@@ -390,14 +393,20 @@ impl<'c> Server<'c> {
 
                 match found {
                     Some((snapshot, configuration)) => {
-                        let open = self.documents.iter()
-                            .filter_map(|(uri, text)| Some((canonicalize(path(uri)?).ok()?, text.clone())))
-                            .collect();
-                        self.worker.request(request.id, snapshot, Work::Operation { configuration, open });
+                        self.worker.request(request.id, snapshot, Work::Operation { configuration, open: self.open() });
                         return Ok(())
                     }
                     None => Response::new_err(request.id, ErrorCode::InvalidParams as i32, "Not an open patch or configuration".to_string())
                 }
+            }
+            method if explore::REQUESTS.contains(&method) => match explore::start(&request.params) {
+                Some((uri, start)) => {
+                    let snapshot = Snapshot { uri, project: PathBuf::new(), text: String::new(), revision: 0 };
+                    let work = Work::Explore { method: request.method, start, params: request.params, open: self.open() };
+                    self.worker.request(request.id, snapshot, work);
+                    return Ok(())
+                }
+                None => Response::new_err(request.id, ErrorCode::InvalidParams as i32, "Not a patch or configuration".to_string())
             }
             SemanticTokensFullRequest::METHOD => {
                 let params: SemanticTokensParams = serde_json::from_value(request.params).into_diagnostic()?;
@@ -412,6 +421,12 @@ impl<'c> Server<'c> {
         };
 
         self.connection.sender.send(response.into()).into_diagnostic()
+    }
+
+    fn open(&self) -> HashMap<PathBuf, String> {
+        self.documents.iter()
+            .filter_map(|(uri, text)| Some((canonicalize(path(uri)?).ok()?, text.clone())))
+            .collect()
     }
 
     fn patch_at(&self, uri: &Uri, position: Position) -> Option<(PathBuf, &str, usize)> {

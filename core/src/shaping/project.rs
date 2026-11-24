@@ -55,21 +55,30 @@ impl Project {
 }
 
 
-pub fn load_patches(
-    directory: &Path, read: &dyn Fn(&Path) -> io::Result<String>
-) -> Result<(BTreeMap<String, Patch>, BTreeMap<String, PatchSource>)> {
-    let mut patches = BTreeMap::new();
-    let mut sources = BTreeMap::new();
+pub fn patch_files(directory: &Path) -> Result<Vec<(String, PathBuf)>> {
     let search = directory.join("**").join("*.*");
 
     let entries = glob(&search.to_string_lossy())
         .into_diagnostic()
         .wrap_err_with(|| format!("Could not search for patches in {}", directory.display()))?;
 
-    for entry in entries {
-        let path = entry.into_diagnostic()?;
-        let name = path.strip_prefix(directory).into_diagnostic()?.to_string_lossy().replace(MAIN_SEPARATOR, "/");
+    entries
+        .map(|entry| {
+            let path = entry.into_diagnostic()?;
+            let name = path.strip_prefix(directory).into_diagnostic()?.to_string_lossy().replace(MAIN_SEPARATOR, "/");
 
+            Ok((name, path))
+        })
+        .collect()
+}
+
+pub fn load_patches(
+    directory: &Path, read: &dyn Fn(&Path) -> io::Result<String>
+) -> Result<(BTreeMap<String, Patch>, BTreeMap<String, PatchSource>)> {
+    let mut patches = BTreeMap::new();
+    let mut sources = BTreeMap::new();
+
+    for (name, path) in patch_files(directory)? {
         let (patch, source) = Patch::load_with(&path, read)
             .wrap_err_with(|| format!("Could not load patch {}", path.display()))?;
 

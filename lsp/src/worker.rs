@@ -10,6 +10,7 @@ use std::thread::{self, JoinHandle};
 // Crate Uses
 use crate::diagnostics::{coverage, file};
 use crate::document::{kind, DocumentKind};
+use crate::explore::{self, Located};
 use crate::hover::{hover, settings};
 use crate::inlay::{places, Counts, Hints};
 use crate::navigation::links;
@@ -49,7 +50,8 @@ pub enum Work {
     Explain(usize),
     Open { field: Field, pattern: String, origin: Range, links: bool },
     Preview,
-    Operation { configuration: Option<PathBuf>, open: HashMap<PathBuf, String> }
+    Operation { configuration: Option<PathBuf>, open: HashMap<PathBuf, String> },
+    Explore { method: String, start: PathBuf, params: serde_json::Value, open: HashMap<PathBuf, String> }
 }
 
 enum Task {
@@ -267,6 +269,7 @@ impl Drop for Worker {
 
 fn run(shared: &Arc<Shared>, registry: &Registry, limits: Limits, tasks: Receiver<Task>) {
     let mut traces = Traces::new(limits);
+    let mut located = Located::default();
 
     for task in tasks {
         match task {
@@ -290,7 +293,7 @@ fn run(shared: &Arc<Shared>, registry: &Registry, limits: Limits, tasks: Receive
                     continue
                 }
 
-                let response = catch_unwind(AssertUnwindSafe(|| answer(shared, registry, &mut traces, &id, &snapshot, work)))
+                let response = catch_unwind(AssertUnwindSafe(|| answer(shared, registry, &mut traces, &mut located, &id, &snapshot, work)))
                     .unwrap_or_else(|_| Response::new_err(id.clone(), ErrorCode::InternalError as i32, "The request failed unexpectedly".to_string()));
                 shared.finish(id, response);
             }
@@ -322,7 +325,7 @@ fn trace(shared: &Arc<Shared>, registry: &Registry, traces: &mut Traces, snapsho
 }
 
 fn answer(
-    shared: &Arc<Shared>, registry: &Registry, traces: &mut Traces, id: &RequestId, snapshot: &Snapshot, work: Work
+    shared: &Arc<Shared>, registry: &Registry, traces: &mut Traces, located: &mut Located, id: &RequestId, snapshot: &Snapshot, work: Work
 ) -> Response {
     let Snapshot { uri, project, text, .. } = snapshot;
     let (guard, request, current) = (shared.clone(), id.clone(), snapshot.clone());
@@ -359,6 +362,12 @@ fn answer(
 
             match found {
                 Ok(preview) => operation_response(id, preview),
+                Err(error) => Response::new_err(id.clone(), ErrorCode::RequestFailed as i32, message(&error))
+            }
+        }
+        Work::Explore { method, start, params, open } => {
+            match explore::answer(registry, located, &method, &start, &params, &open, &|| !shared.is_cancelled(id)) {
+                Ok(found) => Response::new_ok(id.clone(), found),
                 Err(error) => Response::new_err(id.clone(), ErrorCode::RequestFailed as i32, message(&error))
             }
         }
