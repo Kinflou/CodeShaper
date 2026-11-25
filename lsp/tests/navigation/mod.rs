@@ -81,6 +81,15 @@ fn calls_inside_arguments_are_followed() {
 }
 
 #[test]
+fn calls_inside_choices_are_followed() {
+    let text = "maker \"a\" {\n}\nswitch \"s\" {\n    cases x=\"#[a]\" y=\"b\"\n    default \"#[a(1)]\"\n}\nlist \"l\" {\n    values \"é\" \"#[a]\"\n}\n";
+    let outline = Outline::parse(text);
+
+    assert_eq!(references(&outline, text, 7, false).len(), 3);
+    assert_eq!(rename(&outline, text, text.find("#[a(").unwrap() + 2, "b").unwrap().len(), 4);
+}
+
+#[test]
 fn replacers_are_renamed_by_name() {
     let text = "actions {\n    replacer \"first\" {\n        to \"#[second] #[m]\"\n    }\n    replacer \"second\" {\n        to \"first\"\n    }\n    maker \"m\" {\n    }\n}\n";
     let outline = Outline::parse(text);

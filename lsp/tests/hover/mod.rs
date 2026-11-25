@@ -372,6 +372,23 @@ fn places_are_the_same_in_patch_blocks() {
 }
 
 #[test]
+fn arguments_are_shown_in_choices() {
+    let patch = INDEXED.replace("gone=\"removed\"", "gone=\"@[0]#[pair('a', 'b')]\"").replace("\"first\" \"second\"", "\"first\" \"@[0]\"");
+
+    for (needle, name) in [("\"@[0]#", "kind"), ("\"first\" \"@[0]", "order")] {
+        let shift = needle.rfind("@[").unwrap() + 2;
+        let (text, range) = hovered(&patch, needle, shift);
+
+        assert!(text.starts_with(&format!("`@[0]` is argument 1 of `#[{name}]`")), "{text}");
+        assert_eq!(range, "@[0]");
+    }
+
+    let (text, range) = hovered(&patch, "@[0]#[pair", 7);
+    assert!(text.starts_with("Called from 2 place(s)"), "{text}");
+    assert_eq!(range, "pair");
+}
+
+#[test]
 fn arguments_show_the_values_passed() {
     let (text, range) = hovered(INDEXED, "@[1]", 2);
     assert_eq!(range, "@[1]");

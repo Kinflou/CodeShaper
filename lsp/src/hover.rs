@@ -82,7 +82,7 @@ pub fn hover(
     let kind = outline.nodes[action].name.as_str();
 
     let passed = arguments(text, &literal).into_iter().find(|(_, range)| range.start <= offset && offset <= range.end);
-    if let Some((variable, range)) = passed.filter(|_| matches!((kind, field), ("maker", "make") | ("list" | "switch", "index"))) {
+    if let Some((variable, range)) = passed.filter(|_| matches!((kind, field), ("maker", "make") | ("list" | "switch", "index" | "cases" | "values" | "default"))) {
         let traced = traced(registry, project, traces, text, &outline, action);
         let calls = traced.as_ref().and_then(|(trace, path)| trace.action(path));
 

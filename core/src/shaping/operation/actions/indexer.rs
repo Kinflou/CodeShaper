@@ -32,14 +32,12 @@ impl ListAction {
         self.composer = Some(Composer::with(self_id));
     }
 
-    pub fn index(&self, controller: &PatchController, index: usize) -> Option<String> {
+    pub fn index(&self, controller: &PatchController, index: usize, args: &[String]) -> Option<String> {
         if self.list.values.is_empty() { return None }
 
-        if index < self.list.values.len() {
-            return self.list.values.get(index).cloned()
-        }
+        let picked = self.list.values.get(index).or(self.list.default.as_ref())?;
 
-        self.list.default.clone()
+        visitor::navigate_expression(self.composer.as_ref().unwrap(), controller, picked, args).ok()
     }
 
     pub fn index_with_args(&self, controller: &PatchController, args: &[String]) -> Option<String> {
@@ -52,7 +50,7 @@ impl ListAction {
             ) else { return None };
             controller.record(*self.self_id(), |trace, _| { trace.keys.insert(index.to_string()); });
 
-            return self.index(controller, index)
+            return self.index(controller, index, args)
         }
 
         if let Some(default) = &self.list.default {
@@ -60,7 +58,7 @@ impl ListAction {
                 controller, &self.list.index.clone().unwrap(), args
             ) else { return None };
 
-            return self.index(controller, default_index)
+            return self.index(controller, default_index, args)
         }
 
         None
@@ -112,33 +110,26 @@ impl SwitchAction {
         self.composer = Some(Composer::with(self_id));
     }
 
-    pub fn resolve(&self, controller: &PatchController, argument: &str) -> Option<String> {
-        if self.switch.cases.is_empty() { return None }
-        if self.switch.index.is_empty() { return None }
-
-        if self.switch.cases.contains_key(argument) {
-            return self.switch.cases.get(argument).cloned()
-        }
-
-        self.switch.default.clone()
+    pub fn resolve(&self, controller: &PatchController, key: &str, args: &[String]) -> Option<String> {
+        visitor::navigate_expression(self.composer.as_ref().unwrap(), controller, self.picked(key)?, args).ok()
     }
 
     pub fn resolve_with_args(&self, controller: &PatchController, args: &[String]) -> Option<String> {
         let key = self.resolve_index_expr(controller, &self.switch.index.clone(), args)?;
         controller.record(*self.self_id(), |trace, _| { trace.keys.insert(key.clone()); });
 
-        self.resolve(controller, &key)
+        self.resolve(controller, &key, args)
     }
 
     pub fn resolve_isolated(&self, argument: &str) -> Option<String> {
+        self.picked(argument).map(str::to_string)
+    }
+
+    fn picked(&self, key: &str) -> Option<&str> {
         if self.switch.cases.is_empty() { return None }
         if self.switch.index.is_empty() { return None }
 
-        if self.switch.cases.contains_key(argument) {
-            return self.switch.cases.get(argument).cloned()
-        }
-
-        self.switch.default.clone()
+        self.switch.cases.get(key).or(self.switch.default.as_ref()).map(String::as_str)
     }
 
     fn resolve_index_expr(

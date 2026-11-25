@@ -253,6 +253,14 @@ fn called_variables_need_a_value() {
     assert!(run(DECLARED, "", "#[prefix]", &[]).is_ok());
     assert!(run(DECLARED, "variables engine=\"\"\n", "#[engine]", &[]).is_ok());
 
+    let picking = patch("", "Line", "old", "#[s('a')]").replace("actions {", "actions {\nswitch \"s\" {\ncases a=\"#[prefix]\" b=\"#[engine]\"\nindex \"@[0]\"\n}\n");
+    let picked = |configuration: &str| {
+        let found = directory(DECLARED, configuration, &[("a.kdl", picking.clone())]);
+        operation(&found).run(&registry()).map(|_| read(&found, "target/a.txt"))
+    };
+    assert_eq!(picked("variables engine=\"4\"\n").unwrap(), "my_ one\nkeep\n");
+    assert_eq!(picked("").unwrap_err().downcast_ref::<NotSet>().unwrap().names, vec!["engine"]);
+
     let content = patch("", "Line", "old", "#[engine]");
     let found = directory(DECLARED, "", &[]);
     assert!(operation(&found).preview(&registry(), "", &Patch::from_kdl("", &content).unwrap()).unwrap_err().downcast_ref::<NotSet>().is_some());

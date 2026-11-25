@@ -184,15 +184,15 @@ pub const PATCH: &[Explained] = &[
         "make \"set_@[0](@[1])\""
     ),
 
-    within("switch", "cases", REQUIRED, "The texts to pick from, each with its key.", "cases integer=\"int\" boolean=\"bool\""),
+    within("switch", "cases", REQUIRED, "The texts to pick from, each with its key. They can use the arguments as `@[0]` and call other actions as `#[name]`, only the picked one is run.", "cases integer=\"int\" boolean=\"bool\""),
     within("switch", "index", REQUIRED, "The key to pick, usually an argument.", "index \"@[0]\""),
     within(
         "switch", "default", OPTIONAL,
-        "The text for keys without a case. Without it they give nothing, and nothing is replaced at the place the switch is called for.",
+        "The text for keys without a case, run as the cases are. `@[0]` gives the first argument back. Without it they give nothing, and nothing is replaced at the place the switch is called for.",
         "default \"void\""
     ),
 
-    within("list", "values", REQUIRED, "The texts to pick from. The first one is at position 0.", "values \"first\" \"second\""),
+    within("list", "values", REQUIRED, "The texts to pick from, the first one is at position 0. They can use the arguments as `@[0]` and call other actions as `#[name]`, only the picked one is run.", "values \"first\" \"second\""),
     within(
         "list", "index", "optional, but without it the list gives nothing",
         "The position to pick, usually an argument.",
@@ -200,7 +200,7 @@ pub const PATCH: &[Explained] = &[
     ),
     within(
         "list", "default", OPTIONAL,
-        "The text for positions past the end. Without it they give nothing, and nothing is replaced at the place the list is called for.",
+        "The text for positions past the end, run as the values are. Without it they give nothing, and nothing is replaced at the place the list is called for.",
         "default \"last\""
     )
 ];

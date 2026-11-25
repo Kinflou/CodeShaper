@@ -1,5 +1,5 @@
 // Standard Uses
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::ops::Range;
 
 // Crate Uses
@@ -201,6 +201,8 @@ enum Locals {
     Unknown
 }
 
+const NO_REGEX: Locals = Locals::Unavailable("switches and lists have no regex");
+
 type Call = (String, &'static str, String, usize, Option<SourceSpan>);
 
 #[derive(Default)]
@@ -302,6 +304,12 @@ impl<'a> Validator<'a> {
             if let Some(index) = &list.index {
                 self.expression(&path, "index", index, &Locals::Unavailable("'index' has no regex"), Some(&list.name));
             }
+            for (index, value) in list.values.iter().enumerate() {
+                self.choice(&path, "values", &index.to_string(), value, &list.name);
+            }
+            if let Some(default) = &list.default {
+                self.expression(&path, "default", default, &NO_REGEX, Some(&list.name));
+            }
         }
 
         for (index, switch) in actions.switches.iter().enumerate() {
@@ -309,7 +317,21 @@ impl<'a> Validator<'a> {
             let path = self.name(parent, &switch.name);
             self.receivers.insert(switch.name.clone());
             self.expression(&path, "index", &switch.index, &Locals::Unavailable("'index' has no regex"), Some(&switch.name));
+
+            let cases: BTreeMap<&String, &String> = switch.cases.iter().collect();
+            for (key, value) in cases {
+                self.choice(&path, "cases", key, value, &switch.name);
+            }
+            if let Some(default) = &switch.default {
+                self.expression(&path, "default", default, &NO_REGEX, Some(&switch.name));
+            }
         }
+    }
+
+    fn choice(&mut self, action: &str, field: &'static str, key: &str, text: &str, name: &str) {
+        self.current_span = self.current.and_then(|current| current.values.get(key)).copied();
+        self.expression(action, field, text, &NO_REGEX, Some(name));
+        self.current_span = None;
     }
 
     fn name(&mut self, parent: &str, name: &str) -> String {

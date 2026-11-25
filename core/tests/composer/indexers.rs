@@ -82,7 +82,7 @@ fn composition_switch_with_args() {
         .find_action("number_switch", &patch_controller)
         .unwrap().switch().unwrap();
 
-    let result = number_switch.resolve(&patch_controller, "2");
+    let result = number_switch.resolve(&patch_controller, "2", &[]);
 
     assert_eq!(Some("two".to_string()), result);
 }

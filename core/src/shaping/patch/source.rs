@@ -23,6 +23,7 @@ pub struct PatchSource {
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct NodeSpans {
     pub fields: HashMap<String, SourceSpan>,
+    pub values: HashMap<String, SourceSpan>,
     pub actions: ActionSpans
 }
 
@@ -126,6 +127,12 @@ fn node_spans(nodes: &[SpannedNode<Span>]) -> NodeSpans {
         if name == "actions" {
             spans.actions = action_spans(children(node));
             continue
+        }
+
+        match name {
+            "cases" => spans.values.extend(node.properties.iter().map(|(key, value)| (key.to_string(), source_span(value.literal.span())))),
+            "values" => spans.values.extend(node.arguments.iter().enumerate().map(|(index, value)| (index.to_string(), source_span(value.literal.span())))),
+            _ => {}
         }
 
         let span = node.arguments.first().map(|argument| argument.literal.span()).unwrap_or(node.span());

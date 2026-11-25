@@ -140,6 +140,16 @@ fn names_inside_arguments() {
 }
 
 #[test]
+fn names_inside_choices() {
+    let text = "actions {\n    maker \"pair\" {\n        make \"x\"\n    }\n    switch \"s\" {\n        cases a=\"#[p\" b=\"$[\"\n        default \"#[\"\n    }\n    list \"l\" {\n        values \"a\" \"#[s(#[\"\n    }\n}\n";
+
+    for needle in ["\"#[p", "default \"#[", "#[s(#["] {
+        assert_eq!(labels(text, text.find(needle).unwrap() + needle.len()), vec!["pair", "s", "l"], "{needle}");
+    }
+    assert_eq!(labels(text, text.find("$[").unwrap() + 2), Vec::<String>::new());
+}
+
+#[test]
 fn locals_offer_the_regex_groups() {
     let text = "actions {\n    replacer {\n        from r\"(\\w+) (?:x) (?P<n>\\d)\"\n        to \"a $[\"\n    }\n}\n";
     let offset = text.find("$[").unwrap() + 2;
