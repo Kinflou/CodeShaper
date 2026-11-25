@@ -10,7 +10,7 @@ use codeshaper_lsp::syntax::Outline;
 const PATCH: &str = r##"actions {
     builder "names" {
         match r"(\w+)"
-        build "$[0] #[pair]($[0])"
+        build "$[0] #[pair($[0])]"
     }
     maker "pair" {
         make "@[0]=#[names]"

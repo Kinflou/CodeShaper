@@ -35,13 +35,13 @@ maker "plain" {
 replacer {
     location "Line"
     from r"(\w+)=(\w+)"
-    to "$[0]:#[pair]($[0])#[around]"
+    to "$[0]:#[pair($[0])]#[around]"
 }
 replacer {
     location "Line"
     from r"^(b\w*)"
     flags "im"
-    to "#[plain]($[0])#[all]"
+    to "#[plain($[0])]#[all]"
 }
 "##;
 

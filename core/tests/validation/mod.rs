@@ -151,7 +151,7 @@ fn makers_take_arguments_but_need_prepare_for_locals() {
     maker "local" {{
         make "$[0]"
     }}
-    {}"#, replacer("Line", r"old (\w+)", "#[wrap]($[0]) #[local]"));
+    {}"#, replacer("Line", r"old (\w+)", "#[wrap($[0])] #[local]"));
 
     assert_eq!(kinds(&check(&actions)), vec![(DiagnosticKind::IncorrectArgs, "local", "make")]);
 }
@@ -217,7 +217,7 @@ fn calls_pass_enough_arguments() {
     maker "pair" {{
         make "@[0]=@[1]"
     }}
-    {}"#, replacer("Line", r"old (\w+)", "#[pair]($[0], $[0]) #[pair]($[0]) #[names]($[0])"));
+    {}"#, replacer("Line", r"old (\w+)", "#[pair($[0], $[0])] #[pair($[0])] #[names($[0])]"));
 
     let diagnostics = check(&actions);
 
@@ -253,7 +253,7 @@ fn spans_allow_for_raw_and_multiline_strings() {
 
 #[test]
 fn each_wrong_call_has_its_own_span() {
-    assert_eq!(underlined(r#"r"old""#, r##""#[one]($[0]) #[two]""##), vec!["$[0]", "#[one]", "#[two]"]);
+    assert_eq!(underlined(r#"r"old""#, r##""#[one($[0])] #[two]""##), vec!["$[0]", "#[one", "#[two]"]);
     assert_eq!(underlined(r#"r"old""#, r##""a @[0] b""##), vec!["@[0]"]);
 }
 
@@ -272,4 +272,6 @@ fn groups_have_ranges_and_names() {
 #[test]
 fn every_unclosed_call_is_reported() {
     assert_eq!(underlined(r#"r"old""#, r##""#[one $[0] @[x \t#[gone]""##), vec!["#[one", "@[x", "$[0]", "#[gone]"]);
+    assert_eq!(underlined(r#"r"old""#, r##""#[one('a' $[0]) \t#[gone('#[lost]')]""##), vec!["#[one(", "$[0]", "#[gone", "#[lost]"]);
+    assert_eq!(underlined(r#"r"old""#, r##"r#"é #[gone("$[3]", '@[0]')]"#"##), vec!["$[3]", "@[0]", "#[gone"]);
 }

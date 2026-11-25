@@ -77,7 +77,7 @@ fn simple_composition_with_build_action_expression() {
                     reference_location: None,
                     r#match: "Hello (.+) attempt".to_owned(),
                     flags: String::new(),
-                    build: "Goodbye #[greet_maker]($[0]) World".to_owned(),
+                    build: "Goodbye #[greet_maker($[0])] World".to_owned(),
                     collect: false,
                     separator: String::new(),
                     actions: Actions {

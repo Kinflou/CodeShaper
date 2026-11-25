@@ -22,13 +22,13 @@ fn absolute(text: &str) -> Vec<(u32, u32, u32, u32)> {
 
 #[test]
 fn expressions_inside_strings_are_tokens() {
-    let text = "builder \"b\" {\n    build \"ä $[0] #[pair]($[0], @[1])\"\n    // #[comment]\n}\n";
+    let text = "builder \"b\" {\n    build \"ä $[0] #[pair($[0], @[1])]\"\n    // #[comment]\n}\n";
 
     assert_eq!(absolute(text), vec![
         (1, 13, 4, 1),
-        (1, 18, 7, 0),
-        (1, 26, 4, 1),
-        (1, 32, 4, 2),
+        (1, 18, 6, 0),
+        (1, 25, 4, 1),
+        (1, 31, 4, 2),
     ]);
 }
 

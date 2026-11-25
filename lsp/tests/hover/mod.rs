@@ -64,7 +64,7 @@ actions {
     replacer {
         location "function_definition"
         from r"void (\w+)\(\)"
-        to "void #[pair]($[0], #[kind]($[0]))_#[order](\"1\")()"
+        to "void #[pair($[0], #[kind($[0])])]_#[order(\"1\")]()"
     }
 }
 "##;

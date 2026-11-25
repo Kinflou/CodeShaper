@@ -80,16 +80,16 @@ fn getter(to: &str) -> String {
 
 #[test]
 fn prepare_runs_on_the_first_argument() {
-    let one = getter("#[getter]($[0])").replace(r"old (\w+)", r"(old \w+)");
+    let one = getter("#[getter($[0])]").replace(r"old (\w+)", r"(old \w+)");
     assert_eq!(preview(&one).unwrap(), "old get_one()\nkeep\n");
 
-    let twice = getter("#[getter]($[0]) #[getter](\\\"a b\\\")").replace(r"old (\w+)", r"(old \w+)");
+    let twice = getter("#[getter($[0])] #[getter(\\\"a b\\\")]").replace(r"old (\w+)", r"(old \w+)");
     assert_eq!(preview(&twice).unwrap(), "old get_one() a get_b()\nkeep\n");
 }
 
 #[test]
 fn arguments_prepare_does_not_match_leave_the_text_alone() {
-    assert_eq!(preview(&getter("#[getter]($[0])")).unwrap(), "old one\nkeep\n");
+    assert_eq!(preview(&getter("#[getter($[0])]")).unwrap(), "old one\nkeep\n");
 }
 
 #[test]
@@ -139,7 +139,7 @@ fn flags_apply_to_match_and_prepare() {
     }"#);
     assert_eq!(preview(&builder).unwrap(), "new <one>\nkeep\n");
 
-    let maker = getter("#[getter]($[0])").replace(r"old (\w+)", r"(old \w+)")
+    let maker = getter("#[getter($[0])]").replace(r"old (\w+)", r"(old \w+)")
         .replace(r#"prepare r"(\w+) (\w+)""#, "prepare r\"(OLD) (\\w+)\"\n        flags \"i\"");
     assert_eq!(preview(&maker).unwrap(), "old get_one()\nkeep\n");
 

@@ -211,14 +211,14 @@ fn every_expression_takes_values() {
         replacer {
             location "Line"
             from "old one"
-            to "#[b] #[m](#[header]) #[s] #[l] #[m](\"#[prefix]\")"
+            to "#[b] #[m(#[header])] #[s] #[l] #[m(\"#[prefix]\")]"
         }
     "##;
     let content = format!("file \"*.txt\"\nactions {{\n{actions}\n}}\n");
     let directory = directory(&format!("{DECLARED}constant \"number\" \"1\"\n"), "", &[("a.kdl", content)]);
     operation(&directory).run(&registry()).unwrap();
 
-    assert_eq!(read(&directory, "target/a.txt"), "my_old(Generated) Generated-my_ found b #[prefix]-my_\nkeep\n");
+    assert_eq!(read(&directory, "target/a.txt"), "my_old(Generated) Generated-my_ found b my_-my_\nkeep\n");
 }
 
 #[test]
@@ -310,16 +310,16 @@ fn patches_are_checked_against_the_names() {
     let one = |kind: DiagnosticKind, severity: Severity, message: &str, marked: &str| vec![(kind, severity, message.to_string(), marked.to_string())];
 
     assert_eq!(found(&replacer("#[prefix]#[header]"), &names), vec![]);
+    assert_eq!(found(&replacer("#[prefix]()#[prefix](a)#[prefix]($[0])#[header()]").replace("\"a\"", "\"(a)\""), &names), vec![]);
     assert_eq!(found(&replacer("#[prefix]"), &[]), one(DiagnosticKind::ActionNotFound, Severity::Error, "No action named 'prefix'", "#[prefix]"));
     assert_eq!(found(&replacer("#[other]"), &names), one(DiagnosticKind::ActionNotFound, Severity::Error, "No action named 'other'", "#[other]"));
     assert_eq!(found(&replacer("a #[engine]"), &names), one(DiagnosticKind::VariableNotSet, Severity::Warning, "Variable 'engine' has no value", "#[engine]"));
 
     let message = |kind: &str, name: &str| format!("'#[{name}]' is a {kind}, it takes no arguments, but is called with 1");
     for (kind, name) in [("variable", "prefix"), ("constant", "header")] {
-        let call = format!("#[{name}]");
         assert_eq!(
-            found(&replacer(&format!("{call}(\\\"a\\\")")), &names),
-            one(DiagnosticKind::IncorrectArgs, Severity::Error, &message(kind, name), &call)
+            found(&replacer(&format!("#[{name}('a')]")), &names),
+            one(DiagnosticKind::IncorrectArgs, Severity::Error, &message(kind, name), &format!("#[{name}"))
         );
     }
 }
@@ -345,7 +345,7 @@ fn actions_can_not_take_the_names() {
 
 #[test]
 fn called_names_are_found() {
-    let content = "file \"*\"\nactions {\nmaker \"a\" {\nmake \"#[b](#[c])\"\nprepare \"(\"\n}\nreplacer {\nlocation \"x\"\nfrom \"y\"\nto \"#[a]#[\"\n}\n}\n";
+    let content = "file \"*\"\nactions {\nmaker \"a\" {\nmake \"#[b(#[c])]\"\nprepare \"(\"\n}\nreplacer {\nlocation \"x\"\nfrom \"y\"\nto \"#[a]#[\"\n}\n}\n";
     let called = called(&Patch::from_kdl("", content).unwrap());
 
     assert_eq!(called.into_iter().collect::<Vec<_>>(), vec!["a", "b", "c"]);

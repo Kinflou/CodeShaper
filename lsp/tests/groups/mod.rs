@@ -21,13 +21,13 @@ fn replacer(from: &str, to: &str, flags: &str) -> String {
 
 #[test]
 fn locals_lead_to_their_group_and_back() {
-    let patch = replacer(r#"r"(\w+) ((x)y)""#, r##""é\t$[1] #[a]($[0]) $[1]""##, "");
+    let patch = replacer(r#"r"(\w+) ((x)y)""#, r##""é\t$[1] #[a($[0])] $[1]""##, "");
 
     assert_eq!(linked(&patch, "$[0]", 2), Some((r"(\w+)".to_string(), vec!["$[0]".to_string()])));
     assert_eq!(linked(&patch, "$[1]", 0), Some(("((x)y)".to_string(), vec!["$[1]".to_string(), "$[1]".to_string()])));
     assert_eq!(linked(&patch, r"\w", 1), Some((r"(\w+)".to_string(), vec!["$[0]".to_string()])));
     assert_eq!(linked(&patch, "(x)", 1), Some(("(x)".to_string(), vec![])));
-    assert_eq!(linked(&patch, "#[a]", 2), None);
+    assert_eq!(linked(&patch, "#[a(", 2), None);
 }
 
 #[test]

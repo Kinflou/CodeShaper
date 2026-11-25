@@ -274,7 +274,7 @@ fn nothing_given_skips_the_place() {
     assert_eq!(body(&list("index \"2\"", "default \"c\""), "#[l]"), source.replace('x', "c"));
     assert_eq!(body(&list("", "default \"c\""), "#[l]"), source);
 
-    let some = replacer("function_definition.body", r"(x|y)", "#[s]($[0])") + "switch \"s\" {\ncases x=\"1\"\nindex \"@[0]\"\n}\n";
+    let some = replacer("function_definition.body", r"(x|y)", "#[s($[0])]") + "switch \"s\" {\ncases x=\"1\"\nindex \"@[0]\"\n}\n";
     assert_eq!(applied(&some, "void f() { x; y; }\nvoid g() { x; }\n"), "void f() { x; y; }\nvoid g() { 1; }\n");
 }
 
@@ -291,7 +291,7 @@ fn replacers_run_in_order_on_their_text() {
 
 #[test]
 fn nested_actions_are_called_from_anywhere() {
-    let nested = replacer("identifier", "^a$", "x").replace("to", "actions {\nmaker \"m\" {\nmake \"<@[0]>\"\n}\n}\nto") + &replacer("identifier", "^(b)$", "#[m]($[0])");
+    let nested = replacer("identifier", "^a$", "x").replace("to", "actions {\nmaker \"m\" {\nmake \"<@[0]>\"\n}\n}\nto") + &replacer("identifier", "^(b)$", "#[m($[0])]");
 
     assert_eq!(applied(&nested, "int a; int b;\n"), "int x; int <b>;\n");
 }
@@ -300,7 +300,7 @@ fn nested_actions_are_called_from_anywhere() {
 fn makers_prepare_their_first_argument() {
     let maker = "maker \"m\" {\nprepare r\"(\\w)(\\w)\"\nmake \"$[1]$[0]@[0]@[1]\"\n}\n";
 
-    assert_eq!(applied(&(maker.to_string() + &replacer("identifier", "^(ab)(c)$", "#[m]($[0], $[1])")), "int abc;\n"), "int baabc;\n");
+    assert_eq!(applied(&(maker.to_string() + &replacer("identifier", "^(ab)(c)$", "#[m($[0], $[1])]")), "int abc;\n"), "int baabc;\n");
 }
 
 #[test]

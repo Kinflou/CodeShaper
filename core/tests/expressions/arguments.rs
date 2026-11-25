@@ -45,47 +45,55 @@ pub fn shaped(actions: &str, to: &str) -> String {
 }
 
 fn passed(make: &str) -> String {
-    shaped(&format!("{CALLED}\nmaker \"outer\" {{\nmake r##\"{make}\"##\n}}\n"), "#[outer]($[0], $[1])")
+    shaped(&format!("{CALLED}\nmaker \"outer\" {{\nmake r##\"{make}\"##\n}}\n"), "#[outer($[0], $[1])]")
 }
 
 
 #[test]
 fn makers_pass_their_arguments_on() {
-    assert_eq!(passed("#[inner](@[0], @[1])"), "<one|two>");
-    assert_eq!(passed("#[inner](@[1], @[0])"), "<two|one>");
-    assert_eq!(passed("@[0] #[inner](\"x\", @[1]) @[1]"), "one <x|two> two");
-    assert_eq!(passed("#[prepared](@[0])"), "neoneo");
-    assert_eq!(passed("#[kind](@[1])"), "2");
-    assert_eq!(passed("#[kind](@[0])#[kind](\"x\")"), "1none");
-    assert_eq!(passed("#[order](@[0], \"2\")"), "c");
+    assert_eq!(passed("#[inner(@[0], @[1])]"), "<one|two>");
+    assert_eq!(passed("#[inner(@[1], @[0])]"), "<two|one>");
+    assert_eq!(passed("@[0] #[inner(\"x\", @[1])] @[1]"), "one <x|two> two");
+    assert_eq!(passed("#[prepared(@[0])]"), "neoneo");
+    assert_eq!(passed("#[kind(@[1])]"), "2");
+    assert_eq!(passed("#[kind(@[0])]#[kind(\"x\")]"), "1none");
+    assert_eq!(passed("#[order(@[0], \"2\")]"), "c");
 }
 
 #[test]
 fn arguments_reach_calls_inside_arguments() {
-    assert_eq!(passed("#[inner](#[inner](@[0], @[1]), #[kind](@[0]))"), "<<one|two>|1>");
-    assert_eq!(passed("#[inner](#[inner](#[inner](@[1], \"x\"), @[0]), @[1])"), "<<<two|x>|one>|two>");
+    assert_eq!(passed("#[inner(#[inner(@[0], @[1])], #[kind(@[0])])]"), "<<one|two>|1>");
+    assert_eq!(passed("#[inner(#[inner(#[inner(@[1], \"x\")], @[0])], @[1])]"), "<<<two|x>|one>|two>");
 }
 
 #[test]
 fn each_action_has_its_own_arguments() {
-    let middle = "maker \"middle\" {\nmake \"#[inner](@[0], \\\"m\\\") @[0]\"\n}\n";
-    let outer = "maker \"outer\" {\nmake \"#[middle](@[1]) @[0]\"\n}\n";
+    let middle = "maker \"middle\" {\nmake \"#[inner(@[0], \\\"m\\\")] @[0]\"\n}\n";
+    let outer = "maker \"outer\" {\nmake \"#[middle(@[1])] @[0]\"\n}\n";
 
-    assert_eq!(shaped(&format!("{CALLED}{middle}{outer}"), "#[outer]($[0], $[1])"), "<two|m> two one");
+    assert_eq!(shaped(&format!("{CALLED}{middle}{outer}"), "#[outer($[0], $[1])]"), "<two|m> two one");
 }
 
 #[test]
 fn switches_and_lists_pass_their_arguments_on() {
     let picking = r##"
         switch "picked" {
-            index "#[kind](@[0])"
+            index "#[kind(@[0])]"
             cases "1"="first" "2"="second"
         }
         list "ordered" {
-            index "#[kind](@[0])"
+            index "#[kind(@[0])]"
             values "a" "b" "c"
         }
     "##;
 
-    assert_eq!(shaped(&format!("{CALLED}{picking}"), "#[picked]($[1]) #[ordered]($[0]) #[ordered]($[1])"), "second b c");
+    assert_eq!(shaped(&format!("{CALLED}{picking}"), "#[picked($[1])] #[ordered($[0])] #[ordered($[1])]"), "second b c");
+}
+
+#[test]
+fn text_in_quotes_is_run() {
+    assert_eq!(shaped(CALLED, "#[inner('$[0]_$[1]', '<#[kind($[0])]>')]"), "<one_two|<1>>");
+    assert_eq!(shaped(CALLED, "#[inner($[0], \"#[inner('$[1]', '')]\")]()"), "<one|<two|>>()");
+    assert_eq!(passed("#[inner('@[0]@[1]', 0)]"), "<onetwo|0>");
+    assert_eq!(shaped(CALLED, "#[order('', 1)]"), "b");
 }

@@ -3,8 +3,7 @@ action = {
 	 SOI ~ (text | expression | unclosed)* ~ EOI
 }
 
-text = @{ wild_char+ }
-wild_char = { !expression ~ !opener ~ ANY }
+text = @{ (!opener ~ ANY)+ }
 
 opener = _{ ("#" | "$" | "@") ~ "[" }
 
@@ -16,15 +15,15 @@ expression = _{
 }
 
 action_call = {
-    "#" ~ "[" ~ id ~ "]" ~ arguments?
+    "#" ~ "[" ~ id ~ arguments? ~ "]"
 }
 
 arguments = _{
 	"("
-    ~ (WS* ~ argument ~ WS* ~ ","?)*
+    ~ WS* ~ (argument ~ (WS* ~ "," ~ WS* ~ argument)*)? ~ WS*
     ~ ")"
 }
-argument = { expression | string }
+argument = _{ expression | number | single | double }
 
 local_call = {
 	"$" ~ "[" ~ id ~ "]"
@@ -36,10 +35,12 @@ argument_call = {
 
 
 id = { char+ }
-string = { "\"" ~ value ~ "\"" }
-value = { (!"\"" ~ ANY)* }
+number = @{ ASCII_DIGIT+ }
+single = { "'" ~ (single_text | expression)* ~ "'" }
+single_text = @{ (!"'" ~ !opener ~ ANY)+ }
+double = { "\"" ~ (double_text | expression)* ~ "\"" }
+double_text = @{ (!"\"" ~ !opener ~ ANY)+ }
 char = _{ ASCII_ALPHANUMERIC | "_" | "-" | "!" }
 
 WS = _{ " " | "\t" | "\r" | "\n" }
 // WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
-

@@ -71,7 +71,7 @@ fn nested_actions_are_keyed_by_path() {
 
 #[test]
 fn prepared_makers_record_their_input() {
-    let content = patch("lines", "Line", r"(old \w+)", "#[getter]($[0])").replace("    replacer {", r#"    maker "getter" {
+    let content = patch("lines", "Line", r"(old \w+)", "#[getter($[0])]").replace("    replacer {", r#"    maker "getter" {
         prepare r"(\w+) (\w+)"
         make "get_$[1]"
     }

@@ -102,17 +102,17 @@ pub const PATCH: &[Explained] = &[
     ),
     action(
         "maker",
-        "Makes text out of the arguments it's called with, as `#[name]($[0], $[1])`.",
+        "Makes text out of the arguments it's called with, as `#[name($[0], $[1])]`.",
         "maker \"pair\" {\n    make \"@[0] = @[1]\"\n}"
     ),
     action(
         "switch",
-        "Picks a text by its key, as `#[name]($[0])`.",
+        "Picks a text by its key, as `#[name($[0])]`.",
         "switch \"type\" {\n    cases integer=\"int\" boolean=\"bool\"\n    index \"@[0]\"\n}"
     ),
     action(
         "list",
-        "Picks a text by its position, as `#[name]($[0])`.",
+        "Picks a text by its position, as `#[name($[0])]`.",
         "list \"order\" {\n    values \"first\" \"second\"\n    index \"@[0]\"\n}"
     ),
 

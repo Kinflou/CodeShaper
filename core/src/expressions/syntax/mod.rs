@@ -25,10 +25,14 @@ impl ExpressionAST<'_> {
     pub fn errors(&self) -> Vec<ExpressionError> {
         match self {
             Self::Action(parts) | Self::ActionCall { arguments: parts, .. } => parts.iter().flat_map(Self::errors).collect(),
-            Self::Unclosed { text, span } => vec![ExpressionError {
-                message: format!("'{text}' is not a complete call: expected a name followed by ']'"),
-                span: span.clone()
-            }],
+            Self::Unclosed { text, span } => {
+                let expected = match text.ends_with('(') {
+                    true => "arguments are captures, calls, numbers or text in quotes, with commas between them, followed by ')]'",
+                    false => "expected a name followed by ']'"
+                };
+
+                vec![ExpressionError { message: format!("'{text}' is not a complete call: {expected}"), span: span.clone() }]
+            }
             _ => vec![]
         }
     }

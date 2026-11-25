@@ -6,7 +6,7 @@ actions {
     builder "hello_builder" {
         location "*"
         match "Lets greet (.+)!"
-        build "Hello #[code_maker]($[0]) World!"
+        build "Hello #[code_maker($[0])] World!"
     }
 
     maker "code_maker" {

@@ -36,7 +36,7 @@ actions {
     replacer {
         location "function_definition"
         from r"void (old)"
-        to "#[kind]($[0])"
+        to "#[kind($[0])]"
     }
 }
 "##;

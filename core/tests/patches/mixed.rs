@@ -15,10 +15,10 @@ const MIXED: &str = r##"
 replacer {
     location "Line"
     from r"old (\w+)"
-    to "#[second]($[0])"
+    to "#[second($[0])]"
 }
 maker "second" {
-    make "#[kind]($[0]) 2"
+    make "#[kind($[0])] 2"
     prepare r"(\w+)"
 }
 builder "names" {
@@ -35,7 +35,7 @@ builder "names" {
         builder "inner" {
             location "Line"
             match r"(\w+)"
-            build "#[deep]($[0])"
+            build "#[deep($[0])]"
         }
     }
 }
@@ -46,7 +46,7 @@ switch "kind" {
 replacer {
     location "Line"
     from r"^1 (\d)$"
-    to "#[order]($[0]) #[names]"
+    to "#[order($[0])] #[names]"
     actions {
         list "order" {
             index "@[0]"
@@ -176,8 +176,8 @@ fn errors_point_at_the_right_action() {
         ("from r\"old (\\w+)\"", "from r\"old (\\w+\"", "replacer #1", "("),
         ("prepare r\"(\\w+)\"", "prepare r\"[\"", "second", "["),
         ("match r\"^(\\w+)$\"", "match r\"^(\\w+$\"", "names", "("),
-        ("build \"#[deep]($[0])\"", "build \"#[gone]($[0])\"", "names/inner", "#[gone]"),
-        ("to \"#[order]($[0]) #[names]\"", "to \"#[order]($[0]) #[names] #[lost]\"", "replacer #2", "#[lost]"),
+        ("build \"#[deep($[0])]\"", "build \"#[gone($[0])]\"", "names/inner", "#[gone"),
+        ("to \"#[order($[0])] #[names]\"", "to \"#[order($[0])] #[names] #[lost]\"", "replacer #2", "#[lost]"),
         ("index \"@[0]\"\n            values", "index \"$[0]\"\n            values", "replacer #2/order", "$[0]")
     ];
 
