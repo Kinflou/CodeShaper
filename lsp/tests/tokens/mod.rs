@@ -40,6 +40,11 @@ fn calls_inside_arguments_are_tokens() {
 }
 
 #[test]
+fn builtins_are_left_to_the_grammar() {
+    assert_eq!(absolute("to \"#[file.path]#[a]#[case.upper(#[b])]\""), vec![(0, 16, 4, 0), (0, 33, 4, 0)]);
+}
+
+#[test]
 fn unterminated_and_empty_markers_are_skipped() {
     let text = "make \"#[] $[ @[x\"";
 

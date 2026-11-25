@@ -109,6 +109,7 @@ fn calls_suggest_the_names() {
     let offset = CALLING.find("#[prefix").unwrap() + 2;
     let items: Vec<(String, Option<String>)> = completion(&codeshaper::registry(), &found, CALLING, offset).into_iter()
         .map(|item| (item.label, item.detail))
+        .filter(|(label, _)| !label.contains('.'))
         .collect();
     let pair = |label: &str, detail: &str| (label.to_string(), Some(detail.to_string()));
 

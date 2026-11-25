@@ -287,7 +287,9 @@ fn names_are_completed_for_their_place() {
         let uri = client.open(&project.join("patches/rename.kdl"), text);
         let position = LineIndex::new(text).position(offset);
 
-        labels(&ask(&mut client, "textDocument/completion", json!({ "textDocument": { "uri": uri.as_str() }, "position": position })))
+        let found = labels(&ask(&mut client, "textDocument/completion", json!({ "textDocument": { "uri": uri.as_str() }, "position": position })));
+
+        found.into_iter().filter(|label| !label.contains('.')).collect::<Vec<_>>()
     };
     let text = several() + "\n";
 

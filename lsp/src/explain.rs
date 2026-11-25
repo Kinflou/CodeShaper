@@ -9,6 +9,7 @@ use crate::paths::TEXT;
 use crate::syntax::Outline;
 
 // External Uses
+use codeshaper::core::expressions::builtins::Builtin;
 use lsp_types::{Documentation, MarkupContent, MarkupKind};
 
 
@@ -271,6 +272,15 @@ pub const CONFIGURATION: &[Explained] = &[
 
 pub fn explained<'e>(table: &'e [Explained], parent: Option<&str>, name: &str) -> Option<&'e Explained> {
     table.iter().find(|explained| explained.parent == parent && explained.name == name)
+}
+
+pub fn builtin(builtin: &Builtin) -> String {
+    let arguments = match builtin.arguments {
+        [] => "built-in".to_string(),
+        names => format!("built-in function ({})", names.join(", "))
+    };
+
+    format!("**{}** · {arguments}\n\n{}\n\n```kdl\n{}\n```", builtin.name, builtin.text, builtin.example)
 }
 
 pub fn documentation(table: &[Explained], parent: Option<&str>, name: &str) -> Option<Documentation> {

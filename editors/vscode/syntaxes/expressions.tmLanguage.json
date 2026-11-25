@@ -6,6 +6,9 @@
             "include": "#location"
         },
         {
+            "include": "#builtin"
+        },
+        {
             "include": "#action"
         },
         {
@@ -24,6 +27,20 @@
                 },
                 "2": {
                     "name": "variable.other.property.location.codeshaper"
+                }
+            }
+        },
+        "builtin": {
+            "match": "(#\\[)([A-Za-z0-9_!-]+(?:\\.[A-Za-z0-9_!-]+)+)(\\]|\\()",
+            "captures": {
+                "1": {
+                    "name": "punctuation.definition.action.begin.codeshaper"
+                },
+                "2": {
+                    "name": "support.function.builtin.codeshaper"
+                },
+                "3": {
+                    "name": "punctuation.definition.action.end.codeshaper"
                 }
             }
         },

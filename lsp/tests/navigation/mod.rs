@@ -90,6 +90,17 @@ fn calls_inside_choices_are_followed() {
 }
 
 #[test]
+fn builtins_lead_nowhere() {
+    let text = "maker \"file\" {\n}\nreplacer {\n    to \"#[file.path]#[file]#[file.path]\"\n}\n";
+    let outline = Outline::parse(text);
+    let at = text.find("file.path").unwrap() + 2;
+
+    assert_eq!((definition(&outline, text, at), rename(&outline, text, at, "other")), (None, None));
+    assert_eq!(references(&outline, text, at, true).len(), 2);
+    assert_eq!(references(&outline, text, text.find("#[file]").unwrap() + 3, true).len(), 2);
+}
+
+#[test]
 fn replacers_are_renamed_by_name() {
     let text = "actions {\n    replacer \"first\" {\n        to \"#[second] #[m]\"\n    }\n    replacer \"second\" {\n        to \"first\"\n    }\n    maker \"m\" {\n    }\n}\n";
     let outline = Outline::parse(text);

@@ -2,9 +2,10 @@
 use std::ops::Range;
 
 // Crate Uses
-use crate::syntax::{is_name, Outline, ACTION_NODES};
+use crate::syntax::{is_call, is_name, Outline, ACTION_NODES};
 
 // External Uses
+use codeshaper::core::expressions::builtins::is_builtin;
 use lsp_types::{GotoDefinitionResponse, Location, LocationLink};
 
 
@@ -23,8 +24,8 @@ pub fn calls(outline: &Outline, text: &str) -> Vec<Symbol> {
 
         for (index, _) in content.match_indices("#[") {
             let start = literal.content.start + index + 2;
-            let length = text[start..literal.content.end].find(|character: char| !is_name(character))
-                .unwrap_or(literal.content.end - start);
+            let content = &text[start..literal.content.end];
+            let length = content.find(|character: char| !is_call(character)).unwrap_or(content.len());
 
             if length > 0 {
                 found.push(Symbol { name: text[start..start + length].to_string(), range: start..start + length });
@@ -73,7 +74,7 @@ pub fn symbol_at(outline: &Outline, text: &str, offset: usize) -> Option<Symbol>
 
 pub fn rename(outline: &Outline, text: &str, offset: usize, name: &str) -> Option<Vec<Range<usize>>> {
     if name.is_empty() || !name.chars().all(is_name) { return None }
-    symbol_at(outline, text, offset)?;
+    symbol_at(outline, text, offset).filter(|symbol| !is_builtin(&symbol.name))?;
 
     Some(references(outline, text, offset, true))
 }

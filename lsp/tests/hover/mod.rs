@@ -372,6 +372,22 @@ fn places_are_the_same_in_patch_blocks() {
 }
 
 #[test]
+fn builtins_are_explained() {
+    let patch = INDEXED.replace("gone=\"removed\"", "gone=\"#[case.upper('a')]#[file.folder]#[file.pth]\"");
+
+    let (text, range) = hovered(&patch, "case.upper", 6);
+    assert_eq!(range, "case.upper");
+    assert_eq!(text, "**case.upper** · built-in function (text)\n\nThe text in capitals.\n\n```kdl\nto \"#[case.upper($[0])]\"\n```");
+
+    let (text, range) = hovered(&patch, "file.folder", 1);
+    assert_eq!(range, "file.folder");
+    assert!(text.starts_with("**file.folder** · built-in\n\n"), "{text}");
+
+    let (_directory, project) = crate::preview::operation();
+    assert!(hover(&codeshaper::registry(), &project, &mut Traces::default(), &patch, patch.find("file.pth").unwrap() + 2).is_none());
+}
+
+#[test]
 fn arguments_are_shown_in_choices() {
     let patch = INDEXED.replace("gone=\"removed\"", "gone=\"@[0]#[pair('a', 'b')]\"").replace("\"first\" \"second\"", "\"first\" \"@[0]\"");
 

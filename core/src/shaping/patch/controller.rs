@@ -3,17 +3,20 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Range;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 // Crate Uses
 use crate::ast::backend::LanguageBackend;
 use crate::ast::listener::ListenerController;
+use crate::expressions::builtins::FILE;
 use crate::shaping::lines::{restore, unix};
 use crate::shaping::patch::{Actions, Patch};
 use crate::shaping::patch::origin::Origin;
 use crate::shaping::patch::pattern::Regexes;
 use crate::shaping::patch::replacer::Replacer;
 use crate::shaping::patch::trace::{ActionTrace, Trace};
+use crate::shaping::patch::validation::called;
 use crate::shaping::project::values::Values;
 use crate::shaping::operation::actions::{Action, ActionOf};
 use crate::shaping::operation::actions::builder::BuilderAction;
@@ -23,7 +26,7 @@ use crate::shaping::operation::actions::indexer::{ListAction, SwitchAction};
 
 // External Uses
 use indextree::{Arena, NodeId};
-use miette::Result;
+use miette::{bail, Result};
 
 
 #[allow(unused)]
@@ -34,6 +37,7 @@ pub struct PatchController {
     pub trace: Option<RefCell<Trace>>,
     pub regexes: Rc<Regexes>,
     pub values: Rc<Values>,
+    pub file: Option<PathBuf>,
     paths: HashMap<NodeId, String>,
     origin: Option<Origin>
 }
@@ -47,7 +51,7 @@ impl PatchController {
     pub fn with_listener(patch: Rc<Patch>, listener_controller: ListenerController) -> Self {
         let (actions, paths) = Self::make_actions(patch.clone());
 
-        Self { patch, actions, listener_controller, trace: None, regexes: Rc::default(), values: Rc::default(), paths, origin: None }
+        Self { patch, actions, listener_controller, trace: None, regexes: Rc::default(), values: Rc::default(), file: None, paths, origin: None }
     }
 
     pub fn traced(patch: Rc<Patch>, limit: usize) -> Self {
@@ -60,6 +64,10 @@ impl PatchController {
 
     pub fn with_values(self, values: Rc<Values>) -> Self {
         Self { values, ..self }
+    }
+
+    pub fn for_file(self, file: &Path) -> Self {
+        Self { file: Some(file.to_path_buf()), ..self }
     }
 
     pub fn path(&self, id: NodeId) -> Option<&str> {
@@ -179,6 +187,7 @@ impl PatchController {
     }
 
     pub fn apply(&mut self, backend: &dyn LanguageBackend, source: &str) -> Result<String> {
+        self.check_file()?;
         let unix = unix(source);
         self.origin = self.tracing().then(|| Origin::new(source));
         let result = self.shape(backend, &unix)?;
@@ -188,6 +197,15 @@ impl PatchController {
             Cow::Owned(unix) if unix == result => source.to_string(),
             Cow::Owned(_) => restore(source, &result)
         })
+    }
+
+    fn check_file(&self) -> Result<()> {
+        if self.file.is_some() { return Ok(()) }
+
+        match called(&self.patch).into_iter().find(|name| name.starts_with(FILE)) {
+            Some(name) => bail!("'#[{name}]' needs the file being patched, but the text is in none"),
+            None => Ok(())
+        }
     }
 
     fn shape(&mut self, backend: &dyn LanguageBackend, source: &str) -> Result<String> {

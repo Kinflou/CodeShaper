@@ -4,12 +4,17 @@
 use crate::project;
 
 // External Uses
+use codeshaper::core::expressions::builtins::{is_builtin, BUILTINS};
 use codeshaper::core::shaping::patch::Patch;
 use codeshaper_lsp::completion::completion;
 use codeshaper_lsp::schema;
 use codeshaper_lsp::syntax::Outline;
 use lsp_types::{CompletionTextEdit, Position};
 
+
+fn own(text: &str, offset: usize) -> Vec<String> {
+    labels(text, offset).into_iter().filter(|label| !is_builtin(label)).collect()
+}
 
 fn labels(text: &str, offset: usize) -> Vec<String> {
     let (_directory, project) = project(&[]);
@@ -118,14 +123,14 @@ fn locations_come_from_the_backend() {
 fn action_names_inside_expressions() {
     let text = "actions {\n    maker \"pair\" {\n        make \"x\"\n    }\n    replacer {\n        to \"#[p";
 
-    assert_eq!(labels(text, text.len()), vec!["pair"]);
+    assert_eq!(own(text, text.len()), vec!["pair"]);
     assert_eq!(labels(&format!("{text}air] "), text.len() + 5), Vec::<String>::new());
 }
 
 #[test]
 fn names_inside_arguments() {
     let replacer = |to: &str| format!("actions {{\n    maker \"pair\" {{\n        make \"x\"\n    }}\n    replacer {{\n        from r\"(\\w+)\"\n        to \"{to}");
-    let at_end = |to: &str| labels(&replacer(to), replacer(to).len());
+    let at_end = |to: &str| own(&replacer(to), replacer(to).len());
     let none = Vec::<String>::new();
 
     for to in ["#[pair(#[", "#[pair($[0], #[p", "#[pair('#[", "#[pair('é_#[pa", "#[pair()]#["] {
@@ -140,11 +145,33 @@ fn names_inside_arguments() {
 }
 
 #[test]
+fn builtins_replace_what_is_typed() {
+    let (_directory, project) = project(&[]);
+    let items = |to: &str| {
+        let text = format!("actions {{\n    maker \"file\" {{\n        make \"x\"\n    }}\n    replacer {{\n        to \"é{to}");
+        completion(&codeshaper::registry(), &project, &text, text.len())
+    };
+
+    assert_eq!(items("#[").len(), BUILTINS.len() + 1);
+    assert_eq!(items("#[file")[0].label, "file");
+
+    for (to, start) in [("#[file.", 15), ("#[file.pa", 15), ("#[m('x_#[case.", 22)] {
+        let items = items(to);
+        assert_eq!(items.iter().map(|item| item.label.as_str()).collect::<Vec<_>>(), BUILTINS.iter().map(|builtin| builtin.name).collect::<Vec<_>>());
+
+        let Some(CompletionTextEdit::Edit(edit)) = &items[0].text_edit else { panic!("expected an edit") };
+        let end = 13 + to.len() as u32;
+        assert_eq!((edit.range.start, edit.range.end, edit.new_text.as_str()), (Position::new(5, start), Position::new(5, end), "file.path"));
+    }
+    assert!(items("#[file.path]").is_empty() && items("#[case.upper(").is_empty() && items("$[file.").is_empty());
+}
+
+#[test]
 fn names_inside_choices() {
     let text = "actions {\n    maker \"pair\" {\n        make \"x\"\n    }\n    switch \"s\" {\n        cases a=\"#[p\" b=\"$[\"\n        default \"#[\"\n    }\n    list \"l\" {\n        values \"a\" \"#[s(#[\"\n    }\n}\n";
 
     for needle in ["\"#[p", "default \"#[", "#[s(#["] {
-        assert_eq!(labels(text, text.find(needle).unwrap() + needle.len()), vec!["pair", "s", "l"], "{needle}");
+        assert_eq!(own(text, text.find(needle).unwrap() + needle.len()), vec!["pair", "s", "l"], "{needle}");
     }
     assert_eq!(labels(text, text.find("$[").unwrap() + 2), Vec::<String>::new());
 }
@@ -178,6 +205,6 @@ fn file_offers_target_paths() {
 fn replacers_are_not_offered() {
     let text = "actions {\n    replacer \"named\" {\n        to \"x\"\n    }\n    maker \"pair\" {\n        make \"x\"\n    }\n    replacer {\n        to \"#[";
 
-    assert_eq!(labels(text, text.len()), vec!["pair"]);
+    assert_eq!(own(text, text.len()), vec!["pair"]);
     assert_eq!(labels(text, text.find("named").unwrap() + 2), Vec::<String>::new());
 }

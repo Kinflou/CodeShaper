@@ -22,6 +22,14 @@ pub enum ExpressionAST<'a> {
 }
 
 impl ExpressionAST<'_> {
+    pub fn uses_locals(&self) -> bool {
+        match self {
+            Self::Action(parts) | Self::ActionCall { arguments: parts, .. } => parts.iter().any(Self::uses_locals),
+            Self::LocalCall { .. } => true,
+            _ => false
+        }
+    }
+
     pub fn errors(&self) -> Vec<ExpressionError> {
         match self {
             Self::Action(parts) | Self::ActionCall { arguments: parts, .. } => parts.iter().flat_map(Self::errors).collect(),

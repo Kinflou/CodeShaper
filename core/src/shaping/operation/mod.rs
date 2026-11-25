@@ -423,7 +423,7 @@ impl Operation {
             let Ok(source) = fs::read_to_string(trace.directory.join(&file.path)) else { continue };
             let Ok(backend) = self.backend(registry, &patch, file) else { continue };
 
-            let mut controller = PatchController::traced(patch.clone(), limit).sharing(Rc::clone(&regexes)).with_values(values.clone());
+            let mut controller = PatchController::traced(patch.clone(), limit).sharing(Rc::clone(&regexes)).with_values(values.clone()).for_file(&file.path);
             if controller.apply(backend, &source).is_err() { continue }
 
             if let Some(traced) = controller.trace.take() {
@@ -464,7 +464,7 @@ impl Operation {
         &self, registry: &Registry, (name, patch): (&str, &Patch), file: &File, source: &str, (regexes, values): &(Rc<Regexes>, Rc<Values>)
     ) -> Result<String> {
         self.backend(registry, patch, file)
-            .and_then(|backend| PatchController::with(Rc::new(patch.clone())).sharing(regexes.clone()).with_values(values.clone()).apply(backend, source))
+            .and_then(|backend| PatchController::with(Rc::new(patch.clone())).sharing(regexes.clone()).with_values(values.clone()).for_file(&file.path).apply(backend, source))
             .wrap_err_with(|| format!("Patch {} could not shape {}", name, file.path.display()))
     }
 

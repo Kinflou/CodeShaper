@@ -15,6 +15,7 @@ Beside each location stands how many places it matches, and beside the fields of
 matches, builds and is called, updated on open and save (`codeshaper.inlayHints.matches`).
 These hints are smaller than the code, `editor.inlayHints.fontSize` under `[kdl]` changes it.
 Hovering a name, such as `location` or `collect`, explains it, and so do the suggestions while typing.
+After `#[` they also list the built-ins, such as `#[file.stem]` and `#[case.snake($[0])]`.
 Hovering a location, `match`, `from`, `build`, `to` or a `$[…]` shows samples (`codeshaper.hover.samples`), with
 links that select each place, match and capture in a read-only copy of its target file. Files listed when
 hovering `file`, the references of a location and the definition of `file` open as copies too.

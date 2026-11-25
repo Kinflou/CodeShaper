@@ -329,3 +329,26 @@ fn patches_without_a_project_take_any_variable() {
     assert!(stdout(&codeshaper(&["apply", &patch, &file, "--set", "name=b"])).contains("+int b;"));
     assert!(stdout(&codeshaper(&["check", "--patch", &patch, "--set", "name=b"])).contains("0 error(s)"));
 }
+
+#[test]
+fn apply_knows_the_file() {
+    let directory = example(CPP14);
+    let root = directory.path();
+    let patch = root.join("shaping_project/patches/named.kdl");
+    let content = "file \"*\"\nactions {\n    replacer {\n        location \"translation_unit\"\n        from r\"^\"\n        to \"// #[file.path] #[file.folder]\\n\"\n    }\n}\n";
+    fs::write(&patch, content).unwrap();
+    fs::create_dir(root.join("target/nested")).unwrap();
+    fs::copy(root.join("target/Module.cpp"), root.join("target/nested/Module.cpp")).unwrap();
+    fs::copy(root.join("target/Module.cpp"), root.join("Outside.cpp")).unwrap();
+    let first = |file: &str| {
+        let output = codeshaper(&["apply", &patch.display().to_string(), &root.join(file).display().to_string()]);
+        stdout(&output).lines().find(|line| line.starts_with("+//")).unwrap_or_else(|| panic!("{output:?}")).to_string()
+    };
+
+    assert_eq!(first("target/Module.cpp"), "+// Module.cpp ");
+    assert_eq!(first("target/nested/Module.cpp"), "+// nested/Module.cpp nested");
+    assert_eq!(first("Outside.cpp"), "+// Outside.cpp ");
+
+    fs::copy(root.join("configuration.kdl"), root.join("other.configuration.kdl")).unwrap();
+    assert_eq!(first("target/nested/Module.cpp"), "+// nested/Module.cpp nested");
+}

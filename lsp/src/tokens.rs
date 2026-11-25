@@ -41,7 +41,7 @@ pub fn tokens(text: &str) -> Vec<SemanticToken> {
             let length = name.find(|character: char| !is_name(character)).unwrap_or(name.len());
             let end = start + 2 + length + usize::from(name[length..].starts_with(']'));
 
-            if length > 0 {
+            if length > 0 && !name[length..].starts_with('.') {
                 found.push((start, end, kind));
             }
         }

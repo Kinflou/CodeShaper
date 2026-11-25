@@ -8,6 +8,7 @@ use crate::shaping::patch::controller::PatchController;
 use crate::shaping::operation::actions::{Action, composer};
 use crate::shaping::operation::actions::composer::Composer;
 use crate::shaping::patch::trace::{groups, Found, Sample};
+use crate::expressions::syntax::parser::parse_expression;
 use crate::expressions::visitor;
 
 // External Uses
@@ -98,15 +99,12 @@ impl Action for BuilderAction {
                 patch_controller.record(*self.self_id(), |trace, _| trace.unreferred += 1);
             }
 
-            let mut built = found.into_iter()
-                .map(|(content, start)| self.process_at(patch_controller, content, start));
-
             if self.builder.collect {
-                return Some(built.flatten().collect::<Vec<String>>().join(&self.builder.separator))
+                return Some(self.collected(patch_controller, found))
             }
 
-            return match built.next() {
-                Some(built) => built,
+            return match found.into_iter().next() {
+                Some((content, start)) => self.process_at(patch_controller, content, start),
                 None => set_current(self)
             }
         }
@@ -121,14 +119,11 @@ impl Action for BuilderAction {
             };
 
             let ranges = patch_controller.listener_controller.location_ranges.get(location);
-            let built: Vec<String> = contents.iter().enumerate()
-                .filter_map(|(index, content)| {
-                    let start = ranges.and_then(|ranges| ranges.get(index)).map(|range| range.start);
-                    self.process_at(patch_controller, content.clone(), start)
-                })
+            let places = contents.iter().enumerate()
+                .map(|(index, content)| (content.clone(), ranges.and_then(|ranges| ranges.get(index)).map(|range| range.start)))
                 .collect();
 
-            return Some(built.join(&self.builder.separator))
+            return Some(self.collected(patch_controller, places))
         }
 
         let Some(context) = patch_controller.listener_controller.location_content
@@ -148,6 +143,26 @@ impl BuilderAction {
         &self, controller: &PatchController, input: String
     ) -> Option<String> {
         self.process_at(controller, input, None)
+    }
+
+    fn collected(&self, controller: &PatchController, places: Vec<(String, Option<usize>)>) -> String {
+        let collected = &self.composer.as_ref().unwrap().collected;
+        let needs_match = parse_expression(&self.builder.build).is_ok_and(|build| build.uses_locals());
+        let counts: Vec<bool> = places.iter()
+            .map(|(content, _)| !needs_match || self.regex(controller).is_some_and(|regex| regex.is_match(content)))
+            .collect();
+        let count = counts.iter().filter(|counts| **counts).count();
+        let mut index = 0;
+        let mut built = vec![];
+
+        for ((content, start), counts) in places.into_iter().zip(counts) {
+            collected.set(Some((index, count)));
+            built.extend(self.process_at(controller, content, start));
+            index += usize::from(counts);
+        }
+        collected.set(None);
+
+        built.join(&self.builder.separator)
     }
 
     fn process_at(

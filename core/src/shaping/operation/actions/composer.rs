@@ -1,11 +1,12 @@
 // Standard Uses
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
 // Crate Uses
 use crate::shaping::operation::actions::{Action, ActionOf};
 use crate::shaping::patch::controller::PatchController;
 use crate::shaping::patch::trace::Sample;
+use crate::expressions::builtins::{self, is_builtin, Known};
 use crate::expressions::visitor;
 use crate::expressions::visitor::ExpressionVisitor;
 use crate::expressions::syntax::ExpressionAST;
@@ -45,6 +46,7 @@ pub struct Composer {
     action_id: NodeId,
     // patch_controller: Rc<RefCell<PatchController>>,
     pub(crate) locals: RefCell<Locals>,
+    pub(crate) collected: Cell<Option<(usize, usize)>>,
     built: RefCell<String>,
 }
 
@@ -54,6 +56,7 @@ impl Composer {
         Self {
             action_id,
             locals: Default::default(),
+            collected: Default::default(),
             built: RefCell::new(String::new())
         }
     }
@@ -67,6 +70,10 @@ impl ExpressionVisitor for Composer {
         let mut args = vec![];
         for arg in call {
             args.push(visitor::visit_expression(self, controller, arg, arguments)?);
+        }
+
+        if is_builtin(name) {
+            return builtins::call(name, &args, Known { file: controller.file.as_deref(), collected: self.collected.get() })
         }
 
         let Some(action) = controller.find_action(name, controller) else {

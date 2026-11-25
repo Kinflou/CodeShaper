@@ -272,6 +272,19 @@ fn target_language<'r>(registry: &'r Registry, operation: &Operation, patch: &Pa
     operation.backend(registry, patch, found)
 }
 
+fn in_target(registry: &Registry, patch: &Path, file: &Path) -> PathBuf {
+    let found = || {
+        let path = fs::canonicalize(file).ok()?;
+        let project = Project::containing(&fs::canonicalize(patch).ok()?)?;
+
+        Operation::configurations_for(&project).ok()?.iter()
+            .filter_map(|configuration| Operation::from_file(configuration).ok()?.target(registry).ok())
+            .find_map(|target| Some(path.strip_prefix(fs::canonicalize(target.directory).ok()?).ok()?.to_path_buf()))
+    };
+
+    found().unwrap_or_else(|| file.file_name().map(PathBuf::from).unwrap_or_default())
+}
+
 fn apply(
     patch_path: &Path, file: &Path, name: Option<&str>, in_place: bool, language: Option<&str>, set: &[(String, String)]
 ) -> Result<ExitCode> {
@@ -297,7 +310,7 @@ fn apply(
     let source = fs::read_to_string(file)
         .into_diagnostic()
         .wrap_err_with(|| format!("Could not read {}", file.display()))?;
-    let result = PatchController::with(Rc::new(patch)).with_values(values).apply(backend, &source)?;
+    let result = PatchController::with(Rc::new(patch)).with_values(values).for_file(&in_target(&registry, patch_path, file)).apply(backend, &source)?;
 
     if result == source {
         println!("No changes");

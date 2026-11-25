@@ -15,7 +15,7 @@ expression = _{
 }
 
 action_call = {
-    "#" ~ "[" ~ id ~ arguments? ~ "]"
+    "#" ~ "[" ~ call_id ~ arguments? ~ "]"
 }
 
 arguments = _{
@@ -35,6 +35,7 @@ argument_call = {
 
 
 id = { char+ }
+call_id = { char+ ~ ("." ~ char+)* }
 number = @{ ASCII_DIGIT+ }
 single = { "'" ~ (single_text | expression)* ~ "'" }
 single_text = @{ (!"'" ~ !opener ~ ANY)+ }

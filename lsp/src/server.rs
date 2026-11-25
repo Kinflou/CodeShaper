@@ -29,6 +29,7 @@ use crate::values;
 use crate::worker::{file_uri, path, Refresh, Shared, Snapshot, Work, Worker};
 
 // External Uses
+use codeshaper::core::expressions::builtins::is_builtin;
 use codeshaper::core::registry::Registry;
 use dunce::canonicalize;
 use lsp_server::{Connection, ErrorCode, Message, Notification, Request, RequestId, Response};
@@ -284,7 +285,8 @@ impl<'c> Server<'c> {
                 let params: TextDocumentPositionParams = serde_json::from_value(request.params).into_diagnostic()?;
                 let found = self.view(&params.text_document.uri, params.position).and_then(|(view, offset)| {
                     let outline = Outline::parse(&view.text);
-                    let symbol = symbol_at(&outline, &view.text, offset).filter(|symbol| !self.is_declared(&params.text_document.uri, &outline, &symbol.name))?;
+                    let symbol = symbol_at(&outline, &view.text, offset)
+                        .filter(|symbol| !is_builtin(&symbol.name) && !self.is_declared(&params.text_document.uri, &outline, &symbol.name))?;
                     Some(PrepareRenameResponse::Range(LineIndex::new(&view.text).range(symbol.range)))
                 });
 

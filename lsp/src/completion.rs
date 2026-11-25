@@ -13,16 +13,17 @@ use crate::position::LineIndex;
 use crate::query::{captures, is_query, part_at, Part, PREDICATES};
 use crate::schema::{self, regex_field, LOCATIONS};
 use crate::section::{view_at, View};
-use crate::syntax::{is_name, Context, Outline};
+use crate::syntax::{is_call, is_name, Context, Outline};
 use crate::target::{backends, every_file};
 use crate::values;
 
 // External Uses
 use codeshaper::core::ast::backend::LanguageBackend;
+use codeshaper::core::expressions::builtins::{is_builtin, BUILTINS};
 use codeshaper::core::registry::Registry;
 use codeshaper::core::shaping::patch::file::BLOCK;
 use codeshaper::core::shaping::project::ast_set::TARGET;
-use lsp_types::{CompletionItem, CompletionItemKind, CompletionTextEdit, TextEdit};
+use lsp_types::{CompletionItem, CompletionItemKind, CompletionTextEdit, Documentation, MarkupContent, MarkupKind, TextEdit};
 
 
 pub fn completion(registry: &Registry, project: &Path, text: &str, offset: usize) -> Vec<CompletionItem> {
@@ -54,14 +55,18 @@ pub fn completion(registry: &Registry, project: &Path, text: &str, offset: usize
                 return registry.languages().into_iter().map(|name| item(name, CompletionItemKind::VALUE, None)).collect()
             }
 
-            if is_naming(&before, "#[") {
+            if let Some((_, name)) = before.rsplit_once("#[").filter(|(_, name)| name.chars().all(is_call)) {
+                let builtins = builtins(text, offset - name.len()..offset);
+                if is_builtin(name) { return builtins.collect() }
+
                 return outline.actions()
                     .map(|(node, name)| item(&name.value, CompletionItemKind::FUNCTION, Some(&node.name)))
                     .chain(values::suggestions(project).map(|(name, detail, kind)| item(&name, kind, Some(detail))))
+                    .chain(builtins)
                     .collect()
             }
 
-            if is_naming(&before, "$[") {
+            if before.rsplit_once("$[").is_some_and(|(_, name)| name.chars().all(is_name)) {
                 let Some(action) = outline.nodes[node].parent else { return vec![] };
                 let Some(pattern) = regex_field(&outline.nodes[action].name).and_then(|field| outline.field(action, field)) else {
                     return vec![]
@@ -95,8 +100,17 @@ pub fn completion(registry: &Registry, project: &Path, text: &str, offset: usize
     }
 }
 
-fn is_naming(before: &str, marker: &str) -> bool {
-    before.rsplit_once(marker).is_some_and(|(_, name)| name.chars().all(is_name))
+fn builtins(text: &str, range: Range<usize>) -> impl Iterator<Item = CompletionItem> {
+    let range = LineIndex::new(text).range(range);
+
+    BUILTINS.iter().map(move |builtin| CompletionItem {
+        label: builtin.name.to_string(),
+        kind: Some(if builtin.arguments.is_empty() { CompletionItemKind::CONSTANT } else { CompletionItemKind::FUNCTION }),
+        detail: Some("built-in".to_string()),
+        documentation: Some(Documentation::MarkupContent(MarkupContent { kind: MarkupKind::Markdown, value: explain::builtin(builtin) })),
+        text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(range, builtin.name.to_string()))),
+        ..CompletionItem::default()
+    })
 }
 
 fn query(backend: &dyn LanguageBackend, text: &str, content: Range<usize>, offset: usize) -> Vec<CompletionItem> {

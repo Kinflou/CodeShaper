@@ -19,6 +19,7 @@ use crate::values;
 
 // External Uses
 use codeshaper::core::ast::backend::LanguageBackend;
+use codeshaper::core::expressions::builtins::{builtin, is_builtin};
 use codeshaper::core::registry::Registry;
 use codeshaper::core::shaping::operation::{LocationMatches, LocationPlaces};
 use codeshaper::core::shaping::patch::pattern::{Group, FLAGS};
@@ -43,6 +44,8 @@ pub fn hover(
     let language = backends(registry, project, &outline).first().map(|backend| backend.name().to_string()).unwrap_or_default();
 
     if let Some(Symbol { name, range }) = symbol_at(&outline, text, offset) {
+        if is_builtin(&name) { return Some((explain::builtin(builtin(&name)?), range)) }
+
         let index = outline.nodes.iter().position(|node| {
             ACTION_NODES.contains(&node.name.as_str()) && node.arguments.first().is_some_and(|literal| literal.value == name)
         });

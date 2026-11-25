@@ -4,6 +4,7 @@ use std::ops::Range;
 
 // Crate Uses
 use crate::ast::backend::{LanguageBackend, LocationError};
+use crate::expressions::builtins::{builtin, closest, is_builtin, COLLECT};
 use crate::expressions::syntax::ExpressionAST;
 use crate::expressions::syntax::parser::parse_tolerant;
 use crate::shaping::patch::{pattern, Actions, Patch};
@@ -115,6 +116,10 @@ fn check(patch: &Patch, source: Option<&PatchSource>, backends: Vec<&dyn Languag
     for (action, field, name, count, span) in &calls {
         validator.current_span = *span;
 
+        if is_builtin(name) {
+            validator.builtin(action, field, name, *count);
+            continue
+        }
         if let (Some(value), false) = (validator.declared.get(name.as_str()).copied(), validator.names.contains_key(name)) {
             if *count > 0 {
                 let message = format!("'#[{name}]' is a {}, it takes no arguments, but is called with {count}", value.kind());
@@ -216,6 +221,7 @@ struct Validator<'a> {
     receivers: HashSet<String>,
     required: HashMap<String, usize>,
     prepared: HashSet<String>,
+    collecting: HashSet<String>,
     calls: Vec<Call>,
     current: Option<&'a NodeSpans>,
     current_span: Option<SourceSpan>
@@ -264,6 +270,7 @@ impl<'a> Validator<'a> {
             self.flags(&path, &builder.flags);
             let locals = self.regex(&path, "match", &builder.r#match, &builder.flags);
             self.expression(&path, "build", &builder.build, &locals, None);
+            if builder.collect { self.collecting.insert(path.clone()); }
             self.actions(&builder.actions, &path, nested);
         }
 
@@ -325,6 +332,26 @@ impl<'a> Validator<'a> {
             if let Some(default) = &switch.default {
                 self.expression(&path, "default", default, &NO_REGEX, Some(&switch.name));
             }
+        }
+    }
+
+    fn builtin(&mut self, action: &str, field: &'static str, name: &str, count: usize) {
+        let Some(known) = builtin(name) else {
+            let closest = closest(name).map(|closest| format!(", did you mean '{closest}'?")).unwrap_or_default();
+            return self.report(DiagnosticKind::ActionNotFound, action, field, format!("No built-in named '{name}'{closest}"))
+        };
+
+        if known.arguments.len() != count {
+            let takes = match known.arguments {
+                [] => "no arguments".to_string(),
+                names => format!("{} argument(s) ({})", names.len(), names.join(", "))
+            };
+            let message = format!("'#[{name}]' takes {takes}, but is called with {count}");
+            self.report(DiagnosticKind::IncorrectArgs, action, field, message);
+        }
+        if name.starts_with(COLLECT) && !(field == "build" && self.collecting.contains(action)) {
+            let message = format!("'#[{name}]' is only known in the 'build' of a builder with 'collect true'");
+            self.report(DiagnosticKind::IncorrectExpression, action, field, message);
         }
     }
 

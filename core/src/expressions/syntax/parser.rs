@@ -46,8 +46,10 @@ fn parse_pair<'a>(pair: Pair<'a, Rule>) -> ExpressionAST<'a> {
         Rule::text | Rule::single_text | Rule::double_text | Rule::number => ExpressionAST::Text(pair.as_str()),
         Rule::unclosed => {
             let rest = &pair.as_span().get_input()[start..];
-            let name = rest[2..].find(|character| !is_name(character)).unwrap_or(rest.len() - 2) + 2;
-            let length = name + usize::from(rest.starts_with('#') && rest[name..].starts_with('('));
+            let is_call = rest.starts_with('#');
+            let is_part = |character| is_name(character) || is_call && character == '.';
+            let name = rest[2..].find(|character| !is_part(character)).unwrap_or(rest.len() - 2) + 2;
+            let length = name + usize::from(is_call && rest[name..].starts_with('('));
 
             ExpressionAST::Unclosed { text: &rest[..length], span: start..start + length }
         }
