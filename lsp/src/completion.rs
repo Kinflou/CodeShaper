@@ -13,7 +13,7 @@ use crate::position::LineIndex;
 use crate::query::{captures, is_query, part_at, Part, PREDICATES};
 use crate::schema::{self, regex_field, LOCATIONS};
 use crate::section::{view_at, View};
-use crate::syntax::{Context, Outline};
+use crate::syntax::{is_name, Context, Outline};
 use crate::target::{backends, every_file};
 use crate::values;
 
@@ -54,14 +54,14 @@ pub fn completion(registry: &Registry, project: &Path, text: &str, offset: usize
                 return registry.languages().into_iter().map(|name| item(name, CompletionItemKind::VALUE, None)).collect()
             }
 
-            if before.rfind("#[").is_some_and(|open| !before[open..].contains(']')) {
+            if is_naming(&before, "#[") {
                 return outline.actions()
                     .map(|(node, name)| item(&name.value, CompletionItemKind::FUNCTION, Some(&node.name)))
                     .chain(values::suggestions(project).map(|(name, detail, kind)| item(&name, kind, Some(detail))))
                     .collect()
             }
 
-            if before.rfind("$[").is_some_and(|open| !before[open..].contains(']')) {
+            if is_naming(&before, "$[") {
                 let Some(action) = outline.nodes[node].parent else { return vec![] };
                 let Some(pattern) = regex_field(&outline.nodes[action].name).and_then(|field| outline.field(action, field)) else {
                     return vec![]
@@ -93,6 +93,10 @@ pub fn completion(registry: &Registry, project: &Path, text: &str, offset: usize
         }
         Context::None => vec![]
     }
+}
+
+fn is_naming(before: &str, marker: &str) -> bool {
+    before.rsplit_once(marker).is_some_and(|(_, name)| name.chars().all(is_name))
 }
 
 fn query(backend: &dyn LanguageBackend, text: &str, content: Range<usize>, offset: usize) -> Vec<CompletionItem> {

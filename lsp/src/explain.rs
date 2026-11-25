@@ -102,7 +102,7 @@ pub const PATCH: &[Explained] = &[
     ),
     action(
         "maker",
-        "Makes text out of the arguments it's called with, as `#[name($[0], $[1])]`.",
+        "Makes text out of the arguments it's called with, as `#[name($[0], 'text', 1)]`. Arguments are captures, calls, numbers or text in quotes, which is run too.",
         "maker \"pair\" {\n    make \"@[0] = @[1]\"\n}"
     ),
     action(

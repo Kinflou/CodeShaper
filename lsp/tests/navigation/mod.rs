@@ -71,6 +71,16 @@ fn rename_refuses_invalid_names_and_plain_text() {
 }
 
 #[test]
+fn calls_inside_arguments_are_followed() {
+    let text = "maker \"a\" {\n}\nreplacer {\n    to \"#[b('#[a]', #[a(1)])]\"\n}\n";
+    let outline = Outline::parse(text);
+    let found = references(&outline, text, text.find("#[a(1)").unwrap() + 2, true);
+
+    assert_eq!(found.iter().map(|range| range.start).collect::<Vec<_>>(), [7, text.find("#[a]").unwrap() + 2, text.find("#[a(").unwrap() + 2]);
+    assert_eq!(definition(&outline, text, text.find("#[a]").unwrap() + 3), Some(7..8));
+}
+
+#[test]
 fn replacers_are_renamed_by_name() {
     let text = "actions {\n    replacer \"first\" {\n        to \"#[second] #[m]\"\n    }\n    replacer \"second\" {\n        to \"first\"\n    }\n    maker \"m\" {\n    }\n}\n";
     let outline = Outline::parse(text);

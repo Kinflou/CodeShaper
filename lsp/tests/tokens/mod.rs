@@ -33,6 +33,13 @@ fn expressions_inside_strings_are_tokens() {
 }
 
 #[test]
+fn calls_inside_arguments_are_tokens() {
+    let text = "to \"#[a('é #[b]$[0]', #[c(1)])]()\"";
+
+    assert_eq!(absolute(text), vec![(0, 4, 3, 0), (0, 11, 4, 0), (0, 15, 4, 1), (0, 22, 3, 0)]);
+}
+
+#[test]
 fn unterminated_and_empty_markers_are_skipped() {
     let text = "make \"#[] $[ @[x\"";
 

@@ -123,6 +123,23 @@ fn action_names_inside_expressions() {
 }
 
 #[test]
+fn names_inside_arguments() {
+    let replacer = |to: &str| format!("actions {{\n    maker \"pair\" {{\n        make \"x\"\n    }}\n    replacer {{\n        from r\"(\\w+)\"\n        to \"{to}");
+    let at_end = |to: &str| labels(&replacer(to), replacer(to).len());
+    let none = Vec::<String>::new();
+
+    for to in ["#[pair(#[", "#[pair($[0], #[p", "#[pair('#[", "#[pair('é_#[pa", "#[pair()]#["] {
+        assert_eq!(at_end(to), vec!["pair"], "{to}");
+    }
+    for to in ["#[pair($[", "#[pair('x_$[", "#[pair('#[pair($["] {
+        assert_eq!(at_end(to), vec!["0"], "{to}");
+    }
+    for to in ["#[pair(", "#[pair('x", "#[pair('x', ", "#[pair($[0]", "#[pair($[0])]", "#[pair 1"] {
+        assert_eq!(at_end(to), none, "{to}");
+    }
+}
+
+#[test]
 fn locals_offer_the_regex_groups() {
     let text = "actions {\n    replacer {\n        from r\"(\\w+) (?:x) (?P<n>\\d)\"\n        to \"a $[\"\n    }\n}\n";
     let offset = text.find("$[").unwrap() + 2;
