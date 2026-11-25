@@ -10,7 +10,7 @@ use crate::shaping::patch::{pattern, Actions, Patch};
 use crate::shaping::patch::pattern::{check_flags, regex_builder};
 use crate::shaping::patch::replacer::Replacer;
 use crate::shaping::patch::source::{ActionSpans, NodeSpans, PatchSource};
-use crate::shaping::project::values::Declared;
+use crate::shaping::project::values::{is_name, Declared};
 
 // External Uses
 use miette::SourceSpan;
@@ -337,7 +337,10 @@ impl<'a> Validator<'a> {
     fn name(&mut self, parent: &str, name: &str) -> String {
         let path = join(parent, name);
 
-        if let Some((first, _)) = self.names.get(name) {
+        if !is_name(name) {
+            let message = format!("'{name}' can't be called, names have letters, digits, '_', '-' and '!'");
+            self.report(DiagnosticKind::IncorrectName, &path, "name", message);
+        } else if let Some((first, _)) = self.names.get(name) {
             let message = format!("Action '{name}' is already defined at '{first}', so this one is never used");
             self.report(DiagnosticKind::DuplicateAction, &path, "name", message);
         } else {

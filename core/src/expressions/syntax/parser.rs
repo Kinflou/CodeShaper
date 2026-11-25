@@ -1,7 +1,7 @@
 // Standard Uses
 
 // Crate Uses
-use crate::expressions::syntax::{ExpressionAST, ExpressionError};
+use crate::expressions::syntax::{is_name, ExpressionAST, ExpressionError};
 
 // External Uses
 use pest::iterators::Pair;
@@ -82,8 +82,4 @@ fn parse_pair<'a>(pair: Pair<'a, Rule>) -> ExpressionAST<'a> {
         }
         missing => unreachable!("Rule not implemented {:?}", missing)
     }
-}
-
-fn is_name(character: char) -> bool {
-    character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '!')
 }

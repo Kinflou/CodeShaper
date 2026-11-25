@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 
 // Crate Uses
+use crate::expressions::syntax;
 use crate::shaping::lines::unix;
 use crate::shaping::project::settings::{ProjectSettings, FILE};
 use crate::shaping::target::text;
@@ -141,7 +142,7 @@ pub fn check_set(declared: &[Declared], called: &BTreeSet<String>) -> Result<()>
 }
 
 pub fn is_name(name: &str) -> bool {
-    !name.is_empty() && name.chars().all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '!'))
+    !name.is_empty() && name.chars().all(syntax::is_name)
 }
 
 

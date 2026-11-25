@@ -187,6 +187,31 @@ fn names_fit_in_paths() {
 }
 
 #[test]
+fn names_can_be_called() {
+    let action = |kind: &str, name: &str| match kind {
+        "builder" => format!("builder \"{name}\" {{\nlocation \"Line\"\nmatch \"x\"\nbuild \"x\"\n}}\n"),
+        "switch" => format!("switch \"{name}\" {{\ncases a=\"b\"\nindex \"a\"\n}}\n"),
+        "list" => format!("list \"{name}\" {{\nvalues \"a\"\nindex \"0\"\n}}\n"),
+        _ => maker(name, "x")
+    };
+
+    for kind in ["builder", "maker", "switch", "list"] {
+        for name in ["", " ", "a b", "file.path", "é", "a]", "#a", "a/b"] {
+            let message = format!("'{name}' can't be called, names have letters, digits, '_', '-' and '!'");
+            let expected = one(DiagnosticKind::IncorrectName, name, &message, &format!("\"{name}\""));
+
+            assert_eq!(found(&(action(kind, name) + &replacer("", "a", "b"))), expected, "{kind} {name}");
+        }
+        for name in ["a", "0", "a-b_c!", "file", "Path"] {
+            assert_eq!(found(&(action(kind, name) + &replacer("", "a", &format!("#[{name}]")))), vec![], "{kind} {name}");
+        }
+    }
+
+    let nested = replacer(" \"file.path\"", "a", "b").replace("to \"b\"", &format!("to \"b\"\nactions {{\n{}}}", maker("c.d", "x")));
+    assert_eq!(found(&nested)[0].1, "file.path/c.d");
+}
+
+#[test]
 fn names_are_one_text() {
     for written in [" 1", " true", " \"a\" \"b\"", " name=\"a\""] {
         assert!(Patch::from_kdl("", &content(&replacer(written, "a", "b"))).is_err(), "{written}");

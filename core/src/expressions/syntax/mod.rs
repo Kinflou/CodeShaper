@@ -38,6 +38,10 @@ impl ExpressionAST<'_> {
     }
 }
 
+pub fn is_name(character: char) -> bool {
+    character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '!')
+}
+
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExpressionError {
