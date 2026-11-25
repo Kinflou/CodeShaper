@@ -13,7 +13,7 @@ pub trait ExpressionVisitor {
     // fn visit_expression(&self, controller: &PatchController, name: &str, arguments: &[ExpressionAST]);
 
     fn visit_action_call(
-        &self, controller: &PatchController, name: &str, arguments: &[ExpressionAST]
+        &self, controller: &PatchController, name: &str, call: &[ExpressionAST], arguments: &[String]
     ) -> Option<String>;
 
     fn visit_text(
@@ -50,8 +50,8 @@ pub(crate) fn visit_expression(
                 result += &*visit_expression(visitor, controller, act, arguments)?;
             }
         }
-        ExpressionAST::ActionCall { name, arguments: args, .. } => {
-            result += &*visitor.visit_action_call(controller, name, args)?;
+        ExpressionAST::ActionCall { name, arguments: call, .. } => {
+            result += &*visitor.visit_action_call(controller, name, call, arguments)?;
         }
         ExpressionAST::LocalCall { name: var, .. } => {
             result += &*visitor.visit_local_call(controller, var)?;

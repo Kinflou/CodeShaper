@@ -62,15 +62,11 @@ impl Composer {
 #[allow(unused)]
 impl ExpressionVisitor for Composer {
     fn visit_action_call(
-        &self, controller: &PatchController, name: &str, arguments: &[ExpressionAST]
+        &self, controller: &PatchController, name: &str, call: &[ExpressionAST], arguments: &[String]
     ) -> Option<String> {
         let mut args = vec![];
-        for arg in arguments {
-            args.push(
-                visitor::visit_expression(self, controller,
-                arg, &[]
-                )?
-            );
+        for arg in call {
+            args.push(visitor::visit_expression(self, controller, arg, arguments)?);
         }
 
         let Some(action) = controller.find_action(name, controller) else {
