@@ -41,9 +41,9 @@ cursor. Places are those of the saved file, before any patch runs. Close the cop
 Click the status bar item for the list. They can be changed in *Keyboard Shortcuts*.
 
 **Variables**, the CodeShaper icon in the Activity Bar, lists the constants and variables of the workspace's projects
-and where each value comes from. Click a variable to set it, for previews, hovers and counts in this workspace. Nothing
-is written to the project, and runs don't use it. A preview that needs a missing value offers to set it. Projects that
-git ignores are left out until one of their variables is set.
+and where each value comes from. Click one to go to its declaration. The pencil sets a variable, for previews, hovers
+and counts in this workspace. Nothing is written to the project, and runs don't use it. A preview that needs a missing
+value offers to set it. Projects that git ignores are left out until one of their variables is set.
 
 ## Install
 

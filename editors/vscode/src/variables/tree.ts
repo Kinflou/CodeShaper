@@ -68,10 +68,7 @@ function entryItem(entry: Entry): TreeItem {
     item.tooltip = tooltip;
     item.iconPath = new ThemeIcon(icon);
     item.contextValue = context;
-    if (context === "variable" || context === "set") {
-        item.command = { command: COMMANDS.set, title: "Set Value", arguments: [entry] };
-    }
-    if (context === "constant") {
+    if (context !== "unknown") {
         item.command = { command: COMMANDS.open, title: "Go to Declaration", arguments: [entry] };
     }
 
