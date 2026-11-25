@@ -237,7 +237,7 @@ fn counts_survive_edits_elsewhere() {
 
     assert_eq!(labels(None), vec!["2 places in 2 files", "1 match in 1 of 2"]);
     assert_eq!(labels(Some(RENAME.replace("\"new\"", "\"newer\""))), vec!["2 places in 2 files"]);
-    assert_eq!(labels(Some(RENAME.replace("FunctionDefinition", "FunctionDefinitio"))), Vec::<String>::new());
+    assert_eq!(labels(Some(RENAME.replace("function_definition", "function_definitio"))), Vec::<String>::new());
 
     client.notify("textDocument/didSave", json!({ "textDocument": { "uri": uri.as_str() }, "text": RENAME }));
     client.request("textDocument/hover", json!({ "textDocument": { "uri": uri.as_str() }, "position": { "line": 0, "character": 0 } }));

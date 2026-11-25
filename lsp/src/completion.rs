@@ -5,6 +5,7 @@ use std::path::Path;
 
 // Crate Uses
 use crate::document::{kind, DocumentKind};
+use crate::explain::{self, documentation, Explained};
 use crate::groups::groups;
 use crate::options;
 use crate::paths;
@@ -14,6 +15,7 @@ use crate::schema::{self, regex_field, LOCATIONS};
 use crate::section::{view_at, View};
 use crate::syntax::{Context, Outline};
 use crate::target::{backends, every_file};
+use crate::values;
 
 // External Uses
 use codeshaper::core::ast::backend::LanguageBackend;
@@ -33,14 +35,14 @@ pub fn completion(registry: &Registry, project: &Path, text: &str, offset: usize
             let has = |names: &[&str]| outline.nodes.iter().any(|node| node.parent.is_none() && names.contains(&node.name.as_str()));
 
             schema::top(has(&[BLOCK]), has(schema::children(None))).into_iter()
-                .map(|name| item(name, CompletionItemKind::PROPERTY, None))
+                .map(|name| named(explain::PATCH, None, name))
                 .collect()
         }
         Context::Name { parent, .. } => {
             let parent = parent.map(|parent| outline.nodes[parent].name.as_str());
 
             schema::children(parent).iter()
-                .map(|name| item(name, CompletionItemKind::PROPERTY, None))
+                .map(|name| named(explain::PATCH, parent, name))
                 .collect()
         }
         Context::Value { node, literal, before } => {
@@ -55,6 +57,7 @@ pub fn completion(registry: &Registry, project: &Path, text: &str, offset: usize
             if before.rfind("#[").is_some_and(|open| !before[open..].contains(']')) {
                 return outline.actions()
                     .map(|(node, name)| item(&name.value, CompletionItemKind::FUNCTION, Some(&node.name)))
+                    .chain(values::suggestions(project).map(|(name, detail, kind)| item(&name, kind, Some(detail))))
                     .collect()
             }
 
@@ -138,13 +141,17 @@ pub fn document(registry: &Registry, path: &Path, text: &str, offset: usize) -> 
 
             known.iter()
                 .filter(|name| !options::options(&outline).any(|node| node.name == **name && node.name_range.start != prefix.start))
-                .map(|name| item(name, CompletionItemKind::PROPERTY, None))
+                .map(|name| named(explain::table(path), Some(options::TARGET), name))
                 .collect()
         }
         _ => {
             let found = paths::completion(path, text, offset);
 
-            if found.is_empty() && is_settings { settings(registry, text, offset) } else { found }
+            match kind(path) {
+                DocumentKind::Settings if found.is_empty() => settings(registry, text, offset),
+                DocumentKind::Configuration if found.is_empty() => values::completion(path, text, offset),
+                _ => found
+            }
         }
     }
 }
@@ -158,6 +165,10 @@ pub fn settings(registry: &Registry, text: &str, offset: usize) -> Vec<Completio
         Context::Name { parent: Some(node), .. } if outline.is_top(node, "ast-set") => names.collect(),
         _ => vec![]
     }
+}
+
+fn named(table: &[Explained], parent: Option<&str>, name: &str) -> CompletionItem {
+    CompletionItem { documentation: documentation(table, parent, name), ..item(name, CompletionItemKind::PROPERTY, None) }
 }
 
 pub fn item(label: &str, kind: CompletionItemKind, detail: Option<&str>) -> CompletionItem {

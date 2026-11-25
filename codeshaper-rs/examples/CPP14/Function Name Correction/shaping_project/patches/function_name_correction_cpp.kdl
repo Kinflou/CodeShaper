@@ -3,8 +3,8 @@ file "Module.cpp"
 
 actions {
     replacer {
-        location "FunctionDefinition"
-        reference-location "FunctionDefinition"
+        location "function_definition"
+        reference-location "function_definition"
         from r"void\s+?__(.*?)\("
         to "void _$[0]("
     }

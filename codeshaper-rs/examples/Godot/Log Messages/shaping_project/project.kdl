@@ -1,0 +1,14 @@
+name "Log Messages"
+
+target "godot"
+ast-set "target"
+
+constant "script" "res://log/game_log.gd"
+variable "logger"
+variable "level" default="info"
+
+description r#"Log Messages
+============
+
+This example sends what scripts print to a logger, with the name of the script's class, and adds the logger
+to the project's autoloads. Both patches use the name of the logger, which is set in the configuration"#

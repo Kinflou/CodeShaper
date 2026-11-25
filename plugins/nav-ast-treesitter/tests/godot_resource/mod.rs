@@ -28,8 +28,15 @@ fn located<'a>(source: &'a str, location: &str) -> Vec<&'a str> {
 
 
 #[test]
+fn locate_the_outermost_block() {
+    assert_eq!(located(SCENE, "resource"), located(SCENE, "(resource) @target"));
+    assert_eq!(located(SCENE, "resource").len(), 1);
+    assert_eq!(located(SCENE, "resource.section"), located(SCENE, "section"));
+}
+
+#[test]
 fn locate_sections() {
-    let found = located(SCENE, "Section");
+    let found = located(SCENE, "section");
 
     assert_eq!(found.len(), 3);
     assert!(found[2].starts_with("[node name=\"Player\""));

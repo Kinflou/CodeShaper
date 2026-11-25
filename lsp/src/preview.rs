@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 // Crate Uses
 use crate::syntax::Outline;
+use crate::values::prepared;
 
 // External Uses
 use codeshaper::core::registry::Registry;
@@ -24,7 +25,7 @@ pub fn configuration(project: &Path) -> Result<PathBuf> {
 
 pub fn preview(registry: &Registry, project: &Path, name: &str, text: &str) -> Result<(PathBuf, Vec<Change>)> {
     let patch = Patch::from_kdl(name, text)?;
-    let operation = Operation::from_file(&configuration(project)?)?;
+    let operation = prepared(Operation::from_file(&configuration(project)?)?);
     let target = operation.directory.join(&operation.configuration.target.value);
 
     Ok((target, operation.preview(registry, name, &patch)?))
@@ -39,7 +40,7 @@ pub fn operation_preview(
     };
 
     let configuration = configuration::from_kdl(&read(path).into_diagnostic()?)?;
-    let operation = Operation::from_configuration_with(configuration, path.parent().unwrap_or(Path::new("")), &read)?;
+    let operation = prepared(Operation::from_configuration_with(configuration, path.parent().unwrap_or(Path::new("")), &read)?);
 
     operation.session(registry)?.preview_while(keep_going)
 }

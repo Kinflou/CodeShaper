@@ -20,7 +20,8 @@ fn load_configuration() {
         target: "function_name_correction/target/origin/".into(),
         output: "function_name_correction/target/expected_result/".to_string(),
         backup: "function_name_correction/target/backup/".to_string(),
-        result: ResultOptions::BackupAndReplace
+        result: ResultOptions::BackupAndReplace,
+        variables: Default::default()
     };
 
     assert_eq!(configuration, expected_configuration);

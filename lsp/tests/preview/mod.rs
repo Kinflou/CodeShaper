@@ -15,7 +15,7 @@ file "*.cpp"
 
 actions {
     replacer {
-        location "FunctionDefinition"
+        location "function_definition"
         from r"old"
         to "new"
     }

@@ -1,5 +1,4 @@
 patch "body_scene" {
-    enabled true
     file "**/*.tscn"
 
     actions {
@@ -12,12 +11,11 @@ patch "body_scene" {
 }
 
 patch "body_script" {
-    enabled true
     file "**/*.gd"
 
     actions {
         replacer {
-            location "ExtendsStatement"
+            location "extends_statement"
             from r"KinematicBody2D"
             to "CharacterBody2D"
         }

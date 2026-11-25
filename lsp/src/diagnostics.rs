@@ -15,6 +15,7 @@ use crate::schema::regex_field;
 use crate::section::{sections, views};
 use crate::syntax::{Outline, ACTION_NODES};
 use crate::target::{backends, operation};
+use crate::values;
 
 // External Uses
 use codeshaper::core::registry::Registry;
@@ -25,6 +26,7 @@ use codeshaper::core::shaping::patch::trace::Trace;
 use codeshaper::core::shaping::patch::validation::{validate_source, Diagnostic as PatchDiagnostic, Severity};
 use codeshaper::core::shaping::project::patch_files;
 use codeshaper::core::shaping::project::settings::{self, ProjectSettings};
+use codeshaper::core::shaping::project::values::Declared;
 use dunce::canonicalize;
 use lsp_types::{Diagnostic, DiagnosticSeverity, DiagnosticTag, NumberOrString};
 use miette::Report;
@@ -52,7 +54,14 @@ pub fn diagnostics(registry: &Registry, path: &Path, text: &str) -> Vec<Diagnost
     };
 
     match result {
-        Ok(()) => listing(registry, path, text, &index),
+        Ok(()) => {
+            let mut found = listing(registry, path, text, &index);
+            found.extend(values::wrong(path, text).into_iter().map(|(range, message)| {
+                problem(&index, &range, DiagnosticSeverity::ERROR, "variable-not-found", message)
+            }));
+
+            found
+        }
         Err(report) => parse_errors(&report, &index)
     }
 }
@@ -86,17 +95,18 @@ fn patch(registry: &Registry, project: &Path, path: &Path, text: &str, index: &L
     };
 
     if PatchSource::parse_all(&name, text).is_ok() {
-        found.extend(views(text).iter().flat_map(|view| block(registry, project, &name, &view.text, index)));
+        let declared = values::declared(project);
+        found.extend(views(text).iter().flat_map(|view| block(registry, project, &name, &view.text, index, &declared)));
     }
 
     found
 }
 
-fn block(registry: &Registry, project: &Path, name: &str, text: &str, index: &LineIndex) -> Vec<Diagnostic> {
+fn block(registry: &Registry, project: &Path, name: &str, text: &str, index: &LineIndex, declared: &[Declared]) -> Vec<Diagnostic> {
     let Ok((patch, source)) = Patch::parse(name, text) else { return vec![] };
     let backends = backends(registry, project, &Outline::parse(text));
 
-    let mut found: Vec<Diagnostic> = validate_source(&patch, &source, backends).into_iter()
+    let mut found: Vec<Diagnostic> = validate_source(&patch, &source, backends, declared).into_iter()
         .map(|diagnostic| convert(diagnostic, index))
         .collect();
     found.extend(regex_hints(text, index));
@@ -268,6 +278,16 @@ pub fn coverage(text: &str, trace: &Trace) -> Vec<Diagnostic> {
         let Some(path) = outline.action_path(position) else { continue };
         let action = trace.action(&path).cloned().unwrap_or_default();
         let location = outline.field(position, "location").map(|literal| literal.range.clone());
+        let unreferred = outline.field(position, "reference-location").filter(|_| action.unreferred > 0);
+        let called = node.name == "replacer" || node.arguments.first().is_some_and(|name| called.contains(&name.value));
+
+        if let (true, 0, Some(reference)) = (called, action.inputs, unreferred) {
+            report(
+                reference.range.clone(), DiagnosticSeverity::WARNING, "location-unmatched",
+                format!("{path} › reference-location: never found from the places of `location` in {files} target file(s)")
+            );
+            continue
+        }
 
         if node.name == "replacer" {
             match (action.inputs, location, outline.field(position, "from")) {
@@ -285,7 +305,7 @@ pub fn coverage(text: &str, trace: &Trace) -> Vec<Diagnostic> {
         }
 
         let Some(name) = node.arguments.first() else { continue };
-        if !called.contains(&name.value) { continue }
+        if !called { continue }
 
         if let (true, 0, Some(location)) = (node.name == "builder", action.inputs, location) {
             report(

@@ -2,6 +2,7 @@
 pub mod completion;
 pub mod diagnostics;
 pub mod document;
+pub mod explain;
 pub mod explore;
 pub mod groups;
 pub mod hover;
@@ -22,6 +23,7 @@ pub mod target;
 pub mod toggle;
 pub mod tokens;
 pub mod trace;
+pub mod values;
 pub mod worker;
 
 // Standard Uses

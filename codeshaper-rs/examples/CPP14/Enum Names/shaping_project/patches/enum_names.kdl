@@ -1,0 +1,25 @@
+file "*.h"
+
+actions {
+    builder "enum_name" {
+        location "enum_specifier"
+        reference-location "enum_specifier.name"
+        match r"(\w+)"
+        build "$[0]"
+    }
+
+    builder "variant_names" {
+        location "enum_specifier"
+        reference-location "enum_specifier.enumerator.name"
+        match r"(\w+)"
+        build "\"$[0]\""
+        collect true
+        separator ", "
+    }
+
+    replacer "names" {
+        location "enum_specifier"
+        from r"\}$"
+        to "};\n\n// #[note]\nconstexpr #[type] #[enum_name]#[suffix][] = { #[variant_names] }"
+    }
+}

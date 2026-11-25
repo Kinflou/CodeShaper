@@ -2,7 +2,7 @@
 use std::collections::BTreeSet;
 
 // Crate Uses
-use crate::{to_pascal_case, to_snake_case, TreeSitterBackend};
+use crate::TreeSitterBackend;
 
 // External Uses
 use codeshaper_core::ast::backend::{Suggestion, Suggestions, SyntaxNode};
@@ -29,8 +29,8 @@ impl TreeSitterBackend {
     pub(crate) fn syntax_nodes(&self, tree: &Tree) -> Vec<SyntaxNode> {
         named(tree).into_iter()
             .map(|Named { node, field, parent, in_error }| SyntaxNode {
-                kind: segment_name(node.kind()),
-                field: field.map(segment_name),
+                kind: node.kind().to_string(),
+                field: field.map(str::to_string),
                 range: node.byte_range(),
                 parent,
                 broken: in_error || node.has_error() || node.is_missing()
@@ -119,16 +119,16 @@ fn named(tree: &Tree) -> Vec<Named<'_>> {
 }
 
 fn candidates(nodes: &[Named], node: usize) -> Vec<String> {
-    let kind = segment_name(nodes[node].node.kind());
+    let kind = nodes[node].node.kind();
     let inner = nodes[node].parent.filter(|parent| nodes[*parent].parent.is_some());
-    let parent = inner.map(|parent| segment_name(nodes[parent].node.kind()));
+    let parent = inner.map(|parent| nodes[parent].node.kind());
     let mut found = vec![];
 
-    if let (Some(parent), Some(field)) = (&parent, nodes[node].field) {
-        found.push(format!("{parent}.{}", segment_name(field)));
+    if let (Some(parent), Some(field)) = (parent, nodes[node].field) {
+        found.push(format!("{parent}.{field}"));
         found.push(chain(nodes, node));
     }
-    found.push(kind.clone());
+    found.push(kind.to_string());
     if let (Some(parent), Some(inner), None) = (parent, inner, nodes[node].field) {
         found.push(format!("{parent}.{kind}"));
         found.push(format!("{}.{kind}", chain(nodes, inner)));
@@ -144,10 +144,10 @@ fn chain(nodes: &[Named], node: usize) -> String {
     while let (Some(field), Some(parent)) = (nodes[current].field, nodes[current].parent) {
         if nodes[parent].parent.is_none() { break }
 
-        segments.push(segment_name(field));
+        segments.push(field);
         current = parent;
     }
-    segments.push(segment_name(nodes[current].node.kind()));
+    segments.push(nodes[current].node.kind());
     segments.reverse();
 
     segments.join(".")
@@ -249,10 +249,4 @@ fn pattern(nodes: &[Named], within: &BTreeSet<usize>, node: usize, target: usize
     };
 
     format!("({}{children}){capture}", nodes[node].node.kind())
-}
-
-fn segment_name(name: &str) -> String {
-    let pascal = to_pascal_case(name);
-
-    if to_snake_case(&pascal) == name { pascal } else { name.to_string() }
 }

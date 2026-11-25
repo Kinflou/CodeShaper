@@ -79,22 +79,22 @@ fn counts_are_reused_until_something_changes() {
         Some(found.into_iter().map(|found| (found.matches.places, found.matches.matched_files, found.matches.files)).collect::<Vec<_>>())
     };
 
-    assert_eq!(places(&["FunctionDefinition", "Nothing"], true), Some(vec![(2, 2, 2), (0, 0, 2)]));
-    assert_eq!(places(&["Nothing", "FunctionDefinition"], false), Some(vec![(0, 0, 2), (2, 2, 2)]));
-    assert_eq!(places(&["ClassSpecifier"], false), None);
-    assert_eq!(places(&["FunctionDefinition", "ClassSpecifier"], true), Some(vec![(2, 2, 2), (0, 0, 2)]));
+    assert_eq!(places(&["function_definition", "Nothing"], true), Some(vec![(2, 2, 2), (0, 0, 2)]));
+    assert_eq!(places(&["Nothing", "function_definition"], false), Some(vec![(0, 0, 2), (2, 2, 2)]));
+    assert_eq!(places(&["class_specifier"], false), None);
+    assert_eq!(places(&["function_definition", "class_specifier"], true), Some(vec![(2, 2, 2), (0, 0, 2)]));
 
     let file = directory.path().join("target/a.cpp");
     fs::write(&file, "void a() {}\nvoid b() {}\n").unwrap();
     age(&file);
-    assert_eq!(places(&["FunctionDefinition"], false), None);
-    assert_eq!(places(&["FunctionDefinition"], true), Some(vec![(3, 2, 2)]));
+    assert_eq!(places(&["function_definition"], false), None);
+    assert_eq!(places(&["function_definition"], true), Some(vec![(3, 2, 2)]));
 
     fs::write(directory.path().join("target/c.cpp"), "int c;\n").unwrap();
-    assert_eq!(places(&["FunctionDefinition"], true), Some(vec![(3, 2, 3)]));
+    assert_eq!(places(&["function_definition"], true), Some(vec![(3, 2, 3)]));
 
     age(&project.join("project.kdl"));
-    assert_eq!(places(&["FunctionDefinition"], false), None);
+    assert_eq!(places(&["function_definition"], false), None);
 }
 
 #[test]
@@ -106,7 +106,7 @@ fn first_places_are_kept() {
 
     for (samples, expected) in [(0, vec![]), (2, vec!["a.cpp void a() {}", "a.cpp void b() {\n}"]), (9, vec!["a.cpp void a() {}", "a.cpp void b() {\n}", "a.cpp void c() {}", "b.cpp void keep() {}"])] {
         let mut traces = Traces::new(Limits { samples, ..Limits::default() });
-        let (folder, located) = traces.places(&registry, &project, &patch, &["FunctionDefinition"]).unwrap();
+        let (folder, located) = traces.places(&registry, &project, &patch, &["function_definition"]).unwrap();
         let found: Vec<String> = located[0].found.iter().map(|found| format!("{} {}", found.file.display(), found.matched.text)).collect();
 
         assert_eq!((folder, located[0].matches.places, found), (directory.path().join("target"), 4, expected.into_iter().map(str::to_string).collect()));

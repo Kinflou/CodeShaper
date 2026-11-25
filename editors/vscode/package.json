@@ -141,6 +141,47 @@
         "command": "codeshaper.exploreKeys",
         "title": "Keys While Exploring",
         "category": "CodeShaper"
+      },
+      {
+        "command": "codeshaper.setVariable",
+        "title": "Set Value",
+        "category": "CodeShaper",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "codeshaper.resetVariable",
+        "title": "Remove the Value Set Here",
+        "category": "CodeShaper",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "codeshaper.openVariable",
+        "title": "Go to Declaration",
+        "category": "CodeShaper"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codeshaper",
+          "title": "CodeShaper",
+          "icon": "images/sidebar.svg"
+        }
+      ]
+    },
+    "views": {
+      "codeshaper": [
+        {
+          "id": "codeshaper.variables",
+          "name": "Variables"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "codeshaper.variables",
+        "contents": "No CodeShaper projects found in this workspace. Projects that git ignores are left out.",
+        "when": "codeshaper.searched"
       }
     ],
     "keybindings": [
@@ -196,6 +237,33 @@
       }
     ],
     "menus": {
+      "view/item/context": [
+        {
+          "command": "codeshaper.setVariable",
+          "when": "view == codeshaper.variables && viewItem =~ /^(variable|set)$/",
+          "group": "inline@1"
+        },
+        {
+          "command": "codeshaper.resetVariable",
+          "when": "view == codeshaper.variables && viewItem =~ /^(set|unknown)$/",
+          "group": "inline@2"
+        },
+        {
+          "command": "codeshaper.setVariable",
+          "when": "view == codeshaper.variables && viewItem =~ /^(variable|set)$/",
+          "group": "1_value@1"
+        },
+        {
+          "command": "codeshaper.resetVariable",
+          "when": "view == codeshaper.variables && viewItem =~ /^(set|unknown)$/",
+          "group": "1_value@2"
+        },
+        {
+          "command": "codeshaper.openVariable",
+          "when": "view == codeshaper.variables && viewItem =~ /^(constant|variable|set)$/",
+          "group": "2_open"
+        }
+      ],
       "editor/title": [
         {
           "command": "codeshaper.preview",
@@ -274,6 +342,18 @@
         {
           "command": "codeshaper.exploreKeys",
           "when": "codeshaper.exploring"
+        },
+        {
+          "command": "codeshaper.setVariable",
+          "when": "false"
+        },
+        {
+          "command": "codeshaper.resetVariable",
+          "when": "false"
+        },
+        {
+          "command": "codeshaper.openVariable",
+          "when": "false"
         }
       ]
     },

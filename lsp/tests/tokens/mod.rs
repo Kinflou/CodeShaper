@@ -41,11 +41,11 @@ fn unterminated_and_empty_markers_are_skipped() {
 
 #[test]
 fn locations_are_types_and_properties() {
-    let text = "location \"FunctionDefinition.body\"\nreference-location \"Class\"\nname \"Class.body\"\n";
+    let text = "location \"function_definition.body\"\nreference-location \"Class\"\nname \"Class.body\"\n";
 
     assert_eq!(absolute(text), vec![
-        (0, 10, 18, 3),
-        (0, 29, 4, 4),
+        (0, 10, 19, 3),
+        (0, 30, 4, 4),
         (1, 20, 5, 3),
     ]);
 }
@@ -53,5 +53,5 @@ fn locations_are_types_and_properties() {
 #[test]
 fn queries_and_unfinished_segments_are_not_types() {
     assert_eq!(absolute("location r#\"(function_definition body: (_) @target)\"#\n"), vec![]);
-    assert_eq!(absolute("location \"FunctionDefinition.\"\n"), vec![(0, 10, 18, 3)]);
+    assert_eq!(absolute("location \"function_definition.\"\n"), vec![(0, 10, 19, 3)]);
 }

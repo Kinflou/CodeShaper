@@ -1,6 +1,7 @@
 // Relative Modules
 mod completion;
 mod diagnostics;
+mod explain;
 mod explore;
 mod groups;
 mod hover;
@@ -15,8 +16,10 @@ mod query;
 mod section;
 mod symbols;
 mod syntax;
+mod toggle;
 mod tokens;
 mod trace;
+mod values;
 mod worker;
 
 // Standard Uses

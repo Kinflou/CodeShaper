@@ -56,7 +56,7 @@ impl Outline {
     }
 
     pub fn top(&self, name: &str) -> Option<&Node> {
-        self.nodes.iter().find(|node| node.parent.is_none() && node.name == name)
+        self.nodes.iter().find(|node| node.parent.is_none() && !node.commented && node.name == name)
     }
 
     pub fn argument(&self, name: &str) -> Option<&str> {

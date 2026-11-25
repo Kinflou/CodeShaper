@@ -28,7 +28,7 @@ actions {
         make "fresh"
     }
     replacer {
-        location "FunctionDeclarator.Declarator"
+        location "function_declarator.declarator"
         from r"(old)"
         to "#[shared]"
     }
@@ -201,10 +201,10 @@ fn each_block_is_diagnosed() {
 fn one_broken_block_hides_no_others() {
     let (_directory, project) = operation();
     let path = project.join("patches/rename.kdl");
-    let text = block("one", &RENAME.replace("enabled false\n", "")) + &block("two", &CALLED.replace("#[shared]", "#[lost]"));
+    let text = block("one", &RENAME.replace("file \"*.cpp\"\n", "")) + &block("two", &CALLED.replace("#[shared]", "#[lost]"));
     let found = diagnostics(&codeshaper::registry(), &path, &text);
 
-    assert!(found.iter().any(|found| found.message.contains("`enabled` is required") && found.range.start.line == 0));
+    assert!(found.iter().any(|found| found.message.contains("`file` is required") && found.range.start.line == 0));
     assert!(codes(&found).contains(&"action-not-found"));
 
     let unclosed = text.trim_end().trim_end_matches('}').to_string();
@@ -351,7 +351,7 @@ fn files_and_locations_use_their_patch() {
     let found = ask(&mut client, "textDocument/definition", at(&uri, &text, "\"a.cpp\"", 2));
     assert_eq!(found.as_array().unwrap().len(), 1);
 
-    let here = at(&uri, &text, "\"FunctionDeclarator.Declarator\"", 3);
+    let here = at(&uri, &text, "\"function_declarator.declarator\"", 3);
     let found = ask(&mut client, "textDocument/references", json!({
         "textDocument": here["textDocument"], "position": here["position"], "context": { "includeDeclaration": false }
     }));
@@ -470,7 +470,7 @@ fn actions_on_one_line_keep_the_block() {
         .collect();
     let pair = |title: &str, removed: &str| (title.to_string(), removed.to_string());
 
-    assert_eq!(edits, vec![pair("Remove alias", "alias \"cpp\";"), pair("Disable patch", "true"), pair("Remove alias", "alias \"cpp\";")]);
+    assert_eq!(edits, vec![pair("Disable patch", ""), pair("Remove alias", "alias \"cpp\";"), pair("Disable patch", "true"), pair("Remove alias", "alias \"cpp\";")]);
 
     client.stop();
 }
@@ -540,7 +540,7 @@ fn exploring_starts_from_one_patch_or_all() {
 fn positions_explore_their_patch() {
     let (directory, project) = operation();
     let query = "(function_definition) @target";
-    let text = "// 日 🦀\n".to_string() + &block("first", &CALLED.replace("a.cpp", "b.cpp")) + &block("é", &CALLED.replace("\"FunctionDeclarator.Declarator\"", &format!("r#\"{query}\"#"))) + "patch";
+    let text = "// 日 🦀\n".to_string() + &block("first", &CALLED.replace("a.cpp", "b.cpp")) + &block("é", &CALLED.replace("\"function_declarator.declarator\"", &format!("r#\"{query}\"#"))) + "patch";
     let mut client = Client::start();
     let uri = client.open(&project.join("patches/rename.kdl"), &text);
     let mut at = |needle: &str, skip: usize| {
@@ -551,18 +551,18 @@ fn positions_explore_their_patch() {
     };
     let some = |text: &str| Some(text.to_string());
 
-    assert_eq!(at("\"FunctionDeclarator", 3), ("b.cpp".to_string(), some("first"), some("FunctionDeclarator.Declarator")));
+    assert_eq!(at("\"function_declarator", 3), ("b.cpp".to_string(), some("first"), some("function_declarator.declarator")));
     assert_eq!(at("r#\"(function", 8), ("a.cpp".to_string(), some("é"), some(query)));
     assert_eq!(at("r#\"(function", 0), ("a.cpp".to_string(), some("é"), some(query)));
     assert_eq!(at("r\"(old)\"", 3), ("a.cpp".to_string(), some("é"), None));
     assert_eq!(at("b.cpp", 1), ("b.cpp".to_string(), some("first"), None));
     assert_eq!(at("日", 0), ("a.cpp b.cpp".to_string(), None, None));
 
-    let referring = RENAME.replace("from", "reference-location \"ClassSpecifier\"\n        from");
+    let referring = RENAME.replace("from", "reference-location \"class_specifier\"\n        from");
     fs::write(project.join("patches/other.kdl"), &referring).unwrap();
     let other = client.open(&project.join("patches/other.kdl"), &referring);
-    let found = ask(&mut client, "codeshaper/explore", json!({ "uri": other.as_str(), "position": place(&referring, "ClassSpecifier", 2) }));
-    assert_eq!((found["files"].as_array().unwrap().len(), &found["patch"], &found["location"]), (2, &json!(null), &json!("ClassSpecifier")));
+    let found = ask(&mut client, "codeshaper/explore", json!({ "uri": other.as_str(), "position": place(&referring, "class_specifier", 2) }));
+    assert_eq!((found["files"].as_array().unwrap().len(), &found["patch"], &found["location"]), (2, &json!(null), &json!("class_specifier")));
 
     let listed = ask(&mut client, "codeshaper/explore", json!({ "uri": other.as_str() }));
     assert_eq!(listed.as_object().unwrap().keys().collect::<Vec<_>>(), vec!["files", "without"]);
@@ -578,23 +578,26 @@ fn positions_explore_their_patch() {
 #[test]
 fn uses_name_their_patch() {
     let (_directory, project) = operation();
-    let text = block("first", RENAME) + &block("é", CALLED);
     let mut client = Client::start();
-    let uri = client.open(&project.join("patches/rename.kdl"), &text);
     let code = "void old() {}\n";
 
-    let found = ask(&mut client, "codeshaper/exploreBlock", json!({
-        "uri": uri.as_str(), "file": { "path": "a.cpp", "language": "cpp", "usual": "cpp" }, "text": code,
-        "range": { "start": { "line": 0, "character": 5 }, "end": { "line": 0, "character": 8 } }
-    }));
-    let used: Vec<(&str, &str, bool, String)> = found["used"].as_array().unwrap().iter()
-        .map(|used| (used["patch"].as_str().unwrap(), used["action"].as_str().unwrap(), used["enabled"].as_bool().unwrap(), marked(&text, &used["range"])))
-        .collect();
+    for called in [CALLED.to_string(), CALLED.replace("enabled true\n", "")] {
+        let text = block("first", RENAME) + &block("é", &called);
+        let uri = client.open(&project.join("patches/rename.kdl"), &text);
 
-    assert_eq!(used, vec![
-        ("é", "replacer #1", true, "\"FunctionDeclarator.Declarator\"".to_string()),
-        ("first", "replacer #1", false, "\"FunctionDefinition\"".to_string())
-    ]);
+        let found = ask(&mut client, "codeshaper/exploreBlock", json!({
+            "uri": uri.as_str(), "file": { "path": "a.cpp", "language": "cpp", "usual": "cpp" }, "text": code,
+            "range": { "start": { "line": 0, "character": 5 }, "end": { "line": 0, "character": 8 } }
+        }));
+        let used: Vec<(&str, &str, bool, String)> = found["used"].as_array().unwrap().iter()
+            .map(|used| (used["patch"].as_str().unwrap(), used["action"].as_str().unwrap(), used["enabled"].as_bool().unwrap(), marked(&text, &used["range"])))
+            .collect();
+
+        assert_eq!(used, vec![
+            ("é", "replacer #1", true, "\"function_declarator.declarator\"".to_string()),
+            ("first", "replacer #1", false, "\"function_definition\"".to_string())
+        ]);
+    }
 
     client.stop();
 }

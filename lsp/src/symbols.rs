@@ -4,6 +4,7 @@
 use crate::position::LineIndex;
 use crate::section::views;
 use crate::syntax::{Node, Outline, ACTION_NODES};
+use crate::values::KINDS;
 
 // External Uses
 use codeshaper::core::shaping::patch::file::BLOCK;
@@ -53,7 +54,25 @@ fn patch(text: &str, index: &LineIndex) -> Vec<DocumentSymbol> {
             children: None
         });
 
-    fields.chain(actions(&outline, text, index, None)).collect()
+    let values = outline.nodes.iter()
+        .filter(|node| node.parent.is_none() && !node.commented && KINDS.contains(&node.name.as_str()))
+        .filter_map(|node| {
+            let name = node.arguments.first()?;
+
+            Some(DocumentSymbol {
+                name: name.value.clone(),
+                detail: Some(node.name.clone()),
+                kind: if node.name == KINDS[0] { SymbolKind::CONSTANT } else { SymbolKind::VARIABLE },
+                tags: None,
+                deprecated: None,
+                range: index.range(node.name_range.start..end(text, node)),
+                selection_range: index.range(name.range.clone()),
+                children: None
+            })
+        })
+        .filter(|symbol| !symbol.name.is_empty());
+
+    fields.chain(values).chain(actions(&outline, text, index, None)).collect()
 }
 
 #[allow(deprecated)]

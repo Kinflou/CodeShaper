@@ -205,7 +205,7 @@ fn check_says_when_locations_were_not_checked() {
 fn block(name: &str, from: &str, to: &str) -> String {
     format!(
         "patch \"{name}\" {{\n    enabled true\n    alias \"cpp\"\n    file \"*\"\n    actions {{\n        \
-        replacer {{\n            location \"Identifier\"\n            from r\"{from}\"\n            to \"{to}\"\n        }}\n    }}\n}}\n"
+        replacer {{\n            location \"identifier\"\n            from r\"{from}\"\n            to \"{to}\"\n        }}\n    }}\n}}\n"
     )
 }
 
@@ -254,4 +254,78 @@ fn check_reports_every_patch_of_a_file() {
     assert!(text.contains("[first.kdl:20:"), "{text}");
     assert!(text.contains("[second.kdl:11:17]"), "{text}");
     assert!(text.contains("3 error(s), 0 warning(s)"));
+}
+
+fn declared() -> TempDir {
+    let directory = example(CPP14);
+    let path = |path: &str| directory.path().join(path);
+    let append = |file: &str, more: &str| fs::write(path(file), read(&path(file)) + more).unwrap();
+
+    for entry in fs::read_dir(path("shaping_project/patches")).unwrap() {
+        fs::remove_file(entry.unwrap().path()).unwrap();
+    }
+    append("shaping_project/project.kdl", "\nconstant \"header\" \"Generated\"\nvariable \"prefix\" default=\"my_\"\nvariable \"engine\"\n");
+    fs::write(
+        path("shaping_project/patches/a.kdl"),
+        "file \"Module.h\"\nactions {\nreplacer {\nlocation \"identifier\"\nfrom \"^__(\\\\w+)$\"\nto \"#[prefix]$[0]#[engine]\"\n}\n}\n"
+    ).unwrap();
+
+    directory
+}
+
+#[test]
+fn variables_are_set() {
+    let directory = declared();
+    let configuration = configuration(&directory);
+    let patch = directory.path().join("shaping_project/patches/a.kdl").display().to_string();
+    let file = directory.path().join("target/Module.h").display().to_string();
+    let call = |arguments: &[&str]| {
+        let output = codeshaper(arguments);
+        (output.status.success(), stdout(&output), String::from_utf8_lossy(&output.stderr).to_string())
+    };
+
+    for base in [vec!["run", "--dry-run", &configuration], vec!["apply", &patch, &file]] {
+        let with = |more: &[&str]| call(&[&base[..], more].concat());
+
+        let (success, _, error) = with(&[]);
+        assert!(!success && error.contains("Variable 'engine' has no value"), "{error}");
+        assert!(with(&["--set", "engine=4"]).1.contains("my_HelloWorld4"), "{:?}", with(&["--set", "engine=4"]));
+        assert!(with(&["--set", "engine= a=b ", "--set", "prefix="]).1.contains(" HelloWorld a=b "));
+        assert!(with(&["--set", "engine=1", "--set", "engine=2"]).1.contains("my_HelloWorld2"));
+        assert!(with(&["--set", "engine="]).1.contains("my_HelloWorld("));
+
+        for (set, message) in [
+            ("missing=1", "project.kdl declares no variable named 'missing'"), ("header=1", "'header' is a constant, constants can't be set"),
+            ("engine", "expected NAME=VALUE"), ("a b=1", "'a b' can't be a variable's name"), ("=1", "'' can't be a variable's name")
+        ] {
+            let (success, _, error) = with(&["--set", set]);
+            assert!(!success && error.contains(message), "{set}: {error}");
+        }
+    }
+
+    for base in [vec!["check", &configuration], vec!["check", "--patch", &patch]] {
+        let with = |more: &[&str]| call(&[&base[..], more].concat());
+
+        assert!(with(&[]).0 && with(&[]).1.contains("warning[variable-not-set]") && with(&[]).1.contains("0 error(s), 1 warning(s)"));
+        assert!(with(&["--set", "engine=4"]).1.contains("0 error(s), 0 warning(s)"));
+        assert!(with(&["--set", "header=4"]).2.contains("'header' is a constant"));
+    }
+
+    fs::write(&configuration, read(Path::new(&configuration)) + "\nvariables engine=\"5\"\n").unwrap();
+    assert!(call(&["apply", &patch, &file]).1.contains("my_HelloWorld5"));
+    assert!(call(&["run", &configuration, "--set", "prefix=x_"]).0);
+    assert!(read(Path::new(&file)).contains("x_HelloWorld5"));
+}
+
+#[test]
+fn patches_without_a_project_take_any_variable() {
+    let directory = tempfile::tempdir().unwrap();
+    let patch = directory.path().join("a.kdl").display().to_string();
+    let file = directory.path().join("a.cpp").display().to_string();
+    fs::write(&patch, block("one", "a", "#[name]")).unwrap();
+    fs::write(&file, "int a;\n").unwrap();
+
+    assert!(stdout(&codeshaper(&["apply", &patch, &file])).contains("error[action-not-found]"));
+    assert!(stdout(&codeshaper(&["apply", &patch, &file, "--set", "name=b"])).contains("+int b;"));
+    assert!(stdout(&codeshaper(&["check", "--patch", &patch, "--set", "name=b"])).contains("0 error(s)"));
 }

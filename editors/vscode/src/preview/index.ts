@@ -2,23 +2,32 @@ import * as path from "path";
 import { commands, window, workspace, ExtensionContext, Uri } from "vscode";
 import { LanguageClient } from "vscode-languageclient/node";
 import { named } from "../arguments";
-import { reason } from "../errors";
+import { missingVariables, reason } from "../errors";
+import { Variables } from "../variables";
 import { PreviewContents, SCHEME } from "./contents";
 import { OperationResult, PatchNames, PreviewedPatch, PreviewFile, PreviewResult } from "./protocol";
 
-export function addPreviews(context: ExtensionContext, client: LanguageClient): void {
+const SET_VALUE = "Set Value";
+
+interface Server {
+    client: LanguageClient;
+    variables: Variables;
+}
+
+export function addPreviews(context: ExtensionContext, client: LanguageClient, variables: Variables): void {
     const contents = new PreviewContents();
+    const server = { client, variables };
 
     context.subscriptions.push(
         workspace.registerTextDocumentContentProvider(SCHEME, contents),
-        commands.registerCommand("codeshaper.preview", (resource?: Uri | string, name?: unknown) => previewPatch(client, contents, resource?.toString(), named(name))),
-        commands.registerCommand("codeshaper.previewOperation", (resource?: Uri | string) => previewOperation(client, contents, resource?.toString()))
+        commands.registerCommand("codeshaper.preview", (resource?: Uri | string, name?: unknown) => previewPatch(server, contents, resource?.toString(), named(name))),
+        commands.registerCommand("codeshaper.previewOperation", (resource?: Uri | string) => previewOperation(server, contents, resource?.toString()))
     );
 }
 
-async function previewPatch(client: LanguageClient, contents: PreviewContents, uri?: string, name?: string): Promise<void> {
+async function previewPatch(server: Server, contents: PreviewContents, uri?: string, name?: string): Promise<void> {
     const target = uri ?? active();
-    const found = target && await previewed(client, name ? { uri: target, name } : { uri: target, position: cursor(target) });
+    const found = target && await previewed(server, name ? { uri: target, name } : { uri: target, position: cursor(target) });
     if (!target || !found) {
         return;
     }
@@ -41,8 +50,8 @@ async function previewPatch(client: LanguageClient, contents: PreviewContents, u
     await commands.executeCommand("vscode.diff", Uri.parse(chosen.uri), preview, `${path.basename(chosen.path)} ↔ ${patch} preview`);
 }
 
-async function previewed(client: LanguageClient, patch: PreviewedPatch): Promise<{ result: PreviewResult; name?: string } | undefined> {
-    const result = await send<PreviewResult | PatchNames>(client, "codeshaper/preview", patch);
+async function previewed(server: Server, patch: PreviewedPatch): Promise<{ result: PreviewResult; name?: string } | undefined> {
+    const result = await send<PreviewResult | PatchNames>(server, "codeshaper/preview", patch);
     if (!result) {
         return undefined;
     }
@@ -52,12 +61,12 @@ async function previewed(client: LanguageClient, patch: PreviewedPatch): Promise
 
     const name = await window.showQuickPick(result.patches, { placeHolder: "The patch to preview" });
 
-    return name ? previewed(client, { uri: patch.uri, name }) : undefined;
+    return name ? previewed(server, { uri: patch.uri, name }) : undefined;
 }
 
-async function previewOperation(client: LanguageClient, contents: PreviewContents, uri?: string): Promise<void> {
+async function previewOperation(server: Server, contents: PreviewContents, uri?: string): Promise<void> {
     const target = uri ?? active();
-    const result = target && await send<OperationResult>(client, "codeshaper/previewOperation", { uri: target });
+    const result = target && await send<OperationResult>(server, "codeshaper/previewOperation", { uri: target });
     if (!result) {
         return;
     }
@@ -91,12 +100,15 @@ function cursor(uri: string): PreviewedPatch["position"] {
     return { line, character };
 }
 
-async function send<T>(client: LanguageClient, method: string, params: object): Promise<T | undefined> {
+async function send<T>(server: Server, method: string, params: object): Promise<T | undefined> {
     try {
-        return await client.sendRequest<T>(method, params);
+        return await server.client.sendRequest<T>(method, params);
     } catch (error) {
-        window.showErrorMessage(`CodeShaper preview failed: ${reason(error)}`);
-        return undefined;
+        const missing = missingVariables(error);
+        const actions = missing ? [SET_VALUE] : [];
+        const chosen = await window.showErrorMessage(`CodeShaper preview failed: ${reason(error)}`, ...actions);
+
+        return missing && chosen && await server.variables.askFor(missing) ? send(server, method, params) : undefined;
     }
 }
 

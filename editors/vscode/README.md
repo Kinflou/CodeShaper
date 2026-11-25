@@ -14,6 +14,7 @@ command preview the block at the cursor, or ask for one.
 Beside each location stands how many places it matches, and beside the fields of each action how often it
 matches, builds and is called, updated on open and save (`codeshaper.inlayHints.matches`).
 These hints are smaller than the code, `editor.inlayHints.fontSize` under `[kdl]` changes it.
+Hovering a name, such as `location` or `collect`, explains it, and so do the suggestions while typing.
 Hovering a location, `match`, `from`, `build`, `to` or a `$[…]` shows samples (`codeshaper.hover.samples`), with
 links that select each place, match and capture in a read-only copy of its target file. Files listed when
 hovering `file`, the references of a location and the definition of `file` open as copies too.
@@ -38,6 +39,11 @@ cursor. Places are those of the saved file, before any patch runs. Close the cop
 | `E` | Edit the file itself |
 
 Click the status bar item for the list. They can be changed in *Keyboard Shortcuts*.
+
+**Variables**, the CodeShaper icon in the Activity Bar, lists the constants and variables of the workspace's projects
+and where each value comes from. Click a variable to set it, for previews, hovers and counts in this workspace. Nothing
+is written to the project, and runs don't use it. A preview that needs a missing value offers to set it. Projects that
+git ignores are left out until one of their variables is set.
 
 ## Install
 

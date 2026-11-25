@@ -32,8 +32,15 @@ fn located<'a>(source: &'a str, location: &str) -> Vec<&'a str> {
 
 
 #[test]
+fn locate_the_outermost_block() {
+    assert_eq!(located(PLAYER, "source"), located(PLAYER, "(source) @target"));
+    assert_eq!(located(PLAYER, "source").len(), 1);
+    assert_eq!(located(PLAYER, "source.function_definition"), located(PLAYER, "function_definition"));
+}
+
+#[test]
 fn locate_function_definitions() {
-    let found = located(PLAYER, "FunctionDefinition");
+    let found = located(PLAYER, "function_definition");
 
     assert_eq!(found.len(), 2);
     assert!(found[0].starts_with("func _ready()"));
@@ -42,7 +49,7 @@ fn locate_function_definitions() {
 
 #[test]
 fn locate_function_names() {
-    assert_eq!(located(PLAYER, "FunctionDefinition.name"), vec!["_ready", "take_damage"]);
+    assert_eq!(located(PLAYER, "function_definition.name"), vec!["_ready", "take_damage"]);
 }
 
 #[test]
@@ -67,7 +74,7 @@ fn registers_gdscript() {
 fn check_locations() {
     let backend = TreeSitterBackend::gdscript();
 
-    assert!(backend.check_location("VariableStatement.name").is_ok());
-    assert!(backend.check_location("ExportVariableStatement").is_ok());
+    assert!(backend.check_location("variable_statement.name").is_ok());
+    assert!(backend.check_location("export_variable_statement").is_ok());
     assert!(backend.check_location("ExportStatement").is_err());
 }

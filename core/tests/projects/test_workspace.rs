@@ -23,7 +23,8 @@ fn load_test_workspace_configuration() {
         target: "target/origin/".into(),
         output: "target/expected_result/".to_string(),
         backup: "target/backup/".to_string(),
-        result: ResultOptions::BackupAndReplace
+        result: ResultOptions::BackupAndReplace,
+        variables: Default::default()
     };
 
     assert_eq!(configuration, expected_configuration);

@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 // Crate Uses
+use crate::explain;
 use crate::groups::{arguments, group_number, groups, locals};
 use crate::navigation::{calls, symbol_at, Symbol};
 use crate::places::Places;
@@ -14,6 +15,7 @@ use crate::section::{view_at, View};
 use crate::syntax::{Literal, Outline, ACTION_NODES};
 use crate::target::{self, backends};
 use crate::trace::{diff, fenced, inline, truncate, Limits, Traces};
+use crate::values;
 
 // External Uses
 use codeshaper::core::ast::backend::LanguageBackend;
@@ -36,12 +38,15 @@ pub fn hover(
     let View { text, .. } = view_at(text, offset);
     let text = text.as_ref();
     let outline = Outline::parse(text);
+    if let Some(explained) = explain::hover(explain::PATCH, &outline, offset) { return Some(explained) }
+
     let language = backends(registry, project, &outline).first().map(|backend| backend.name().to_string()).unwrap_or_default();
 
     if let Some(Symbol { name, range }) = symbol_at(&outline, text, offset) {
         let index = outline.nodes.iter().position(|node| {
             ACTION_NODES.contains(&node.name.as_str()) && node.arguments.first().is_some_and(|literal| literal.value == name)
-        })?;
+        });
+        let Some(index) = index else { return Some((values::hover(project, &name)?, range)) };
 
         if outline.nodes[index].name == "replacer" {
             let (trace, path) = traced(registry, project, traces, text, &outline, index)?;
@@ -118,7 +123,11 @@ pub fn hover(
             let collect = outline.field(action, "collect").is_some_and(|literal| literal.value == "true");
             let separator = outline.field(action, "separator").map(|literal| literal.value.clone()).unwrap_or_default();
             let (trace, path) = traced(registry, project, traces, text, &outline, action)?;
-            collected(collect, &separator, trace.action(&path), &language, &traces.limits)
+            let of = match outline.field(action, "reference-location") {
+                Some(_) => "reference location inside the place of its location",
+                None => "input of its location"
+            };
+            collected(collect.then_some(of), &separator, trace.action(&path), &language, &traces.limits)
         }
         ("maker", "prepare") => {
             let traced = traced(registry, project, traces, text, &outline, action);
@@ -492,11 +501,11 @@ fn built(action: Option<&ActionTrace>, trace: &Trace, language: &str, limits: &L
 }
 
 fn collected(
-    collect: bool, separator: &str, action: Option<&ActionTrace>, language: &str, limits: &Limits
+    collect: Option<&str>, separator: &str, action: Option<&ActionTrace>, language: &str, limits: &Limits
 ) -> String {
     let mut value = match collect {
-        true => format!("Collects every input of its location, joined by {}", inline(separator)),
-        false => "Builds from the content around each call only".to_string()
+        Some(of) => format!("Collects every {of}, joined by {}", inline(separator)),
+        None => "Builds from the content around each call only".to_string()
     };
 
     if let Some(result) = action.and_then(|action| action.results.first()) {

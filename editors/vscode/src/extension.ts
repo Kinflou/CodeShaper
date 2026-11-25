@@ -6,6 +6,7 @@ import { middleware } from "./explore/middleware";
 import { Requests } from "./explore/requests";
 import { addPreviews } from "./preview";
 import { createClient } from "./server";
+import { Variables } from "./variables";
 
 let client: LanguageClient | undefined;
 
@@ -17,7 +18,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
     client = started;
     context.subscriptions.push(client);
 
-    addPreviews(context, client);
+    addPreviews(context, client, new Variables(context, client));
     const exploring = explore(context, requests, links);
 
     await client.start();

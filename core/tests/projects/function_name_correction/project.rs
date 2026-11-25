@@ -27,7 +27,9 @@ fn load_project_settings() {
             \n\
             This example shows how it can change any found void functions in a specific file called Module.cpp\n\
             that starts with '__' (two underscores) that we want to change to _ only instead as an example"
-            .to_string()
+            .to_string(),
+        constants: vec![],
+        variables: vec![]
     };
 
     assert_eq!(settings, expected_settings);

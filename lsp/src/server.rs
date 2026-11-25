@@ -1,6 +1,7 @@
 // Standard Uses
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -11,7 +12,7 @@ use crate::document::{kind, DocumentKind};
 use crate::explore;
 use crate::groups::link_at;
 use crate::inlay::{inlay_hints, Hints};
-use crate::navigation::{definition, links, references, rename, symbol_at};
+use crate::navigation::{definition, definitions, links, references, rename, symbol_at};
 use crate::options;
 use crate::paths::{self, Opening};
 use crate::position::LineIndex;
@@ -24,6 +25,7 @@ use crate::target::{self, forget_languages};
 use crate::toggle::toggle;
 use crate::tokens::tokens;
 use crate::trace::Limits;
+use crate::values;
 use crate::worker::{file_uri, path, Refresh, Shared, Snapshot, Work, Worker};
 
 // External Uses
@@ -58,6 +60,8 @@ const PREVIEW_REQUEST: &str = "codeshaper/preview";
 const OPERATION_COMMAND: &str = "codeshaper.previewOperation";
 const OPERATION_REQUEST: &str = "codeshaper/previewOperation";
 const EXPLORE_COMMAND: &str = "codeshaper.explore";
+const VARIABLES_REQUEST: &str = "codeshaper/variables";
+const SET_VARIABLES: &str = "codeshaper/setVariables";
 
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -215,6 +219,13 @@ impl<'c> Server<'c> {
                         return Some(links(self.definition_links, index.range(origin), here(link.group)))
                     }
 
+                    if let Some((symbol, location)) = symbol_at(&outline, text, offset).and_then(|symbol| {
+                        let location = self.declaration(&uri, &symbol.name)?;
+                        Some((symbol, location))
+                    }) {
+                        return Some(links(self.definition_links, index.range(symbol.range), vec![location]))
+                    }
+
                     let (_, literal) = outline.literal_at(offset).filter(|(node, _)| outline.is_top(*node, "file"))?;
                     Some(links(self.definition_links, index.range(literal.content.clone()), self.target_files(&uri, &outline)))
                 });
@@ -272,7 +283,8 @@ impl<'c> Server<'c> {
             PrepareRenameRequest::METHOD => {
                 let params: TextDocumentPositionParams = serde_json::from_value(request.params).into_diagnostic()?;
                 let found = self.view(&params.text_document.uri, params.position).and_then(|(view, offset)| {
-                    let symbol = symbol_at(&Outline::parse(&view.text), &view.text, offset)?;
+                    let outline = Outline::parse(&view.text);
+                    let symbol = symbol_at(&outline, &view.text, offset).filter(|symbol| !self.is_declared(&params.text_document.uri, &outline, &symbol.name))?;
                     Some(PrepareRenameResponse::Range(LineIndex::new(&view.text).range(symbol.range)))
                 });
 
@@ -284,7 +296,9 @@ impl<'c> Server<'c> {
                 let uri = position.text_document.uri;
                 let found = self.view(&uri, position.position).and_then(|(view, offset)| {
                     let index = LineIndex::new(&view.text);
-                    let ranges = rename(&Outline::parse(&view.text), &view.text, offset, &params.new_name)?;
+                    let outline = Outline::parse(&view.text);
+                    if symbol_at(&outline, &view.text, offset).is_some_and(|symbol| self.is_declared(&uri, &outline, &symbol.name)) { return None }
+                    let ranges = rename(&outline, &view.text, offset, &params.new_name)?;
                     let edits = ranges.into_iter().map(|range| TextEdit::new(index.range(range), params.new_name.clone())).collect();
 
                     Some(WorkspaceEdit::new(HashMap::from([(uri.clone(), edits)])))
@@ -333,7 +347,7 @@ impl<'c> Server<'c> {
                         }
                         lenses.push(explored(place, name));
 
-                        if let Some(toggle) = toggle(&Outline::parse(&view.text)) {
+                        if let Some(toggle) = toggle(&Outline::parse(&view.text), text) {
                             lenses.push(lens(index.range(toggle.node), toggle.title, TOGGLE_COMMAND, name));
                         }
                         if let Some(trace) = traces.get(number).cloned().flatten() {
@@ -364,7 +378,7 @@ impl<'c> Server<'c> {
                 let uri = params.text_document.uri;
                 let found: Vec<CodeActionOrCommand> = self.patch(&uri).into_iter()
                     .flat_map(|(project, text)| views(text).into_iter()
-                        .flat_map(|view| [toggled(&uri, &view), remove_alias(&uri, &project, text, &view)])
+                        .flat_map(|view| [toggled(&uri, text, &view), remove_alias(&uri, &project, text, &view)])
                         .collect::<Vec<_>>())
                     .flatten()
                     .filter(|(node, _, _)| node.start.line <= params.range.end.line && params.range.start.line <= node.end.line)
@@ -388,7 +402,7 @@ impl<'c> Server<'c> {
                         self.shared.ask(ApplyWorkspaceEdit::METHOD, json!(ApplyWorkspaceEditParams { label: Some(title.to_string()), edit }));
                         Response::new_ok(request.id, json!(null))
                     }
-                    None => Response::new_err(request.id, ErrorCode::InvalidParams as i32, "Not an open patch with an 'enabled' field".to_string())
+                    None => Response::new_err(request.id, ErrorCode::InvalidParams as i32, "Not an open patch to enable or disable".to_string())
                 }
             }
             PREVIEW_REQUEST => {
@@ -432,6 +446,10 @@ impl<'c> Server<'c> {
                     }
                     None => Response::new_err(request.id, ErrorCode::InvalidParams as i32, "Not an open patch or configuration".to_string())
                 }
+            }
+            VARIABLES_REQUEST => match asked_project(&request.params).ok_or_else(|| miette!("Not a project.kdl")).and_then(|project| values::listed(&project)) {
+                Ok(found) => Response::new_ok(request.id, found),
+                Err(error) => Response::new_err(request.id, ErrorCode::RequestFailed as i32, error.to_string())
             }
             method if explore::REQUESTS.contains(&method) => match explore::start(&request.params) {
                 Some((uri, start)) => {
@@ -570,6 +588,18 @@ impl<'c> Server<'c> {
                     self.shared.cancel(id);
                 }
             }
+            SET_VARIABLES => {
+                let Some(project) = asked_project(&notification.params) else { return Ok(()) };
+                let given = notification.params.get("values").cloned().and_then(|values| serde_json::from_value(values).ok());
+                values::give(&project, given.unwrap_or_default());
+
+                let project = canonicalize(project).ok();
+                let uris: Vec<Uri> = self.documents.keys().filter(|uri| project.is_some() && self.project(uri) == project).cloned().collect();
+                for uri in uris {
+                    self.update(&uri, false);
+                    self.trace(&uri);
+                }
+            }
             DidChangeWatchedFiles::METHOD => {
                 let params: DidChangeWatchedFilesParams = serde_json::from_value(notification.params).into_diagnostic()?;
                 forget_languages();
@@ -622,7 +652,26 @@ impl<'c> Server<'c> {
             None => views.first().filter(|_| views.len() == 1)
         };
 
-        toggled(uri, view?)
+        toggled(uri, text, view?)
+    }
+
+    fn is_declared(&self, uri: &Uri, outline: &Outline, name: &str) -> bool {
+        let is_action = definitions(outline).iter().any(|symbol| symbol.name == name);
+
+        !is_action && self.patch(uri).is_some_and(|(project, _)| values::find(&project, name).is_some())
+    }
+
+    fn declaration(&self, uri: &Uri, name: &str) -> Option<Location> {
+        let (project, _) = self.patch(uri)?;
+        let file = canonicalize(values::file(&project)).ok()?;
+        let open = self.documents.iter().find(|(uri, _)| path(uri).and_then(|path| canonicalize(path).ok()).as_ref() == Some(&file));
+        let (uri, text) = match open {
+            Some((uri, text)) => (uri.clone(), text.clone()),
+            None => (file_uri(&values::file(&project))?, fs::read_to_string(&file).ok()?)
+        };
+        let range = values::declaration(&text, name)?;
+
+        Some(Location::new(uri, LineIndex::new(&text).range(range)))
     }
 
     fn project(&self, uri: &Uri) -> Option<PathBuf> {
@@ -655,6 +704,12 @@ impl<'c> Server<'c> {
 }
 
 
+fn asked_project(params: &serde_json::Value) -> Option<PathBuf> {
+    let file = path(&params.get("project")?.as_str()?.parse().ok()?)?;
+
+    (kind(&file) == DocumentKind::Settings).then(|| file.parent().map(Path::to_path_buf))?
+}
+
 fn real(file: &Path) -> PathBuf {
     let found = file.ancestors().find_map(|ancestor| Some((ancestor, canonicalize(ancestor).ok()?)));
 
@@ -665,10 +720,10 @@ fn real(file: &Path) -> PathBuf {
     }
 }
 
-fn toggled(uri: &Uri, view: &View) -> Option<Edit> {
-    let index = LineIndex::new(&view.text);
-    let toggle = toggle(&Outline::parse(&view.text))?;
-    let edit = TextEdit::new(index.range(toggle.value), toggle.text.to_string());
+fn toggled(uri: &Uri, text: &str, view: &View) -> Option<Edit> {
+    let index = LineIndex::new(text);
+    let toggle = toggle(&Outline::parse(&view.text), text)?;
+    let edit = TextEdit::new(index.range(toggle.value), toggle.text);
 
     Some((index.range(toggle.node), toggle.title, WorkspaceEdit::new(HashMap::from([(uri.clone(), vec![edit])]))))
 }

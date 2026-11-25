@@ -22,7 +22,8 @@ fn load_example_configuration() {
         target: "target/".into(),
         output: "target_result/".to_string(),
         backup: "target_backup/".to_string(),
-        result: ResultOptions::BackupAndReplace
+        result: ResultOptions::BackupAndReplace,
+        variables: Default::default()
     };
 
     assert_eq!(configuration, expected_configuration);

@@ -1,4 +1,5 @@
 // Standard Uses
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -8,8 +9,10 @@ use std::time::{Duration, Instant};
 use crate::registry::Registry;
 use crate::shaping::operation::{Operation, RunFailed};
 use crate::shaping::operation::report::{FileReport, Outcome, Report};
+use crate::shaping::patch::Patch;
 use crate::shaping::patch::pattern::Regexes;
 use crate::shaping::project::ProjectPatch;
+use crate::shaping::project::values::Values;
 use crate::target::{File, Solution};
 
 // External Uses
@@ -58,7 +61,7 @@ pub struct Session<'a> {
     history: Vec<Change>,
     cursor: usize,
     contents: Vec<Option<String>>,
-    regexes: Rc<Regexes>,
+    shared: (Rc<Regexes>, Rc<Values>),
     started_at: Option<Instant>,
     elapsed: Duration
 }
@@ -74,6 +77,10 @@ impl<'a> Session<'a> {
             }
         }
 
+        let matching: BTreeSet<usize> = steps.iter().map(|(_, patch)| *patch).collect();
+        let patches: Vec<&Patch> = matching.into_iter().map(|patch| &operation.project.patches[patch].patch).collect();
+        let values = operation.values(&patches)?;
+
         Ok(Self {
             operation,
             registry,
@@ -83,7 +90,7 @@ impl<'a> Session<'a> {
             steps,
             history: vec![],
             cursor: 0,
-            regexes: Rc::default(),
+            shared: (Rc::default(), values),
             started_at: None,
             elapsed: Duration::ZERO
         })
@@ -283,7 +290,7 @@ impl<'a> Session<'a> {
 
         let (before, result) = match before {
             Ok(before) => {
-                let result = self.operation.apply_patch(self.registry, (name, patch), file, &before, &self.regexes);
+                let result = self.operation.apply_patch(self.registry, (name, patch), file, &before, &self.shared);
                 (before, result)
             }
             Err(error) => (String::new(), Err(error))

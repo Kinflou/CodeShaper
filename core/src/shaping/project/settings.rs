@@ -6,6 +6,7 @@ use std::path::Path;
 // Crate Uses
 use crate::shaping::lines::unix;
 use crate::shaping::project::ast_set::AstSet;
+use crate::shaping::project::values::{Constant, Variable};
 use crate::shaping::target::Target;
 
 // External Uses
@@ -26,7 +27,11 @@ pub struct ProjectSettings {
     #[knus(child)]
     pub ast_set: AstSet,
     #[knus(child, unwrap(argument))]
-    pub description: String
+    pub description: String,
+    #[knus(children(name="constant"))]
+    pub constants: Vec<Constant>,
+    #[knus(children(name="variable"))]
+    pub variables: Vec<Variable>
 }
 
 impl ProjectSettings {

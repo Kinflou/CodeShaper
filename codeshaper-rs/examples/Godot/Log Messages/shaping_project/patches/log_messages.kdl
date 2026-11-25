@@ -1,0 +1,30 @@
+patch "messages" {
+    file "**/*.gd"
+
+    actions {
+        builder "script_name" {
+            location "source"
+            reference-location "class_name_statement.name"
+            match r"(\w+)"
+            build "$[0]"
+        }
+
+        replacer "print" {
+            location "call"
+            from r"^print\("
+            to "#[logger].#[level](\"#[script_name]\", "
+        }
+    }
+}
+
+patch "autoload" {
+    file "project.godot"
+
+    actions {
+        replacer {
+            location r#"(section (identifier) @name (#eq? @name "application")) @target"#
+            from r"\s*$"
+            to "\n\n[autoload]\n\n#[logger]=\"*#[script]\""
+        }
+    }
+}

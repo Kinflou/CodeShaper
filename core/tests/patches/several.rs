@@ -168,11 +168,11 @@ fn blocks_hold_no_blocks() {
 
 #[test]
 fn missing_fields_point_at_their_block() {
-    let text = block("one", FIELDS) + &block("two", &FIELDS.replace("enabled true\n", "")) + "patch \"three\"\n";
+    let text = block("one", FIELDS) + &block("two", &FIELDS.replace("file \"*\"\n", "")) + "patch \"three\"\n";
 
     assert_eq!(errors(&text), vec![
-        pair("child node `enabled` is required", "patch"),
-        pair("child node `enabled` is required", "patch")
+        pair("child node `file` is required", "patch"),
+        pair("child node `file` is required", "patch")
     ]);
 }
 
@@ -186,7 +186,7 @@ fn every_block_is_reported() {
 
 #[test]
 fn empty_files_have_no_patch() {
-    assert_eq!(error(""), pair("child node `enabled` is required", ""));
+    assert_eq!(error(""), pair("child node `file` is required", ""));
 }
 
 #[test]

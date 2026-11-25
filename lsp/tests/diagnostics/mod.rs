@@ -24,17 +24,17 @@ actions {
         index "@[0]"
     }
     replacer {
-        location "ClassSpecifier"
+        location "class_specifier"
         from r"x"
         to "y"
     }
     replacer {
-        location "FunctionDefinition"
+        location "function_definition"
         from r"nothing"
         to "#[unused_here]"
     }
     replacer {
-        location "FunctionDefinition"
+        location "function_definition"
         from r"void (old)"
         to "#[kind]($[0])"
     }
@@ -117,6 +117,38 @@ fn coverage_reports_what_matches_nothing() {
 }
 
 #[test]
+fn coverage_tells_locations_from_references() {
+    let (_directory, project) = operation();
+    let reported = |location: &str, reference: &str, more: &str| {
+        let fields = format!("location \"{location}\"\nreference-location \"{reference}\"\n");
+        let text = format!(
+            "enabled true\nfile \"*.cpp\"\nactions {{\nbuilder \"b\" {{\n{fields}match r\"(\\w+)\"\nbuild \"$[0]\"\n{more}\n}}\n\
+            replacer {{\nlocation \"function_definition\"\nfrom \"old\"\nto \"#[b]\"\n}}\n\
+            replacer \"r\" {{\n{fields}from r\"\\w+\"\nto \"x\"\n}}\n}}\n"
+        );
+        let trace = Traces::default().get(&codeshaper::registry(), &project, &text).unwrap();
+
+        coverage(&text, &trace).into_iter()
+            .filter(|found| found.code == Some(NumberOrString::String("location-unmatched".to_string())))
+            .map(|found| (found.message, text.lines().nth(found.range.start.line as usize).unwrap().to_string()))
+            .collect::<Vec<_>>()
+    };
+    let location = |path: &str| (
+        format!("{path} › location: matches nothing in 2 target file(s)"), "location \"class_specifier\"".to_string()
+    );
+    let reference = |path: &str| (
+        format!("{path} › reference-location: never found from the places of `location` in 2 target file(s)"),
+        "reference-location \"class_specifier\"".to_string()
+    );
+
+    for more in ["", "collect true"] {
+        assert_eq!(reported("function_definition", "identifier", more), vec![]);
+        assert_eq!(reported("function_definition", "class_specifier", more), vec![reference("b"), reference("r")]);
+        assert_eq!(reported("class_specifier", "identifier", more), vec![location("b"), location("r")]);
+    }
+}
+
+#[test]
 fn unmatched_files_are_reported_once() {
     let (_directory, project) = operation();
     let text = UNCOVERED.replace("enabled false", "enabled true").replace("*.cpp", "*.missing");
@@ -148,7 +180,7 @@ fn hints(kind: &str, fields: &str) -> Vec<(String, String)> {
 #[test]
 fn unused_groups_are_hinted() {
     let found = hints("replacer", r#"{
-location "FunctionDefinition"
+location "function_definition"
 from r"(a)(?P<n>b)((?:c)d)"
 to "$[n] $[0]"
 }"#);
@@ -158,8 +190,8 @@ to "$[n] $[0]"
 
 #[test]
 fn patterns_matching_nothing_are_hinted() {
-    let replacer = |from: &str| hints("replacer", &format!("{{\nlocation \"FunctionDefinition\"\nfrom r\"{from}\"\nto \"x\"\n}}"));
-    let builder = |regex: &str| hints("builder", &format!("\"b\" {{\nlocation \"FunctionDefinition\"\nmatch r\"{regex}\"\nbuild \"x\"\n}}"));
+    let replacer = |from: &str| hints("replacer", &format!("{{\nlocation \"function_definition\"\nfrom r\"{from}\"\nto \"x\"\n}}"));
+    let builder = |regex: &str| hints("builder", &format!("\"b\" {{\nlocation \"function_definition\"\nmatch r\"{regex}\"\nbuild \"x\"\n}}"));
 
     assert_eq!(replacer("a*"), vec![("matches-empty".to_string(), "r\"a*\"".to_string())]);
     assert_eq!(replacer(""), vec![("matches-empty".to_string(), "r\"\"".to_string())]);

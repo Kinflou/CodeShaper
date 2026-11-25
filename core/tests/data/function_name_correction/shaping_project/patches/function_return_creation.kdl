@@ -4,13 +4,13 @@ file "ReturnModule.cpp"
 
 actions {
     builder "function_header_builder" {
-        location "FunctionDefinition.body"
-        reference-location "FunctionDefinition"
+        location "function_definition.body"
+        reference-location "function_definition"
         match r"void Method(\w+)\("
         build "#[function_type_builder] Method$[0]"
         actions {
             builder "function_type_builder" {
-                location "FunctionDefinition.body"
+                location "function_definition.body"
                 match r#"std::string type = "(.+?)";"#
                 build "#[function_type_switch]($[0])"
             }
@@ -23,14 +23,14 @@ actions {
     }
 
     replacer {
-        location "FunctionDefinition.body"
-        reference-location "FunctionDefinition"
+        location "function_definition.body"
+        reference-location "function_definition"
         from r"void Method\w+"
         to "#[function_header_builder]"
     }
 
     replacer {
-        location "FunctionDefinition.body"
+        location "function_definition.body"
         from r"(int (\w+) = \d+;)\n\}"
         to "$[0]\n\t\n\treturn $[1];\n}"
     }

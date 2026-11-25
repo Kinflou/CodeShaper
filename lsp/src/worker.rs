@@ -10,10 +10,12 @@ use std::thread::{self, JoinHandle};
 // Crate Uses
 use crate::diagnostics::{coverage, duplicates, file};
 use crate::document::{kind, DocumentKind};
+use crate::explain;
 use crate::explore::{self, Located};
 use crate::hover::{hover, settings};
 use crate::inlay::{places, Counts, Hints, Place};
 use crate::navigation::links;
+use crate::options::project;
 use crate::paths::{self, check_patterns};
 use crate::position::LineIndex;
 use crate::preview::{configuration, operation_preview, preview};
@@ -21,13 +23,16 @@ use crate::section::views;
 use crate::syntax::Outline;
 use crate::target;
 use crate::trace::{Limits, Traces};
+use crate::values;
 
 // External Uses
 use codeshaper::core::registry::Registry;
 use codeshaper::core::shaping::operation::session::Preview;
 use codeshaper::core::shaping::patch::trace::Trace;
+use codeshaper::core::shaping::project::values::NotSet;
 use codeshaper_target_text::options::Field;
-use lsp_server::{ErrorCode, Message, Notification, Request, RequestId, Response};
+use dunce::canonicalize;
+use lsp_server::{ErrorCode, Message, Notification, Request, RequestId, Response, ResponseError};
 use lsp_types::notification::{Notification as _, PublishDiagnostics};
 use lsp_types::request::{CodeLensRefresh, InlayHintRefreshRequest, Request as _};
 use lsp_types::{Diagnostic, Hover, HoverContents, Location, MarkupContent, MarkupKind, PublishDiagnosticsParams, Range, Uri};
@@ -349,7 +354,12 @@ fn answer(
             let found = path(uri).and_then(|path| {
                 let listed = paths::hover(&path, text, offset, &|| !shared.is_cancelled(id));
 
-                listed.or_else(|| settings(registry, project, text, offset).filter(|_| kind(&path) == DocumentKind::Settings))
+                let found = listed.or_else(|| settings(registry, project, text, offset).filter(|_| kind(&path) == DocumentKind::Settings));
+
+                match (explain::document(&path, text, offset), found) {
+                    (Some((explained, range)), Some((value, _))) => Some((format!("{explained}\n\n{value}"), range)),
+                    (explained, found) => explained.or(found)
+                }
             });
 
             hover_response(id, text, found)
@@ -372,7 +382,7 @@ fn answer(
 
             match found {
                 Ok(preview) => operation_response(id, preview),
-                Err(error) => Response::new_err(id.clone(), ErrorCode::RequestFailed as i32, message(&error))
+                Err(error) => failed(id, uri, text, &error)
             }
         }
         Work::Explore { method, start, params, open } => {
@@ -411,7 +421,7 @@ fn preview_response(registry: &Registry, id: &RequestId, uri: &Uri, project: &Pa
 
     let (target, changes) = match preview(registry, project, &name.clone().unwrap_or_else(file), text) {
         Ok(previewed) => previewed,
-        Err(error) => return Response::new_err(id.clone(), ErrorCode::RequestFailed as i32, message(&error))
+        Err(error) => return failed(id, uri, text, &error)
     };
 
     let matched = changes.len();
@@ -434,6 +444,17 @@ fn preview_response(registry: &Registry, id: &RequestId, uri: &Uri, project: &Pa
     }
 
     Response::new_ok(id.clone(), json!({ "patch": name, "matched": matched, "files": files, "errors": errors }))
+}
+
+fn failed(id: &RequestId, uri: &Uri, text: &str, error: &miette::Report) -> Response {
+    let missing = error.downcast_ref::<NotSet>().and_then(|missing| {
+        let project = path(uri).and_then(|path| project(&path, text))?;
+
+        Some(json!({ "project": file_uri(&values::file(&canonicalize(project).ok()?))?, "variables": missing.names }))
+    });
+    let error = ResponseError { code: ErrorCode::RequestFailed as i32, message: message(error), data: missing };
+
+    Response { id: id.clone(), response_result: Err(error) }
 }
 
 fn operation_response(id: &RequestId, preview: Preview) -> Response {

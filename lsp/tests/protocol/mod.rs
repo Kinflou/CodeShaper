@@ -279,7 +279,7 @@ fn rename_edits_every_use() {
 
 #[test]
 fn hover_describes_locations() {
-    let text = "alias \"\"\nactions {\n    replacer {\n        location \"FunctionDefinition\"\n    }\n}\n";
+    let text = "alias \"\"\nactions {\n    replacer {\n        location \"function_definition\"\n    }\n}\n";
     let (_directory, project) = project(&[("hover.kdl", "")]);
     let mut client = Client::start();
     let uri = client.open(&project.join("patches/hover.kdl"), text);
@@ -294,7 +294,7 @@ fn hover_describes_locations() {
     };
 
     assert_eq!(markup.value, "cpp: node kind `function_definition`");
-    assert_eq!(range.map(|range| (range.start, range.end)), Some((Position::new(3, 17), Position::new(3, 37))));
+    assert_eq!(range.map(|range| (range.start, range.end)), Some((Position::new(3, 17), Position::new(3, 38))));
 
     client.stop();
 }
@@ -404,6 +404,23 @@ fn patches_are_toggled() {
     assert_eq!(apply.params["edit"]["changes"][uri.as_str()][0]["newText"], "true");
     let Message::Response(done) = client.receive() else { panic!("expected a response") };
     assert_eq!(done.id, RequestId::from(90));
+
+    let uri = client.open(&project.join("patches/missing.kdl"), &RENAME.replace("enabled false\n", "").replace('\n', "\r\n"));
+    let params = serde_json::json!({ "textDocument": { "uri": uri.as_str() } });
+    let lenses: Vec<CodeLens> = serde_json::from_value(client.request(CodeLensRequest::METHOD, params).response_result.unwrap()).unwrap();
+    let lens = lenses.iter().find(|lens| lens.command.as_ref().unwrap().command == "codeshaper.toggle").unwrap();
+    assert_eq!((lens.command.as_ref().unwrap().title.as_str(), lens.range.start), ("Disable patch", Position::new(0, 0)));
+
+    let params = serde_json::json!({
+        "textDocument": { "uri": uri.as_str() }, "context": { "diagnostics": [] },
+        "range": { "start": { "line": 0, "character": 2 }, "end": { "line": 0, "character": 2 } }
+    });
+    let actions = client.request("textDocument/codeAction", params).response_result.unwrap();
+    let edit = &actions[0]["edit"]["changes"][uri.as_str()][0];
+    assert_eq!((&edit["newText"], &edit["range"]), (
+        &serde_json::json!("enabled false\r\n"),
+        &serde_json::json!({ "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } })
+    ));
 
     client.stop();
 }
@@ -519,7 +536,7 @@ fn failed_previews_say_where() {
         (RENAME.replace("enabled false", "enabled false }"), "rename.kdl:1:15: found `}`"),
         (RENAME.replace("file \"*.cpp\"", "file \"*.é.cpp\" }"), "rename.kdl:3:16: found `}`"),
         (RENAME.replace('\n', "\r\n").replace("enabled false", "enabled 1"), "rename.kdl:1:9: "),
-        (RENAME.replace("enabled false", ""), "rename.kdl: child node `enabled` is required")
+        (RENAME.replace("file \"*.cpp\"", ""), "rename.kdl: child node `file` is required")
     ];
 
     for (text, expected) in broken {

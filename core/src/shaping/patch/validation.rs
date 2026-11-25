@@ -1,5 +1,5 @@
 // Standard Uses
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::ops::Range;
 
 // Crate Uses
@@ -10,6 +10,7 @@ use crate::shaping::patch::{pattern, Actions, Patch};
 use crate::shaping::patch::pattern::{check_flags, regex_builder};
 use crate::shaping::patch::replacer::Replacer;
 use crate::shaping::patch::source::{ActionSpans, NodeSpans, PatchSource};
+use crate::shaping::project::values::Declared;
 
 // External Uses
 use miette::SourceSpan;
@@ -34,7 +35,8 @@ pub enum DiagnosticKind {
     IncorrectName,
     IncorrectFilePattern,
     FileNotMatched,
-    LanguageNotFound
+    LanguageNotFound,
+    VariableNotSet
 }
 
 impl DiagnosticKind {
@@ -51,7 +53,8 @@ impl DiagnosticKind {
             Self::IncorrectName => "incorrect-name",
             Self::IncorrectFilePattern => "incorrect-file-pattern",
             Self::FileNotMatched => "file-not-matched",
-            Self::LanguageNotFound => "language-not-found"
+            Self::LanguageNotFound => "language-not-found",
+            Self::VariableNotSet => "variable-not-set"
         }
     }
 }
@@ -69,7 +72,7 @@ pub struct Diagnostic {
 impl Diagnostic {
     pub fn new(kind: DiagnosticKind, action: &str, field: &'static str, message: String) -> Self {
         let severity = match kind {
-            DiagnosticKind::UnusedAction | DiagnosticKind::FileNotMatched => Severity::Warning,
+            DiagnosticKind::UnusedAction | DiagnosticKind::FileNotMatched | DiagnosticKind::VariableNotSet => Severity::Warning,
             _ => Severity::Error
         };
 
@@ -83,24 +86,45 @@ impl Diagnostic {
 }
 
 
-pub fn validate<'a>(patch: &'a Patch, backends: impl IntoIterator<Item = &'a dyn LanguageBackend>) -> Vec<Diagnostic> {
-    check(patch, None, backends.into_iter().collect())
+pub fn validate<'a>(
+    patch: &'a Patch, backends: impl IntoIterator<Item = &'a dyn LanguageBackend>, declared: &[Declared]
+) -> Vec<Diagnostic> {
+    check(patch, None, backends.into_iter().collect(), declared)
 }
 
 pub fn validate_source<'a>(
-    patch: &'a Patch, source: &'a PatchSource, backends: impl IntoIterator<Item = &'a dyn LanguageBackend>
+    patch: &'a Patch, source: &'a PatchSource, backends: impl IntoIterator<Item = &'a dyn LanguageBackend>,
+    declared: &[Declared]
 ) -> Vec<Diagnostic> {
-    check(patch, Some(source), backends.into_iter().collect())
+    check(patch, Some(source), backends.into_iter().collect(), declared)
 }
 
-fn check(patch: &Patch, source: Option<&PatchSource>, backends: Vec<&dyn LanguageBackend>) -> Vec<Diagnostic> {
-    let mut validator = Validator { backends, source, ..Validator::default() };
+pub fn called(patch: &Patch) -> BTreeSet<String> {
+    let mut validator = Validator::default();
+    validator.actions(&patch.actions, "", None);
+
+    validator.calls.into_iter().map(|(_, _, name, _, _)| name).collect()
+}
+
+fn check(patch: &Patch, source: Option<&PatchSource>, backends: Vec<&dyn LanguageBackend>, declared: &[Declared]) -> Vec<Diagnostic> {
+    let declared: HashMap<&str, &Declared> = declared.iter().map(|declared| (declared.name.as_str(), declared)).collect();
+    let mut validator = Validator { backends, source, declared, ..Validator::default() };
     validator.actions(&patch.actions, "", source.map(|source| &source.spans.actions));
 
     let calls = std::mem::take(&mut validator.calls);
     for (action, field, name, count, span) in &calls {
         validator.current_span = *span;
 
+        if let (Some(value), false) = (validator.declared.get(name.as_str()).copied(), validator.names.contains_key(name)) {
+            if *count > 0 {
+                let message = format!("'#[{name}]' is a {}, it takes no arguments, but is called with {count}", value.kind());
+                validator.report(DiagnosticKind::IncorrectArgs, action, field, message);
+            }
+            if value.value.is_none() {
+                validator.report(DiagnosticKind::VariableNotSet, action, field, format!("Variable '{name}' has no value"));
+            }
+            continue
+        }
         if validator.replacers.contains_key(name) && !validator.names.contains_key(name) {
             let message = format!("'{name}' is a replacer, replacers can't be called");
             validator.report(DiagnosticKind::ActionNotFound, action, field, message);
@@ -183,6 +207,7 @@ type Call = (String, &'static str, String, usize, Option<SourceSpan>);
 struct Validator<'a> {
     backends: Vec<&'a dyn LanguageBackend>,
     source: Option<&'a PatchSource>,
+    declared: HashMap<&'a str, &'a Declared>,
     diagnostics: Vec<Diagnostic>,
     names: HashMap<String, (String, Option<SourceSpan>)>,
     replacers: HashMap<String, String>,
@@ -299,6 +324,8 @@ impl<'a> Validator<'a> {
                 self.report(DiagnosticKind::DuplicateAction, &path, "name", message);
             }
 
+            self.undeclared(&path, name);
+
             let span = self.span("name");
             self.names.insert(name.to_string(), (path.clone(), span));
         }
@@ -316,7 +343,17 @@ impl<'a> Validator<'a> {
                 let message = format!("The name '{name}' is already used at '{first}'");
                 self.report(DiagnosticKind::DuplicateAction, path, "name", message);
             }
-            None => { self.replacers.insert(name.to_string(), path.to_string()); }
+            None => {
+                self.undeclared(path, name);
+                self.replacers.insert(name.to_string(), path.to_string());
+            }
+        }
+    }
+
+    fn undeclared(&mut self, path: &str, name: &str) {
+        if let Some(declared) = self.declared.get(name) {
+            let message = format!("The name '{name}' is already a {} of the project", declared.kind());
+            self.report(DiagnosticKind::DuplicateAction, path, "name", message);
         }
     }
 

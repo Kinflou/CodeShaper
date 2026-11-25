@@ -89,9 +89,30 @@ impl Action for BuilderAction {
         ) else { return set_current(&self) };
         */
 
+        if let Some(reference) = &self.builder.reference_location {
+            let Some(found) = patch_controller.referred(&self.builder.location, reference, self.builder.collect) else {
+                return set_current(self)
+            };
+
+            if found.is_empty() {
+                patch_controller.record(*self.self_id(), |trace, _| trace.unreferred += 1);
+            }
+
+            let mut built = found.into_iter()
+                .map(|(content, start)| self.process_at(patch_controller, content, start));
+
+            if self.builder.collect {
+                return Some(built.flatten().collect::<Vec<String>>().join(&self.builder.separator))
+            }
+
+            return match built.next() {
+                Some(built) => built,
+                None => set_current(self)
+            }
+        }
+
         if self.builder.collect {
-            let location = self.builder.reference_location.as_deref()
-                .unwrap_or(&self.builder.location);
+            let location = &self.builder.location;
 
             let Some(contents) = patch_controller.listener_controller.location_contents
                 .get(location) else
@@ -108,16 +129,6 @@ impl Action for BuilderAction {
                 .collect();
 
             return Some(built.join(&self.builder.separator))
-        }
-
-        if let Some(ref_location) = &self.builder.reference_location {
-            let Some(context) = patch_controller.listener_controller.location_content
-                .get(ref_location) else
-            {
-                return set_current(&self)
-            };
-
-            return self.process_at(patch_controller, context.clone(), patch_controller.start(ref_location))
         }
 
         let Some(context) = patch_controller.listener_controller.location_content

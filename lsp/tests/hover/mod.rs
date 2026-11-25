@@ -16,7 +16,7 @@ actions {
         make "@[0]=@[1]"
     }
     replacer {
-        location "FunctionDefinition.body"
+        location "function_definition.body"
         reference-location "Nope"
         to "#[pair](a, b)"
     }
@@ -29,14 +29,14 @@ file "*.cpp"
 
 actions {
     builder "names" {
-        location "FunctionDefinition"
+        location "function_definition"
         match r"void (\w+)"
         build "$[0]"
         collect true
         separator ", "
     }
     replacer {
-        location "FunctionDefinition"
+        location "function_definition"
         from r"void (\w+)\(\)"
         to "int $[0]() /* #[names] */"
         flags "i"
@@ -62,7 +62,7 @@ actions {
         index "@[0]"
     }
     replacer {
-        location "FunctionDefinition"
+        location "function_definition"
         from r"void (\w+)\(\)"
         to "void #[pair]($[0], #[kind]($[0]))_#[order](\"1\")()"
     }
@@ -109,9 +109,9 @@ fn actions_show_their_call_sites() {
 
 #[test]
 fn locations_are_described_by_the_backend() {
-    let (text, range) = at("FunctionDefinition", 2).unwrap();
+    let (text, range) = at("function_definition", 2).unwrap();
     assert_eq!(text, "cpp: node kind `function_definition` › field `body`");
-    assert_eq!(range, "\"FunctionDefinition.body\"");
+    assert_eq!(range, "\"function_definition.body\"");
 
     let (text, _) = at("Nope", 1).unwrap();
     assert!(text.starts_with("Not a cpp location: "), "{text}");
@@ -126,7 +126,7 @@ fn other_values_have_no_hover() {
 fn locations_count_matches_in_target_files() {
     let (_directory, project) = crate::preview::operation();
     let text = crate::preview::RENAME;
-    let offset = text.find("FunctionDefinition").unwrap() + 2;
+    let offset = text.find("function_definition").unwrap() + 2;
 
     let (hovered, _) = hover(&codeshaper::registry(), &project, &mut Traces::default(), text, offset).unwrap();
 
@@ -206,6 +206,12 @@ fn collect_and_separator_show_the_joined_result() {
 
     let (separator, _) = traced("\", \"", 1);
     assert_eq!(separator, text);
+
+    let (_directory, project) = crate::preview::operation();
+    let referring = TRACED.replace("collect true", "collect true\n        reference-location \"identifier\"");
+    let offset = referring.find("collect true").unwrap() + 9;
+    let (text, _) = hover(&codeshaper::registry(), &project, &mut Traces::default(), &referring, offset).unwrap();
+    assert!(text.starts_with("Collects every reference location inside the place of its location, joined by `, `"), "{text}");
 }
 
 #[test]
@@ -248,7 +254,7 @@ fn patch_fields_show_files_and_backend() {
 fn broken_patches_show_no_samples() {
     let (_directory, project) = crate::preview::operation();
     let broken = TRACED.replace("build \"$[0]\"", "build \"$[0\"");
-    let offset = broken.find("build").unwrap() + 7;
+    let offset = broken.find("match r").unwrap() + 8;
 
     assert_eq!(hover(&codeshaper::registry(), &project, &mut Traces::default(), &broken, offset), None);
 }
@@ -301,7 +307,7 @@ fn first_arguments_have_no_place() {
 #[test]
 fn earlier_replacers_leave_no_place() {
     let earlier = TRACED.replace("    replacer {\n", r##"    replacer {
-        location "FunctionDefinition"
+        location "function_definition"
         from "old"
         to "renamed"
     }
@@ -407,7 +413,7 @@ const BODY: &str = "// é𝄞\r\nvoid one() {\r\n\tint 𝄞a;\r\n}\r\n";
 
 #[test]
 fn places_cover_several_lines() {
-    let text = placed(PLACED, "\"FunctionDefinition.Body\"", "Function", &[("a.cpp", BODY)], Limits::default());
+    let text = placed(PLACED, "\"function_definition.body\"", "function_definition", &[("a.cpp", BODY)], Limits::default());
 
     assert_eq!(text, "cpp: node kind `function_definition` › field `body`\n\n**Places**\n\nIn 2 of 2 target file(s), 2 in all\n\n\
         [`a.cpp:2:12-4:2`](<a.cpp#L2,12-L4,2>)\n```cpp\n{\n\tint 𝄞a;\n}\n```\n\n\
@@ -416,8 +422,8 @@ fn places_cover_several_lines() {
 
 #[test]
 fn reference_locations_have_places() {
-    let patch = PLACED.replace("from", "reference-location \"FunctionDefinition\"\n        from");
-    let text = placed(&patch, "\"FunctionDefinition.Body\"", "FunctionDefinition\"", &[], Limits::default());
+    let patch = PLACED.replace("from", "reference-location \"function_definition\"\n        from");
+    let text = placed(&patch, "\"function_definition.body\"", "function_definition\"", &[], Limits::default());
 
     assert!(text.contains("**Places**\n\nIn 2 of 2 target file(s), 2 in all\n\n[`a.cpp:1:1-14`]"), "{text}");
 }
@@ -425,7 +431,7 @@ fn reference_locations_have_places() {
 #[test]
 fn more_places_are_counted() {
     let many = ("a.cpp", "void a() {}\nvoid b() {}\nvoid c() {}\nvoid d() {}\n");
-    let shown = |samples: usize| placed(PLACED, "\"FunctionDefinition\"", "Function", &[many], Limits { samples, ..Limits::default() });
+    let shown = |samples: usize| placed(PLACED, "\"function_definition\"", "function_definition", &[many], Limits { samples, ..Limits::default() });
 
     assert!(shown(3).ends_with("void c() {}\n```\n\n+2 more, Find All References lists every place"), "{}", shown(3));
     assert!(shown(1).ends_with("void a() {}\n```\n\n+4 more, Find All References lists every place"), "{}", shown(1));
@@ -436,12 +442,12 @@ fn more_places_are_counted() {
 fn long_places_are_cut() {
     let limits = Limits { lines: 2, ..Limits::default() };
 
-    assert!(placed(PLACED, "\"FunctionDefinition\"", "Function", &[("a.cpp", BODY)], limits).contains("```cpp\nvoid one() {\n\tint 𝄞a;\n…\n```"));
+    assert!(placed(PLACED, "\"function_definition\"", "function_definition", &[("a.cpp", BODY)], limits).contains("```cpp\nvoid one() {\n\tint 𝄞a;\n…\n```"));
 }
 
 #[test]
 fn locations_may_have_no_place() {
-    let text = placed(PLACED, "\"ClassSpecifier\"", "Class", &[], Limits::default());
+    let text = placed(PLACED, "\"class_specifier\"", "class_specifier", &[], Limits::default());
     assert!(text.ends_with("**Places**\n\nIn 0 of 2 target file(s), 0 in all"), "{text}");
 
     let text = placed(PLACED, "\"Nope\"", "Nope", &[], Limits::default());
@@ -476,24 +482,24 @@ fn broken_queries_show_no_places() {
 
 #[test]
 fn places_belong_to_their_block() {
-    let fields = PLACED.replace("LOCATION", "\"FunctionDefinition\"");
+    let fields = PLACED.replace("LOCATION", "\"function_definition\"");
     let text = format!("patch \"one\" {{\n{fields}}}\npatch \"two\" {{\n{}}}\n", fields.replace("*.cpp", "b.cpp"));
     let (_directory, project) = crate::preview::operation();
     let at = |offset: usize| hover(&codeshaper::registry(), &project, &mut Traces::default(), &text, offset + 2).unwrap().0;
 
-    assert!(at(text.find("Function").unwrap()).contains("In 2 of 2 target file(s), 2 in all"));
-    assert!(at(text.rfind("Function").unwrap()).contains("In 1 of 1 target file(s), 1 in all"));
+    assert!(at(text.find("function_definition").unwrap()).contains("In 2 of 2 target file(s), 2 in all"));
+    assert!(at(text.rfind("function_definition").unwrap()).contains("In 1 of 1 target file(s), 1 in all"));
 }
 
 #[test]
 fn places_are_remembered_until_files_change() {
     let (directory, project) = crate::preview::operation();
-    let text = PLACED.replace("LOCATION", "\"FunctionDefinition\"");
+    let text = PLACED.replace("LOCATION", "\"function_definition\"");
     let registry = codeshaper::registry();
     let mut traces = Traces::default();
     let mut shown = |keep_going: bool| {
         traces.guard(move || keep_going);
-        hover(&registry, &project, &mut traces, &text, text.find("Function").unwrap()).unwrap().0
+        hover(&registry, &project, &mut traces, &text, text.find("function_definition").unwrap()).unwrap().0
     };
 
     assert_eq!(shown(false), "cpp: node kind `function_definition`");

@@ -40,7 +40,7 @@ fn patch(actions: &str) -> Patch {
 fn check_source(actions: &str) -> (String, Vec<Diagnostic>) {
     let content = content(actions);
     let (patch, source) = Patch::parse("test.kdl", &content).unwrap();
-    let diagnostics = validate_source(&patch, &source, [&LineBackend as &dyn LanguageBackend]);
+    let diagnostics = validate_source(&patch, &source, [&LineBackend as &dyn LanguageBackend], &[]);
 
     (content, diagnostics)
 }
@@ -52,7 +52,7 @@ fn spanned<'a>(content: &'a str, diagnostic: &Diagnostic) -> (usize, &'a str) {
 }
 
 fn check(actions: &str) -> Vec<Diagnostic> {
-    validate(&patch(actions), [&LineBackend as &dyn LanguageBackend])
+    validate(&patch(actions), [&LineBackend as &dyn LanguageBackend], &[])
 }
 
 fn kinds(diagnostics: &[Diagnostic]) -> Vec<(DiagnosticKind, &str, &str)> {
@@ -113,7 +113,7 @@ fn location_not_found() {
     let actions = replacer("Missing", "old", "new");
 
     assert_eq!(kinds(&check(&actions)), vec![(DiagnosticKind::LocationNotFound, "replacer #1", "location")]);
-    assert_eq!(validate(&patch(&actions), []), vec![]);
+    assert_eq!(validate(&patch(&actions), [], &[]), vec![]);
 }
 
 #[test]

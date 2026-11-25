@@ -1,4 +1,5 @@
 // Standard Uses
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -16,8 +17,9 @@ use codeshaper::core::shaping::patch::Patch;
 use codeshaper::core::shaping::patch::controller::PatchController;
 use codeshaper::core::shaping::patch::file::NamedPatch;
 use codeshaper::core::shaping::patch::source::PatchSource;
-use codeshaper::core::shaping::patch::validation::{validate_source, Diagnostic, DiagnosticKind, Severity};
+use codeshaper::core::shaping::patch::validation::{called, validate_source, Diagnostic, DiagnosticKind, Severity};
 use codeshaper::core::shaping::project::settings::ProjectSettings;
+use codeshaper::core::shaping::project::values::{check_set, is_name, Declared, Source, Values};
 use codeshaper::core::shaping::project::Project;
 use codeshaper::registry;
 use miette::{bail, miette, Context, IntoDiagnostic, MietteHandlerOpts, Result};
@@ -28,6 +30,9 @@ const VERSION: &str = match option_env!("CODESHAPER_VERSION") {
     Some(version) => version,
     None => env!("CARGO_PKG_VERSION")
 };
+
+
+const SET: &str = "Set a variable of the project, can be given several times";
 
 
 #[derive(Parser)]
@@ -44,7 +49,9 @@ enum Command {
         #[arg(help = "The operation's configuration.kdl")]
         configuration: PathBuf,
         #[arg(long, help = "Show the changes as diffs without writing anything")]
-        dry_run: bool
+        dry_run: bool,
+        #[arg(long, value_name = "NAME=VALUE", value_parser = value, help = SET)]
+        set: Vec<(String, String)>
     },
     #[command(about = "Check an operation, or single patch files, for problems")]
     Check {
@@ -53,7 +60,9 @@ enum Command {
         #[arg(long, help = "Check the given paths as patch files")]
         patch: bool,
         #[arg(long, requires = "patch", help = "The language of patches that don't name one")]
-        language: Option<String>
+        language: Option<String>,
+        #[arg(long, value_name = "NAME=VALUE", value_parser = value, help = SET)]
+        set: Vec<(String, String)>
     },
     #[command(about = "Apply one patch to one file")]
     Apply {
@@ -66,7 +75,9 @@ enum Command {
         #[arg(long, help = "Write the result into the file instead of showing a diff")]
         in_place: bool,
         #[arg(long, help = "The file's language, when the patch doesn't name one")]
-        language: Option<String>
+        language: Option<String>,
+        #[arg(long, value_name = "NAME=VALUE", value_parser = value, help = SET)]
+        set: Vec<(String, String)>
     },
     #[command(about = "Start the language server over stdio")]
     Lsp
@@ -77,20 +88,47 @@ fn main() -> Result<ExitCode> {
     miette::set_hook(Box::new(|_| Box::new(MietteHandlerOpts::new().wrap_lines(false).build())))?;
 
     match Cli::parse().command {
-        Command::Run { configuration, dry_run: false } => run(&configuration),
-        Command::Run { configuration, dry_run: true } => dry_run(&configuration),
-        Command::Check { paths, patch: false, .. } => check_operation(&paths),
-        Command::Check { paths, patch: true, language } => check_patches(&paths, language.as_deref()),
-        Command::Apply { patch, file, name, in_place, language } => {
-            apply(&patch, &file, name.as_deref(), in_place, language.as_deref())
+        Command::Run { configuration, dry_run: false, set } => run(&operation(&configuration, &set)?),
+        Command::Run { configuration, dry_run: true, set } => dry_run(&operation(&configuration, &set)?),
+        Command::Check { paths, patch: false, set, .. } => check_operation(&paths, &set),
+        Command::Check { paths, patch: true, language, set } => check_patches(&paths, language.as_deref(), &set),
+        Command::Apply { patch, file, name, in_place, language, set } => {
+            apply(&patch, &file, name.as_deref(), in_place, language.as_deref(), &set)
         }
         Command::Lsp => codeshaper_lsp::run().map(|_| ExitCode::SUCCESS)
     }
 }
 
 
-fn run(configuration: &Path) -> Result<ExitCode> {
-    let operation = Operation::from_file(configuration)?;
+fn value(given: &str) -> Result<(String, String), String> {
+    match given.split_once('=') {
+        Some((name, value)) if is_name(name) => Ok((name.to_string(), value.to_string())),
+        Some((name, _)) => Err(format!("'{name}' can't be a variable's name")),
+        None => Err("expected NAME=VALUE".to_string())
+    }
+}
+
+fn operation(configuration: &Path, set: &[(String, String)]) -> Result<Operation> {
+    let mut operation = Operation::from_file(configuration)?;
+
+    for (name, value) in set {
+        operation.set(name, value)?;
+    }
+
+    Ok(operation)
+}
+
+fn declared(patch: &Path, set: &[(String, String)]) -> Result<Vec<Declared>> {
+    let given: BTreeMap<String, String> = set.iter().cloned().collect();
+    let patch = fs::canonicalize(patch).into_diagnostic()?;
+
+    match Project::containing(&patch) {
+        Some(project) => Operation::declared_for(&project, &given),
+        None => Ok(given.into_iter().map(|(name, value)| Declared { name, value: Some(value), source: Source::Set }).collect())
+    }
+}
+
+fn run(operation: &Operation) -> Result<ExitCode> {
     let report = operation.run(&registry())?;
 
     let mut unchanged = 0;
@@ -106,8 +144,7 @@ fn run(configuration: &Path) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-fn dry_run(configuration: &Path) -> Result<ExitCode> {
-    let operation = Operation::from_file(configuration)?;
+fn dry_run(operation: &Operation) -> Result<ExitCode> {
     let registry = registry();
     let preview = operation.session(&registry)?.preview()?;
 
@@ -124,12 +161,12 @@ fn dry_run(configuration: &Path) -> Result<ExitCode> {
     Ok(if preview.errors.is_empty() { ExitCode::SUCCESS } else { ExitCode::FAILURE })
 }
 
-fn check_operation(paths: &[PathBuf]) -> Result<ExitCode> {
+fn check_operation(paths: &[PathBuf], set: &[(String, String)]) -> Result<ExitCode> {
     let [configuration] = paths else {
         return Err(miette!("Expected one configuration file, or patch files with --patch"))
     };
 
-    let operation = Operation::from_file(configuration)?;
+    let operation = operation(configuration, set)?;
     let found = operation.check(&registry())?;
 
     Ok(report_diagnostics(found.iter().map(|(name, diagnostic)| {
@@ -137,12 +174,15 @@ fn check_operation(paths: &[PathBuf]) -> Result<ExitCode> {
     })))
 }
 
-fn check_patches(paths: &[PathBuf], language: Option<&str>) -> Result<ExitCode> {
+fn check_patches(paths: &[PathBuf], language: Option<&str>, set: &[(String, String)]) -> Result<ExitCode> {
     let registry = registry();
     let mut found = vec![];
 
     for path in paths {
-        for named in Patch::load_all(path)? {
+        let patches = Patch::load_all(path)?;
+        let declared = declared(path, set)?;
+
+        for named in patches {
             let NamedPatch { patch, source, .. } = &named;
 
             let (backends, mut diagnostics) = match languages(&registry, path, patch, language)? {
@@ -160,7 +200,7 @@ fn check_patches(paths: &[PathBuf], language: Option<&str>) -> Result<ExitCode> 
                 }
             };
             diagnostics.retain(|diagnostic| diagnostic.kind == DiagnosticKind::LanguageNotFound);
-            diagnostics.extend(validate_source(patch, source, backends));
+            diagnostics.extend(validate_source(patch, source, backends, &declared));
 
             found.push((display_name(path, &named), named, diagnostics));
         }
@@ -232,7 +272,9 @@ fn target_language<'r>(registry: &'r Registry, operation: &Operation, patch: &Pa
     operation.backend(registry, patch, found)
 }
 
-fn apply(patch_path: &Path, file: &Path, name: Option<&str>, in_place: bool, language: Option<&str>) -> Result<ExitCode> {
+fn apply(
+    patch_path: &Path, file: &Path, name: Option<&str>, in_place: bool, language: Option<&str>, set: &[(String, String)]
+) -> Result<ExitCode> {
     let registry = registry();
     let named = chosen(patch_path, name)?;
     let name = display_name(patch_path, &named);
@@ -244,15 +286,18 @@ fn apply(patch_path: &Path, file: &Path, name: Option<&str>, in_place: bool, lan
         Languages::Unknown => bail!("{} is in no project and names no language, use --language", patch_path.display())
     };
 
-    let diagnostics = validate_source(&patch, &source, [backend]);
+    let declared = declared(patch_path, set)?;
+    let diagnostics = validate_source(&patch, &source, [backend], &declared);
     if diagnostics.iter().any(|diagnostic| diagnostic.severity == Severity::Error) {
         return Ok(report_diagnostics(diagnostics.iter().map(|diagnostic| (name.as_str(), diagnostic, Some(&source)))))
     }
+    check_set(&declared, &called(&patch))?;
 
+    let values: Rc<Values> = Rc::new(declared.as_slice().into());
     let source = fs::read_to_string(file)
         .into_diagnostic()
         .wrap_err_with(|| format!("Could not read {}", file.display()))?;
-    let result = PatchController::with(Rc::new(patch)).apply(backend, &source)?;
+    let result = PatchController::with(Rc::new(patch)).with_values(values).apply(backend, &source)?;
 
     if result == source {
         println!("No changes");

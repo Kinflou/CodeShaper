@@ -74,7 +74,7 @@ impl ExpressionVisitor for Composer {
         }
 
         let Some(action) = controller.find_action(name, controller) else {
-            return None
+            return controller.values.get(name).map(str::to_string)
         };
 
         let result = match action {

@@ -30,10 +30,10 @@ use miette::{bail, miette, IntoDiagnostic, Report, Result};
 use crate::shaping::patch::resolver::{List, Switch};
 
 
-#[derive(Default, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 #[derive(knus::Decode)]
 pub struct Patch {
-    #[knus(child, unwrap(argument))]
+    #[knus(child, unwrap(argument), default=true)]
     pub enabled: bool,
     #[knus(child, unwrap(argument), default)]
     pub alias: String,
@@ -61,6 +61,12 @@ pub struct Actions {
 
     #[knus(children(name="list"))]
     pub lists: Vec<List>,
+}
+
+impl Default for Patch {
+    fn default() -> Self {
+        Self { enabled: true, alias: String::new(), file: String::new(), actions: Actions::default() }
+    }
 }
 
 #[allow(unused)]

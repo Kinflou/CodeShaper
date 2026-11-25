@@ -1,5 +1,5 @@
 // Standard Uses
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -7,6 +7,7 @@ use std::time::SystemTime;
 
 // Crate Uses
 use crate::preview::configuration;
+use crate::values::prepared;
 
 // External Uses
 use codeshaper::core::registry::Registry;
@@ -45,7 +46,7 @@ struct Stamped {
 impl Stamped {
     fn new(registry: &Registry, project: &Path, patch: &Patch) -> Option<Self> {
         let configuration = configuration(project).ok()?;
-        let operation = Operation::from_file(&configuration).ok()?;
+        let operation = prepared(Operation::from_file(&configuration).ok()?);
         let (directory, files) = operation.matching_files(registry, "", patch).ok()?;
 
         let stamps = [configuration, project.join(settings::FILE)].into_iter()
@@ -98,6 +99,7 @@ struct Entry {
     project: PathBuf,
     patch: Patch,
     stamps: Stamps,
+    given: BTreeMap<String, String>,
     trace: Arc<Trace>
 }
 
@@ -131,7 +133,7 @@ impl Traces {
         let Stamped { operation, stamps, .. } = Stamped::new(registry, project, &patch)?;
 
         let found = self.entries.iter()
-            .find(|entry| entry.project == project && entry.patch == patch && entry.stamps == stamps);
+            .find(|entry| entry.project == project && entry.patch == patch && entry.stamps == stamps && entry.given == operation.given);
         if let Some(entry) = found {
             return Some(entry.trace.clone())
         }
@@ -141,7 +143,7 @@ impl Traces {
 
         self.entries.retain(|entry| entry.project != project || entry.patch != patch);
         if self.entries.len() >= KEPT { self.entries.remove(0); }
-        self.entries.push(Entry { project: project.to_path_buf(), patch, stamps, trace: trace.clone() });
+        self.entries.push(Entry { project: project.to_path_buf(), patch, stamps, given: operation.given, trace: trace.clone() });
 
         Some(trace)
     }

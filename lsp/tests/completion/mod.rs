@@ -25,8 +25,8 @@ alias ""
 file "*.cpp"
 actions {
     builder "b" {
-        location "Identifier"
-        reference-location "Identifier"
+        location "identifier"
+        reference-location "identifier"
         match "x"
         flags "i"
         build "x"
@@ -36,12 +36,11 @@ actions {
         }
     }
     replacer {
-        location "Identifier"
+        location "identifier"
         from "x"
         to "x"
         flags "g"
-        reference-location "Identifier"
-        reference "x"
+        reference-location "identifier"
         actions {
         }
     }
@@ -105,14 +104,14 @@ fn actions_offer_every_type() {
 
 #[test]
 fn locations_come_from_the_backend() {
-    let text = "alias \"\"\nactions {\n    replacer {\n        location \"Function";
+    let text = "alias \"\"\nactions {\n    replacer {\n        location \"function";
     let kinds = labels(text, text.len());
 
-    assert!(kinds.contains(&"FunctionDefinition".to_string()));
-    assert!(!kinds.contains(&"Body".to_string()));
+    assert!(kinds.contains(&"function_definition".to_string()));
+    assert!(!kinds.contains(&"body".to_string()));
 
-    let fields = labels(&format!("{text}Definition."), text.len() + "Definition.".len());
-    assert!(fields.contains(&"Body".to_string()));
+    let fields = labels(&format!("{text}_definition."), text.len() + "_definition.".len());
+    assert!(fields.contains(&"body".to_string()));
 }
 
 #[test]

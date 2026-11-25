@@ -25,8 +25,6 @@ pub struct Replacer {
     pub flags: String,
     #[knus(child, unwrap(argument), default)]
     pub reference_location: String,
-    #[knus(child, unwrap(argument), default)]
-    pub reference: String,
     #[knus(child, default)]
     pub actions: Actions
 }

@@ -237,7 +237,8 @@ pub fn files(registry: &Registry, start: &Path, name: Option<&str>, open: &Open)
             directory: project.to_string_lossy().to_string(),
             settings: ProjectSettings::from_path(&project)?,
             patches: vec![]
-        }
+        },
+        given: BTreeMap::new()
     };
 
     let solution = operation.target(registry)?;
@@ -348,7 +349,7 @@ pub fn uses(
 
             found.extend(smallest.map(|place| Use {
                 path: path.clone(), patch: patch.clone(), action, field: outline.nodes[node].name.clone(),
-                enabled: outline.argument("enabled") == Some("true"),
+                enabled: outline.argument("enabled") != Some("false"),
                 literal: literal.range.clone(), place
             }));
         }

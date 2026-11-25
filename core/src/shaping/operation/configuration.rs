@@ -1,4 +1,5 @@
 // Standard Uses
+use std::collections::BTreeMap;
 use std::fs;
 use std::fs::Metadata;
 use std::path::{Path, PathBuf};
@@ -27,7 +28,10 @@ pub struct OperationConfiguration {
     pub backup: String,
 
     #[knus(child, unwrap(argument))]
-    pub result: ResultOptions
+    pub result: ResultOptions,
+
+    #[knus(child, unwrap(properties), default)]
+    pub variables: BTreeMap<String, String>
 }
 
 #[derive(Debug, Clone, PartialEq)]

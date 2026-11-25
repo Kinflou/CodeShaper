@@ -24,7 +24,7 @@ use lsp_types::{CompletionItem, CompletionItemKind, CompletionTextEdit, Diagnost
 
 type Check<'c> = dyn Fn(&Target, &[Judged], &str) -> Option<Vec<Found>> + 'c;
 
-const TEXT: &str = "text";
+pub const TEXT: &str = "text";
 const FOLDERS: [&str; 4] = ["project", "target", "output", "backup"];
 const REQUIRED: [&str; 2] = ["project", "target"];
 const WALKED: usize = 1000;

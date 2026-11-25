@@ -8,6 +8,7 @@ mod located;
 mod options;
 mod places;
 mod preview;
+mod referred;
 mod run;
 mod session;
 mod trace;
@@ -38,6 +39,7 @@ impl LanguageBackend for LineBackend {
         if location == "File" {
             return Ok(vec![Range { start: 0, end: source.len() }])
         }
+        if location == "Nothing" { return Ok(vec![]) }
         if location != "Line" {
             bail!("Unknown location {location}")
         }

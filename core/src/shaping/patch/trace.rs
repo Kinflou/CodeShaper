@@ -35,6 +35,7 @@ pub struct Capture {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct ActionTrace {
     pub inputs: usize,
+    pub unreferred: usize,
     pub matched: usize,
     pub matches: usize,
     pub built: usize,
@@ -90,6 +91,7 @@ impl ActionTrace {
 
     fn merge(&mut self, other: ActionTrace, file: &Path, limit: usize) {
         self.inputs += other.inputs;
+        self.unreferred += other.unreferred;
         self.matched += other.matched;
         self.matches += other.matches;
         self.built += other.built;

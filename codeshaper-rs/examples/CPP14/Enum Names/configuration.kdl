@@ -1,0 +1,8 @@
+name "Enum Names"
+project "shaping_project/"
+target "target/"
+output "target_result/"
+backup "target_backup/"
+result "backup-and-replace"
+
+variables type="const char*"

@@ -44,7 +44,7 @@ fn found(actions: &str) -> Vec<(DiagnosticKind, String, String, String)> {
     let content = content(actions);
     let (patch, source) = Patch::parse("", &content).unwrap();
 
-    validate_source(&patch, &source, []).into_iter()
+    validate_source(&patch, &source, [], &[]).into_iter()
         .map(|found| {
             let span = found.span.unwrap();
             (found.kind, found.action, found.message, content[span.offset()..span.offset() + span.len()].to_string())
@@ -134,7 +134,7 @@ fn blocks_have_their_own_names() {
 
     assert_eq!(patches.len(), 2);
     for named in &patches {
-        assert!(validate_source(&named.patch, &named.source, []).is_empty());
+        assert!(validate_source(&named.patch, &named.source, [], &[]).is_empty());
     }
 }
 

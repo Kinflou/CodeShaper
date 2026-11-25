@@ -31,20 +31,20 @@ file "*.cpp"
 
 actions {
     builder "outer" {
-        location "FunctionDefinition.Body"
+        location "function_definition.body"
         match r"(.*)"
         build "$[0]"
         actions {
             builder "inner" {
-                location "FunctionDefinition"
+                location "function_definition"
                 match r"(.*)"
                 build "$[0]"
             }
         }
     }
     replacer {
-        location "FunctionDeclarator.Declarator"
-        reference-location "FunctionDefinition"
+        location "function_declarator.declarator"
+        reference-location "function_definition"
         from r"one"
         to "two"
     }
@@ -133,7 +133,7 @@ fn files_come_from_the_configuration_or_the_patch() {
 #[test]
 fn broken_patches_do_not_stop_exploring() {
     let (directory, configuration, patch) = workspace();
-    write(&directory, "shaping/patches/second.kdl", "enabled true\nfile \"*.cpp\"\nactions {\n    replacer {\n        location \"FunctionDefinition\"\n        from r\"");
+    write(&directory, "shaping/patches/second.kdl", "enabled true\nfile \"*.cpp\"\nactions {\n    replacer {\n        location \"function_definition\"\n        from r\"");
     let mut client = Client::start();
 
     for start in [&configuration, &patch] {
@@ -175,15 +175,15 @@ fn blocks_are_described() {
     let mut block = |needle: &str, length: usize| ask(&mut client, "codeshaper/exploreBlock", at(params(&configuration, "a.cpp", A), A, needle, length));
 
     let found = block("{\n", 0);
-    assert_eq!((&found["kind"], &found["field"], &found["broken"]), (&json!("CompoundStatement"), &json!("Body"), &json!(false)));
+    assert_eq!((&found["kind"], &found["field"], &found["broken"]), (&json!("compound_statement"), &json!("body"), &json!(false)));
     assert_eq!(found["range"], json!(LineIndex::new(A).range(A.find('{').unwrap()..A.find("}\n").unwrap() + 1)));
-    assert_eq!(locations(&found)[..2], [("FunctionDefinition.Body", 1, 2), ("CompoundStatement", 1, 2)]);
+    assert_eq!(locations(&found)[..2], [("function_definition.body", 1, 2), ("compound_statement", 1, 2)]);
     assert_eq!(found["paths"][0]["ranges"][1], json!(LineIndex::new(A).range(A.find("{}").unwrap()..A.find("{}").unwrap() + 2)));
     assert_eq!(found["child"]["start"], json!({ "line": 2, "character": 4 }));
     assert!(found["query"].as_str().unwrap().contains("\"one\""));
     assert_eq!(found["queryLanguage"]["name"], "tree-sitter");
     assert_eq!(found["parents"].as_array().unwrap().len(), 1);
-    assert_eq!(found["parents"][0]["kind"], "FunctionDefinition");
+    assert_eq!(found["parents"][0]["kind"], "function_definition");
     assert_eq!(used(&found), vec![
         ("first.kdl", "outer", "location", false), ("first.kdl", "outer/inner", "location", false), ("first.kdl", "replacer #1", "reference-location", false)
     ]);
@@ -191,13 +191,13 @@ fn blocks_are_described() {
     assert_eq!(found["used"][0]["range"]["start"], json!({ "line": 5, "character": 17 }));
 
     let found = block("two()", 0);
-    assert_eq!(locations(&found)[0], ("FunctionDeclarator.Declarator", 2, 2));
+    assert_eq!(locations(&found)[0], ("function_declarator.declarator", 2, 2));
     assert_eq!(used(&found)[0], ("first.kdl", "replacer #1", "location", false));
 
     let call = block("call(é)", 0);
-    assert_eq!((&call["kind"], &call["child"]), (&json!("Identifier"), &Value::Null));
+    assert_eq!((&call["kind"], &call["child"]), (&json!("identifier"), &Value::Null));
     let selected = block("call(é)", "call(é)".len());
-    assert_eq!(selected["kind"], "CallExpression");
+    assert_eq!(selected["kind"], "call_expression");
     assert_eq!(selected["range"]["end"], json!({ "line": 2, "character": 22 }));
 
     assert!(block("\nvoid two", 0).is_null());
@@ -227,7 +227,7 @@ fn other_patches_use_their_own_language() {
 fn unsaved_patches_are_used() {
     let (_directory, configuration, patch) = workspace();
     let mut client = Client::start();
-    client.open(&patch, &PATCH.replace("enabled false", "enabled true").replace("FunctionDeclarator.Declarator", "PrimitiveType"));
+    client.open(&patch, &PATCH.replace("enabled false", "enabled true").replace("function_declarator.declarator", "primitive_type"));
 
     let found = ask(&mut client, "codeshaper/exploreBlock", at(params(&configuration, "a.cpp", A), A, "void two", 0));
     assert_eq!(used(&found)[0], ("first.kdl", "replacer #1", "location", true));
@@ -243,7 +243,7 @@ fn places_follow_each_other_through_the_files() {
     let mut client = Client::start();
     let mut step = |name: &str, text: &str, needle: &str, length: usize, forward: bool| {
         let mut asked = at(params(&configuration, name, text), text, needle, length);
-        asked["location"] = json!("FunctionDeclarator.Declarator");
+        asked["location"] = json!("function_declarator.declarator");
         asked["forward"] = json!(forward);
         let found = ask(&mut client, PLACE_REQUEST, asked);
         (found["path"].as_str().unwrap().to_string(), found["range"]["start"]["line"].as_u64().unwrap(), found["number"].as_u64().unwrap(), found["places"].as_u64().unwrap())
@@ -264,7 +264,7 @@ fn places_follow_each_other_through_the_files() {
     assert_eq!(step("b.cpp", B, "three", 5, true), ("b.cpp".to_string(), 0, 1, 1));
 
     let mut asked = at(params(&configuration, "a.cpp", A), A, "one", 3);
-    asked["location"] = json!("WhileStatement");
+    asked["location"] = json!("while_statement");
     assert!(ask(&mut client, PLACE_REQUEST, asked.clone()).is_null());
     assert_eq!(ask(&mut client, PLACES_REQUEST, asked), json!([]));
 
@@ -278,7 +278,7 @@ fn every_place_is_listed() {
 
     for start in [&configuration, &patch] {
         let mut asked = params(start, "a.cpp", &A.replace("two", "twice"));
-        asked["location"] = json!("FunctionDeclarator.Declarator");
+        asked["location"] = json!("function_declarator.declarator");
         let found = ask(&mut client, PLACES_REQUEST, asked);
         let found: Vec<(String, u64, u64)> = found.as_array().unwrap().iter()
             .map(|place| (place["uri"].as_str().unwrap().to_string(), place["range"]["start"]["line"].as_u64().unwrap(), place["range"]["end"]["character"].as_u64().unwrap()))
@@ -305,8 +305,8 @@ fn blocks_of_several_lines_are_hinted() {
     };
 
     assert_eq!(labels(0), Vec::<String>::new());
-    assert_eq!(labels(1), vec!["0:0 FunctionDefinition FunctionDefinition"]);
-    assert_eq!(labels(4), vec!["0:0 FunctionDefinition FunctionDefinition", "1:0 Body FunctionDefinition.Body"]);
+    assert_eq!(labels(1), vec!["0:0 function_definition function_definition"]);
+    assert_eq!(labels(4), vec!["0:0 function_definition function_definition", "1:0 body function_definition.body"]);
 
     let mut asked = params(&configuration, "b.cpp", B);
     asked["all"] = json!(true);
@@ -314,7 +314,7 @@ fn blocks_of_several_lines_are_hinted() {
     let labels: Vec<(u64, Vec<&str>)> = found.as_array().unwrap().iter()
         .map(|hint| (hint["position"]["character"].as_u64().unwrap(), hint["parts"].as_array().unwrap().iter().map(|part| part["label"].as_str().unwrap()).collect()))
         .collect();
-    assert_eq!(labels, vec![(0, vec!["FunctionDefinition", "Type"]), (5, vec!["FunctionDeclarator", "Declarator"]), (10, vec!["Parameters"]), (13, vec!["Body"])]);
+    assert_eq!(labels, vec![(0, vec!["function_definition", "type"]), (5, vec!["function_declarator", "declarator"]), (10, vec!["parameters"]), (13, vec!["body"])]);
 
     for hint in found.as_array().unwrap() {
         let joined: Vec<&str> = hint["parts"].as_array().unwrap().iter().map(|part| part["label"].as_str().unwrap()).collect();
@@ -368,7 +368,7 @@ fn searches_can_be_stopped() {
     let (_directory, configuration, _) = workspace();
     let registry = codeshaper::registry();
     let mut asked = at(params(&configuration, "a.cpp", A), A, "two", 3);
-    asked["location"] = json!("FunctionDeclarator.Declarator");
+    asked["location"] = json!("function_declarator.declarator");
 
     for method in [PLACE_REQUEST, PLACES_REQUEST] {
         let found = answer(&registry, &mut Located::default(), method, &configuration, &asked, &HashMap::new(), &|| false);

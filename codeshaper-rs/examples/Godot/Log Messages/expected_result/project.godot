@@ -1,0 +1,13 @@
+config_version=5
+
+[application]
+
+config/name="Log Messages"
+
+[autoload]
+
+GameLog="*res://log/game_log.gd"
+
+[display]
+
+window/size/viewport_width=640

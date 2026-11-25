@@ -5,6 +5,7 @@ pub mod report;
 pub mod session;
 
 // Standard Uses
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 use std::{fs, io};
 use std::ops::Range;
@@ -23,9 +24,11 @@ use crate::shaping::patch::controller::PatchController;
 use crate::shaping::patch::pattern::Regexes;
 use crate::shaping::patch::source::PatchSource;
 use crate::shaping::patch::trace::{Capture, Found, Trace};
-use crate::shaping::patch::validation::{validate, validate_source, Diagnostic as PatchDiagnostic, DiagnosticKind, Severity};
+use crate::shaping::patch::validation::{called, validate, validate_source, Diagnostic as PatchDiagnostic, DiagnosticKind, Severity};
 use crate::shaping::project::{Project, ProjectPatch};
 use crate::shaping::project::ast_set::AstSet;
+use crate::shaping::project::settings::ProjectSettings;
+use crate::shaping::project::values::{check_set, check_settable, declared, Declared, Values};
 use crate::target::{File, Solution};
 
 // External Uses
@@ -38,6 +41,7 @@ pub struct Operation {
     pub configuration: OperationConfiguration,
     pub directory: PathBuf,
     pub project: Project,
+    pub given: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -108,11 +112,12 @@ impl Operation {
     ) -> Result<Self> {
         let project = Project::from_directory_with(&directory.join(&configuration.project), read)?;
 
-        Ok(Self { configuration, directory: directory.to_path_buf(), project })
+        Ok(Self { configuration, directory: directory.to_path_buf(), project, given: BTreeMap::new() })
     }
 
     pub fn session<'a>(&'a self, registry: &'a Registry) -> Result<Session<'a>> {
         self.check_destinations()?;
+        self.check_variables()?;
         let solution = self.target(registry)?;
         self.check_patches(registry, &solution.files())?;
 
@@ -121,6 +126,51 @@ impl Operation {
 
     pub fn run(&self, registry: &Registry) -> Result<Report> {
         self.session(registry)?.finish()
+    }
+
+    pub fn set(&mut self, name: &str, value: &str) -> Result<()> {
+        check_settable(&self.project.settings, name)?;
+        self.given.insert(name.to_string(), value.to_string());
+
+        Ok(())
+    }
+
+    pub fn declared_for(project: &Path, given: &BTreeMap<String, String>) -> Result<Vec<Declared>> {
+        let settings = ProjectSettings::from_path(project)?;
+        let configured = match Self::configuration_for(project) {
+            Ok(configuration) => OperationConfiguration::from_file(&configuration)?.variables,
+            Err(_) => BTreeMap::new()
+        };
+
+        for name in given.keys().chain(configured.keys()) {
+            check_settable(&settings, name)?;
+        }
+
+        Ok(declared(&settings, &configured, given))
+    }
+
+    pub fn declared(&self) -> Vec<Declared> {
+        declared(&self.project.settings, &self.configuration.variables, &self.given)
+    }
+
+    pub(crate) fn values(&self, patches: &[&Patch]) -> Result<Rc<Values>> {
+        let declared = self.declared();
+        let called: BTreeSet<String> = patches.iter().flat_map(|patch| called(patch)).collect();
+        check_set(&declared, &called)?;
+
+        Ok(Rc::new(declared.as_slice().into()))
+    }
+
+    fn check_variables(&self) -> Result<()> {
+        for name in self.configuration.variables.keys() {
+            check_settable(&self.project.settings, name)
+                .wrap_err_with(|| format!("Operation '{}' sets '{name}' in its variables", self.configuration.name))?;
+        }
+        for name in self.given.keys() {
+            check_settable(&self.project.settings, name)?;
+        }
+
+        Ok(())
     }
 
     fn check_destinations(&self) -> Result<()> {
@@ -135,6 +185,8 @@ impl Operation {
 
     pub fn check(&self, registry: &Registry) -> Result<Vec<(String, PatchDiagnostic)>> {
         self.project.settings.ast_set.check(registry)?;
+        self.check_variables()?;
+        let declared = self.declared();
         let solution = self.target(registry)?;
         let files = solution.files();
         let mut found = vec![];
@@ -142,7 +194,7 @@ impl Operation {
         for ProjectPatch { name, patch, source, .. } in &self.project.patches {
             let (backends, diagnostics) = self.languages(registry, patch, &files);
 
-            found.extend(validate_source(patch, source, backends).into_iter().map(|diagnostic| (name.clone(), diagnostic)));
+            found.extend(validate_source(patch, source, backends, &declared).into_iter().map(|diagnostic| (name.clone(), diagnostic)));
             found.extend(diagnostics.into_iter().map(|diagnostic| (name.clone(), spanned(diagnostic, source))));
         }
 
@@ -156,6 +208,7 @@ impl Operation {
 
     fn check_patches(&self, registry: &Registry, files: &[&File]) -> Result<()> {
         self.project.settings.ast_set.check(registry)?;
+        let declared = self.declared();
         let mut errors = vec![];
 
         for ProjectPatch { name, patch, source, .. } in &self.project.patches {
@@ -164,7 +217,7 @@ impl Operation {
             let (backends, diagnostics) = self.languages(registry, patch, files);
             let diagnostics = diagnostics.into_iter().map(|diagnostic| spanned(diagnostic, source));
 
-            for diagnostic in validate_source(patch, source, backends).into_iter().chain(diagnostics) {
+            for diagnostic in validate_source(patch, source, backends, &declared).into_iter().chain(diagnostics) {
                 if diagnostic.severity != Severity::Error { continue }
 
                 let title = format!(
@@ -184,7 +237,7 @@ impl Operation {
     fn check_patch(&self, registry: &Registry, name: &str, patch: &Patch, files: &[File]) -> Result<()> {
         self.project.settings.ast_set.check(registry)?;
         let (backends, diagnostics) = self.languages(registry, patch, &files.iter().collect::<Vec<_>>());
-        let errors: Vec<String> = validate(patch, backends).into_iter().chain(diagnostics)
+        let errors: Vec<String> = validate(patch, backends, &self.declared()).into_iter().chain(diagnostics)
             .filter(|diagnostic| diagnostic.severity == Severity::Error)
             .map(|diagnostic| format!("{} '{}': {}", diagnostic.action, diagnostic.field, diagnostic.message))
             .collect();
@@ -251,8 +304,9 @@ impl Operation {
 
     pub fn preview(&self, registry: &Registry, name: &str, patch: &Patch) -> Result<Vec<Change>> {
         let (directory, files) = self.matching_files(registry, name, patch)?;
+        self.check_variables()?;
         self.check_patch(registry, name, patch, &files)?;
-        let regexes = Rc::default();
+        let shared = (Rc::default(), self.values(&[patch])?);
 
         let changes = files.iter()
             .map(|file| {
@@ -263,7 +317,7 @@ impl Operation {
 
                 match before {
                     Ok(before) => {
-                        let result = self.apply_patch(registry, (name, patch), file, &before, &regexes);
+                        let result = self.apply_patch(registry, (name, patch), file, &before, &shared);
                         Change { file: file.path.clone(), patch: name.to_string(), before, result }
                     }
                     Err(error) => Change { file: file.path.clone(), patch: name.to_string(), before: String::new(), result: Err(error) }
@@ -360,6 +414,7 @@ impl Operation {
         self.check_patch(registry, name, patch, &files)?;
         let patch = Rc::new(patch.clone());
         let regexes = Rc::default();
+        let values: Rc<Values> = Rc::new(self.declared().as_slice().into());
         let mut trace = Trace { directory, ..Trace::new(limit) };
 
         for file in &files {
@@ -368,7 +423,7 @@ impl Operation {
             let Ok(source) = fs::read_to_string(trace.directory.join(&file.path)) else { continue };
             let Ok(backend) = self.backend(registry, &patch, file) else { continue };
 
-            let mut controller = PatchController::traced(patch.clone(), limit).sharing(Rc::clone(&regexes));
+            let mut controller = PatchController::traced(patch.clone(), limit).sharing(Rc::clone(&regexes)).with_values(values.clone());
             if controller.apply(backend, &source).is_err() { continue }
 
             if let Some(traced) = controller.trace.take() {
@@ -406,10 +461,10 @@ impl Operation {
     }
 
     fn apply_patch(
-        &self, registry: &Registry, (name, patch): (&str, &Patch), file: &File, source: &str, regexes: &Rc<Regexes>
+        &self, registry: &Registry, (name, patch): (&str, &Patch), file: &File, source: &str, (regexes, values): &(Rc<Regexes>, Rc<Values>)
     ) -> Result<String> {
         self.backend(registry, patch, file)
-            .and_then(|backend| PatchController::with(Rc::new(patch.clone())).sharing(regexes.clone()).apply(backend, source))
+            .and_then(|backend| PatchController::with(Rc::new(patch.clone())).sharing(regexes.clone()).with_values(values.clone()).apply(backend, source))
             .wrap_err_with(|| format!("Patch {} could not shape {}", name, file.path.display()))
     }
 

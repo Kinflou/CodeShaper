@@ -1,4 +1,3 @@
-enabled true
 file "CallerModule.cpp"
 
 actions {
@@ -16,7 +15,7 @@ actions {
     }
 
     replacer {
-        location "FunctionDefinition.Body"
+        location "function_definition.body"
         from r"(// Lets call some methods!)\n\}"
         to "$[0]\n#[method_call_builder]}"
     }

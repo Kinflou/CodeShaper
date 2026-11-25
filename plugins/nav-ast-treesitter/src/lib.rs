@@ -29,6 +29,7 @@ pub fn register(registry: &mut Registry) {
 
 
 const KEPT: usize = 64;
+const ERROR: u16 = u16::MAX;
 
 const QUERIES: QueryLanguage = QueryLanguage {
     name: "tree-sitter",
@@ -114,12 +115,12 @@ impl TreeSitterBackend {
     }
 
     fn segment(&self, index: usize, segment: &str) -> Result<Segment> {
-        let segment = to_snake_case(segment.trim());
+        let segment = segment.trim();
 
-        if index > 0 && self.language.field_id_for_name(&segment).is_some() {
-            Ok(Segment::Field(segment))
-        } else if self.language.id_for_node_kind(&segment, true) != 0 {
-            Ok(Segment::Kind(segment))
+        if index > 0 && self.language.field_id_for_name(segment).is_some() {
+            Ok(Segment::Field(segment.to_string()))
+        } else if self.language.id_for_node_kind(segment, true) != 0 {
+            Ok(Segment::Kind(segment.to_string()))
         } else {
             bail!("'{}' is not a {} node kind or field", segment, self.name)
         }
@@ -127,6 +128,7 @@ impl TreeSitterBackend {
 
     fn kind_ids(&self, kind: &str) -> Vec<u16> {
         (0..self.language.node_kind_count() as u16)
+            .chain([ERROR])
             .filter(|id| self.language.node_kind_for_id(*id) == Some(kind))
             .collect()
     }
@@ -174,6 +176,10 @@ impl TreeSitterBackend {
                 },
                 Segment::Kind(kind) => {
                     let ids = self.kind_ids(&kind);
+
+                    if index == 0 {
+                        next.extend(nodes.iter().filter(|node| ids.contains(&node.kind_id())).copied());
+                    }
 
                     for node in &nodes {
                         collect_descendants(*node, &ids, &mut next);
@@ -263,10 +269,10 @@ impl LanguageBackend for TreeSitterBackend {
     }
 
     fn location_names(&self, segment: usize) -> Vec<String> {
-        let mut names: Vec<String> = self.node_kinds().iter().map(|kind| to_pascal_case(kind)).collect();
+        let mut names = self.node_kinds();
 
         if segment > 0 {
-            names.extend(self.fields().iter().map(|field| to_pascal_case(field)));
+            names.extend(self.fields());
         }
 
         names.sort();
@@ -333,30 +339,4 @@ fn collect_descendants<'tree>(node: Node<'tree>, kinds: &[u16], found: &mut Vec<
             }
         }
     }
-}
-
-fn to_snake_case(name: &str) -> String {
-    let mut snake = String::with_capacity(name.len() + 4);
-
-    for (index, character) in name.chars().enumerate() {
-        if character.is_uppercase() {
-            if index > 0 {
-                snake.push('_');
-            }
-            snake.extend(character.to_lowercase());
-        } else {
-            snake.push(character);
-        }
-    }
-
-    snake
-}
-
-fn to_pascal_case(name: &str) -> String {
-    name.split('_')
-        .map(|word| {
-            let mut characters = word.chars();
-            characters.next().map(|first| first.to_uppercase().chain(characters).collect::<String>()).unwrap_or_default()
-        })
-        .collect()
 }

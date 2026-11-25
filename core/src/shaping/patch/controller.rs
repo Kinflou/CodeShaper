@@ -14,6 +14,7 @@ use crate::shaping::patch::origin::Origin;
 use crate::shaping::patch::pattern::Regexes;
 use crate::shaping::patch::replacer::Replacer;
 use crate::shaping::patch::trace::{ActionTrace, Trace};
+use crate::shaping::project::values::Values;
 use crate::shaping::operation::actions::{Action, ActionOf};
 use crate::shaping::operation::actions::builder::BuilderAction;
 use crate::shaping::operation::actions::maker::MakerAction;
@@ -32,6 +33,7 @@ pub struct PatchController {
     pub listener_controller: ListenerController,
     pub trace: Option<RefCell<Trace>>,
     pub regexes: Rc<Regexes>,
+    pub values: Rc<Values>,
     paths: HashMap<NodeId, String>,
     origin: Option<Origin>
 }
@@ -45,7 +47,7 @@ impl PatchController {
     pub fn with_listener(patch: Rc<Patch>, listener_controller: ListenerController) -> Self {
         let (actions, paths) = Self::make_actions(patch.clone());
 
-        Self { patch, actions, listener_controller, trace: None, regexes: Rc::default(), paths, origin: None }
+        Self { patch, actions, listener_controller, trace: None, regexes: Rc::default(), values: Rc::default(), paths, origin: None }
     }
 
     pub fn traced(patch: Rc<Patch>, limit: usize) -> Self {
@@ -54,6 +56,10 @@ impl PatchController {
 
     pub fn sharing(self, regexes: Rc<Regexes>) -> Self {
         Self { regexes, ..self }
+    }
+
+    pub fn with_values(self, values: Rc<Values>) -> Self {
+        Self { values, ..self }
     }
 
     pub fn path(&self, id: NodeId) -> Option<&str> {
@@ -80,6 +86,23 @@ impl PatchController {
 
     pub(crate) fn start(&self, location: &str) -> Option<usize> {
         self.listener_controller.location_range.get(location)?.as_ref().map(|range| range.start)
+    }
+
+    pub(crate) fn referred(&self, location: &str, reference: &str, every: bool) -> Option<Vec<(String, Option<usize>)>> {
+        let ListenerController { location_contents, location_range, location_ranges, .. } = &self.listener_controller;
+        let place = location_range.get(location)?.as_ref()?;
+        let ranges = location_ranges.get(reference)?;
+        let scoped = scoped_range(ranges, place);
+
+        let found = ranges.iter().zip(location_contents.get(reference)?)
+            .filter(|(range, _)| match every {
+                true => is_inside(range, place),
+                false => scoped == Some(*range)
+            })
+            .map(|(range, content)| (content.clone(), Some(range.start)))
+            .collect();
+
+        Some(found)
     }
 
     fn make_actions(patch: Rc<Patch>) -> (Arena<ActionOf>, HashMap<NodeId, String>) {
@@ -197,14 +220,12 @@ impl PatchController {
                             ranges.iter().map(|range| source[range.clone()].to_string()).collect()
                         ))
                         .collect();
-                    if self.tracing() {
-                        self.listener_controller.location_ranges = located.iter()
-                            .map(|(location, ranges)| (location.to_string(), ranges.clone()))
-                            .collect();
-                        self.listener_controller.location_range = located.keys()
-                            .map(|location| (location.to_string(), None))
-                            .collect();
-                    }
+                    self.listener_controller.location_ranges = located.iter()
+                        .map(|(location, ranges)| (location.to_string(), ranges.clone()))
+                        .collect();
+                    self.listener_controller.location_range = located.keys()
+                        .map(|location| (location.to_string(), None))
+                        .collect();
 
                     located
                 }
@@ -227,7 +248,10 @@ impl PatchController {
                     content.insert(location.to_string(), source[range.clone()].to_string());
                 }
 
-                let Some(target) = target else { continue };
+                let Some(target) = target else {
+                    self.record(id, |trace, _| trace.unreferred += 1);
+                    continue
+                };
                 if edits.iter().any(|(range, _)| *range == target) { continue }
 
                 self.listener_controller.location_content = content;
@@ -341,7 +365,11 @@ fn locate<'l>(
 
 fn scoped_range<'r>(ranges: &'r [Range<usize>], trigger: &Range<usize>) -> Option<&'r Range<usize>> {
     ranges.iter()
-        .filter(|range| range.start <= trigger.start && trigger.end <= range.end)
+        .filter(|range| is_inside(trigger, range))
         .min_by_key(|range| range.end - range.start)
-        .or_else(|| ranges.iter().find(|range| trigger.start <= range.start && range.end <= trigger.end))
+        .or_else(|| ranges.iter().find(|range| is_inside(range, trigger)))
+}
+
+fn is_inside(inner: &Range<usize>, outer: &Range<usize>) -> bool {
+    outer.start <= inner.start && inner.end <= outer.end
 }

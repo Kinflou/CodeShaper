@@ -186,7 +186,7 @@ fn errors_point_at_the_right_action() {
 
         let content = content(&MIXED.replace(old, new));
         let (patch, source) = Patch::parse("", &content).unwrap();
-        let found = validate_source(&patch, &source, []);
+        let found = validate_source(&patch, &source, [], &[]);
         let found = found.iter().find(|found| found.action == action).unwrap_or_else(|| panic!("{action}: {found:?}"));
         let span = found.span.unwrap();
 
